@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grade Calculator</title>
+  <title>KIS Cal</title>
   <link rel="icon" href="icons/logos/page-icon.png" />
   <!-- Sets data-theme/data-hide-breakdown before the stylesheet below
        ever gets a chance to paint — deferred scripts don't run until the
@@ -31,13 +31,11 @@
       }
     })();
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
-    rel="stylesheet"
-  />
+  <!-- Inter, hosted here (see the @font-face in tokens.css) and fetched
+       first, so it's ready by the first paint and pages never flash the
+       browser's font on the way in. -->
+  <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="css/tokens.css" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/nav.css" />
@@ -59,14 +57,51 @@
   <nav class="tab-bar">
     <img class="tab-bar-logo tab-bar-logo--light" src="icons/logos/light-logo.png" alt="" />
     <img class="tab-bar-logo tab-bar-logo--dark" src="icons/logos/dark-logo.png" alt="" />
-    <a class="tab" href="my-courses">Calendar</a>
+    <a class="tab" href="calendar">Calendar</a>
     <a class="tab" href="domain">Domain</a>
     <a class="tab" href="gpa">GPA</a>
-    <a class="tab tab--admin-only tab--active" href="assessments">Assessments</a>
-    <a class="tab tab--admin-only" href="suggestions">Suggestions</a>
+    <a class="tab tab--admin-only tab--active" href="assessments">Assessments<span class="tab-underline" aria-hidden="true"></span></a>
     <a class="tab tab--admin-only" href="posts">Posts</a>
     <div class="auth-container"></div>
   </nav>
+  <!-- Slides the open tab's blue bar in from where the previous page's was.
+       Inline, right after the tab bar, so it runs before the page first
+       paints: the bar starts at the old tab's place with no flash at the new
+       one, and nothing waits on a download. The tab clicked saves where the
+       bar is; the next page reads it back and animates the bar from there
+       to its own place (transform only, so it stays smooth). -->
+  <script>
+    (function () {
+      var KEY = "tabUnderlineFrom";
+      var bar = document.querySelector(".tab--active .tab-underline");
+      document.querySelectorAll(".tab-bar .tab").forEach(function (tab) {
+        tab.addEventListener("click", function (event) {
+          if (!bar || tab.classList.contains("tab--active")) return;
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          var rect = bar.getBoundingClientRect();
+          try {
+            sessionStorage.setItem(KEY, JSON.stringify({ left: rect.left, width: rect.width, at: Date.now() }));
+          } catch (error) {}
+        });
+      });
+      var from = null;
+      try {
+        from = JSON.parse(sessionStorage.getItem(KEY));
+        sessionStorage.removeItem(KEY);
+      } catch (error) {}
+      if (!bar || !from || !bar.animate || Date.now() - from.at > 3000) return;
+      if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      var to = bar.getBoundingClientRect();
+      if (!to.width || !from.width) return;
+      bar.animate(
+        [
+          { transform: "translateX(" + (from.left - to.left) + "px) scaleX(" + from.width / to.width + ")" },
+          { transform: "none" },
+        ],
+        { duration: 300, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+      );
+    })();
+  </script>
   <div class="page-content">
     <p class="admin-not-authorized" id="admin-not-authorized" hidden>
       This page is for admins only.
@@ -82,6 +117,9 @@
         </div>
         <div class="assessment-calendar-weekday-row" id="admin-cal-weekdays"></div>
         <div class="assessment-calendar-grid" id="admin-cal-grid"></div>
+        <div class="assessment-calendar-loading" id="admin-cal-loading">
+          <div class="assessment-calendar-spinner"></div>
+        </div>
       </div>
 
       <div class="admin-day-panel">
@@ -91,7 +129,7 @@
             <!-- Opens the Bell Schedule popup (see initScheduleModal in
                  assessments-admin.js) — not tied to whichever day happens
                  to be selected, just placed next to the A/B/? toggle. -->
-            <button type="button" class="admin-schedule-open-btn" id="admin-schedule-open-btn" aria-label="Bell Schedule">
+            <button type="button" class="admin-schedule-open-btn" id="admin-schedule-open-btn" aria-label="Bell Schedule" hidden>
               <svg class="admin-schedule-open-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
                 <path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -128,6 +166,7 @@
               <button type="button" class="segmented-option segmented-option--active" data-value="In-Class">In-Class</button>
               <button type="button" class="segmented-option" data-value="Testing Block">Testing Block</button>
               <button type="button" class="segmented-option" data-value="Formative">Formative</button>
+              <button type="button" class="segmented-option" data-value="Reassessment">Reassessment</button>
               <button type="button" class="segmented-option" data-value="Other">Other</button>
               <!-- Only shown while "Other" is the active option. Inside
                    the same segmented-control bar, not a separate box. -->
@@ -136,6 +175,33 @@
           </div>
           <button type="submit" class="admin-add-submit-btn">Add assessment</button>
         </form>
+      </div>
+    </div>
+
+    <div class="suggestions-card" id="suggestions-layout" hidden>
+      <h2 class="suggestions-title">
+        Suggestions
+        <span class="suggestions-count" id="suggestions-count" hidden></span>
+      </h2>
+
+      <!-- Shown until the suggested collection actually loads. -->
+      <div class="assessment-calendar-loading" id="suggestions-loading">
+        <span class="assessment-calendar-spinner"></span>
+      </div>
+
+      <p class="suggestions-empty" id="suggestions-empty" hidden>Nothing suggested right now.</p>
+
+      <div class="suggestions-list" id="suggestions-list" hidden>
+        <div class="suggestions-row suggestions-row--header">
+          <span class="suggestions-cell suggestions-cell--added">Added</span>
+          <span class="suggestions-cell suggestions-cell--date">Date</span>
+          <span class="suggestions-cell suggestions-cell--course">Course</span>
+          <span class="suggestions-cell suggestions-cell--type">Type</span>
+          <span class="suggestions-cell suggestions-cell--count">Count</span>
+          <span class="suggestions-cell suggestions-cell--emails">Emails</span>
+          <span class="suggestions-cell suggestions-cell--actions"></span>
+        </div>
+        <div class="suggestions-rows" id="suggestions-rows"></div>
       </div>
     </div>
   </div>
@@ -154,5 +220,6 @@
   <script defer src="js/vendor/qrcode-generator.js"></script>
   <script defer src="js/settings-modal.js"></script>
   <script defer src="js/assessments-admin.js"></script>
+  <script defer src="js/suggestions-admin.js"></script>
 </body>
 </html>

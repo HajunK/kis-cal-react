@@ -1,15 +1,7 @@
-// Client-side encryption for the grade data (domainScores, gpaClasses,
-// domainSnapshot) — Firestore only ever stores these as ciphertext.
-// periods/preferences/email stay plaintext.
-//
-// The key is a random 256-bit AES-GCM key, generated once per (device,
-// account) and kept only in this browser's localStorage — never sent
-// anywhere else. A brand new account gets a key generated silently.
-// Signing in on a device that doesn't already have the key, where
-// Firestore already holds encrypted data, blocks on a mandatory prompt
-// (promptForDecryptionCode, invoked from boot.js) for the code shown in
-// Settings on the original device. If that code is lost, the data is
-// permanently unreadable.
+// Grades are encrypted on the device so Firestore only ever holds ciphertext.
+// The AES-GCM key is generated per device and account and never leaves this
+// browser's localStorage; another device needs the code from Settings, and a
+// lost code means the data can't be read.
 
 const ENCRYPTED_FIELDS = ["domainScores", "gpaClasses", "domainSnapshot"];
 
@@ -30,8 +22,7 @@ function base64ToBytes(base64) {
   return bytes;
 }
 
-// One CryptoKey per uid, cached in memory as a Promise so concurrent
-// callers share the same import instead of racing separate ones.
+// Cached as a Promise so concurrent callers share one import instead of racing.
 const deviceKeyCache = {};
 
 function getDeviceKey(uid) {
@@ -52,9 +43,8 @@ function getDeviceKey(uid) {
   return promise;
 }
 
-// Encrypts one JSON-serializable value into a single opaque string: a
-// fresh random 12-byte IV followed by the ciphertext, both base64'd
-// together so it fits in one Firestore string field.
+// IV and ciphertext are combined so each value fits in one Firestore string
+// field.
 function encryptValue(key, value) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(value));
@@ -66,11 +56,9 @@ function encryptValue(key, value) {
   });
 }
 
-// Reverses encryptValue. Two other shapes are returned as-is rather than
-// treated as errors: undefined/null (field doesn't exist yet), and a real
-// object/array (a pre-encryption document, still plaintext — the next
-// save re-writes it encrypted). Anything that fails to decrypt falls back
-// to fallbackValue instead of throwing.
+// Null and plain objects (data saved before encryption) pass through rather
+// than erroring; the next save rewrites them encrypted. Failures fall back to
+// fallbackValue so a bad field can't break the page.
 function decryptValue(key, stored, fallbackValue) {
   if (stored === undefined || stored === null) return Promise.resolve(fallbackValue);
   if (typeof stored !== "string") return Promise.resolve(stored);
@@ -90,8 +78,6 @@ function decryptValue(key, stored, fallbackValue) {
     .catch(() => fallbackValue);
 }
 
-// Shallow copy of appData with the grade fields swapped for their
-// encrypted strings — everything else passes through untouched.
 function encryptAppDataForCloud(data, key) {
   return Promise.all(ENCRYPTED_FIELDS.map((field) => encryptValue(key, data[field]))).then((encryptedValues) => {
     const encrypted = { ...data };
@@ -106,8 +92,7 @@ function hasStoredDeviceKey(uid) {
   return !!localStorage.getItem(encKeyStorageKey(uid));
 }
 
-// jsQR is ~257KB unminified — loaded on demand rather than on every page
-// load, only once promptForDecryptionCode actually runs.
+// jsQR is about 257KB, so it's only loaded when the prompt actually runs.
 let jsQrLoadPromise = null;
 function ensureJsQrLoaded() {
   if (typeof jsQR === "function") return Promise.resolve();
@@ -123,9 +108,7 @@ function ensureJsQrLoaded() {
   return jsQrLoadPromise;
 }
 
-// Like decryptValue, but rejects instead of falling back to a default —
-// used to test whether a candidate key is actually the right one, so a
-// wrong code can be reported back to the person typing it.
+// Rejects rather than falling back, so a wrong code can be reported.
 function decryptValueOrThrow(key, stored) {
   const combined = base64ToBytes(stored);
   const iv = combined.slice(0, 12);
@@ -135,9 +118,7 @@ function decryptValueOrThrow(key, stored) {
     .then((plaintext) => JSON.parse(new TextDecoder().decode(plaintext)));
 }
 
-// Turns a user-typed decryption code into a CryptoKey. Doesn't store or
-// cache anything — the caller persists it via storeDeviceKey once
-// confirmed.
+// Stores nothing: the caller persists the key once it's confirmed to work.
 function importKeyFromCode(code) {
   const trimmed = (code || "").replace(/\s+/g, "");
   let bytes;
@@ -156,21 +137,13 @@ function importKeyFromCode(code) {
     .then((key) => ({ key, rawBase64: normalizedBase64 }));
 }
 
-// Persists a confirmed-working key for uid, and updates the in-memory
-// cache getDeviceKey() reads from.
 function storeDeviceKey(uid, key, rawBase64) {
   localStorage.setItem(encKeyStorageKey(uid), rawBase64);
   deviceKeyCache[uid] = Promise.resolve(key);
 }
 
-// Puts up a full-page, un-dismissable prompt for this account's decryption
-// code and resolves with a working CryptoKey once one is entered —
-// deliberately no cancel/skip, since continuing with the wrong key would
-// overwrite the real encrypted data with near-empty data. cloud is the
-// raw Firestore document, used only to verify a typed code opens it.
-//
-// Two mutually exclusive views: camera scanning (the default) and typing
-// the code manually.
+// Deliberately can't be dismissed: carrying on with the wrong key would
+// overwrite the real encrypted data with near-empty data.
 function promptForDecryptionCode(uid, cloud) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
@@ -226,7 +199,7 @@ function promptForDecryptionCode(uid, cloud) {
     document.body.appendChild(overlay);
 
     const dialog = overlay.querySelector(".decryption-prompt");
-    void dialog.offsetWidth; // force reflow so the entrance transition below actually plays
+    void dialog.offsetWidth;  // so the entrance transitions
     dialog.classList.add("decryption-prompt--visible");
     overlay.classList.add("decryption-prompt-overlay--visible");
 
@@ -279,10 +252,8 @@ function promptForDecryptionCode(uid, cloud) {
       if (event.key === "Enter") attempt();
     });
 
-    // QR scanning: reads camera frames onto an offscreen canvas and hands
-    // each to jsQR. A scanned code just fills the input and runs through
-    // the same attempt() path as a typed one, so a misread frame fails to
-    // decrypt and prompts a retry rather than accepting bad data.
+    // A scanned code goes through the same check as a typed one, so a misread
+    // frame just fails and lets the user retry.
     let scanStream = null;
     let scanFrameHandle = null;
     const scanCanvas = document.createElement("canvas");
@@ -313,9 +284,6 @@ function promptForDecryptionCode(uid, cloud) {
       scanFrameHandle = requestAnimationFrame(scanFrame);
     }
 
-    // Switches to the manual-entry view — used by "Cancel scanning", "Use
-    // decryption code instead", and as the fallback when scanning isn't
-    // available at all.
     function showManualEntry() {
       stopScanning();
       manualBox.hidden = false;
@@ -340,7 +308,6 @@ function promptForDecryptionCode(uid, cloud) {
           scanFrameHandle = requestAnimationFrame(scanFrame);
         })
         .catch(() => {
-          // Scanner failed to load, or camera access denied/unavailable.
           showManualEntry();
         });
     }
@@ -348,10 +315,8 @@ function promptForDecryptionCode(uid, cloud) {
     useCodeBtn.addEventListener("click", showManualEntry);
     scanBtn.addEventListener("click", showCameraScanning);
 
-    // There's no way to recover the old encrypted data without the code
-    // itself — this is the only way forward besides finding it. Swaps in
-    // for whichever of camera/manual was showing (remembered so Cancel can
-    // put it back), rather than stacking on top of it.
+    // Without the code the old data can't be recovered, so resetting is the
+    // only other way forward.
     let resetReturnToCamera = false;
 
     function showResetConfirm() {
@@ -376,12 +341,9 @@ function promptForDecryptionCode(uid, cloud) {
       resetConfirmBtn.disabled = true;
       resetCancelBtn.disabled = true;
 
-      // Only ENCRYPTED_FIELDS are cleared (via FieldValue.delete(), an
-      // .update() rather than deleteAllData's wholesale .set()) — periods,
-      // divisions, addedAssessments, preferences, and email are all
-      // readable as-is without the code, so they're left untouched. Nothing
-      // left to decrypt afterward, so resolveDeviceKeyForBoot won't prompt
-      // again; this device just gets a fresh key on reload.
+      // Only the encrypted fields are cleared (update, not a wholesale set);
+      // everything else is readable without the code. With nothing left to
+      // decrypt, the next load just makes a fresh key.
       const clearedFields = { lastModified: Date.now() };
       ENCRYPTED_FIELDS.forEach((field) => {
         clearedFields[field] = firebase.firestore.FieldValue.delete();
@@ -405,14 +367,12 @@ function promptForDecryptionCode(uid, cloud) {
         });
     });
 
-    // Scanning is the default view this prompt opens on.
     showCameraScanning();
   });
 }
 
-// Decides how boot.js should get this device's key: silently, if this
-// device already has a key or the account has no encrypted data yet —
-// otherwise blocks on promptForDecryptionCode.
+// Only blocks on the prompt when this device has no key and there's encrypted
+// data to unlock.
 function resolveDeviceKeyForBoot(uid, cloud) {
   if (hasStoredDeviceKey(uid)) return getDeviceKey(uid);
 

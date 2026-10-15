@@ -1,12 +1,6 @@
-// Posts admin page: create/delete the admin-authored posts shown on
-// Domain, below the class cards (see renderDomainPosts in domain.js).
-// Read is public in firestore.rules; the page-level gating below is only
-// cosmetic — the actual write restriction is server-side, admin-email
-// only.
-//
-// Doesn't load shared.js/boot.js, so it duplicates nothing date-related
-// (posts have no date of their own) — same reasoning as
-// assessments-admin.js/suggestions-admin.js staying standalone.
+// Admin page for the posts shown under Domain's cards. Kept standalone (no
+// shared.js/boot.js), like the other admin pages, since it needs none of their
+// user data.
 
 let postsInitialized = false;
 let allPosts = [];
@@ -22,9 +16,8 @@ function fetchPosts(callback) {
     })
     .catch((error) => {
       console.error("Failed to load posts:", error);
-      // Otherwise the spinner just spins forever with no indication
-      // anything went wrong (most likely cause: firestore.rules' posts
-      // rule hasn't actually been deployed yet).
+      // Without this the spinner would spin forever; the usual cause is the
+      // posts rule not being deployed yet.
       const loading = document.getElementById("posts-loading");
       const empty = document.getElementById("posts-empty");
       if (loading) loading.hidden = true;
@@ -35,9 +28,7 @@ function fetchPosts(callback) {
     });
 }
 
-// Optimistic — removed from the list and re-rendered before the delete
-// actually completes, same convention as Assessments'/Suggestions' own
-// admin delete actions.
+// Optimistic, like the other admin deletes, so the list responds at once.
 function deletePost(post) {
   const index = allPosts.findIndex((entry) => entry.id === post.id);
   if (index !== -1) {
@@ -115,7 +106,7 @@ function renderPosts() {
   empty.hidden = true;
   list.hidden = false;
 
-  // Newest first — matches how they're shown on Domain.
+  // Same order as on Domain.
   allPosts
     .slice()
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -162,8 +153,7 @@ function initPostsPage() {
   fetchPosts(renderPosts);
 }
 
-// Purely cosmetic — the real gate is firestore.rules, checking the same
-// email server-side for the add/delete writes themselves.
+// Cosmetic only: firestore.rules is the real gate.
 function handlePostsAuthState(user) {
   const isAdmin = Boolean(user && ADMIN_EMAILS.includes(user.email));
   document.getElementById("admin-not-authorized").hidden = isAdmin;

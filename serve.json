@@ -1,0 +1,19 @@
+{
+  "redirects": [
+    {
+      "source": "/public/my-courses",
+      "destination": "/public/calendar",
+      "type": 301
+    },
+    {
+      "source": "/public/my-courses.html",
+      "destination": "/public/calendar",
+      "type": 301
+    },
+    {
+      "source": "/public/suggestions",
+      "destination": "/public/assessments",
+      "type": 301
+    }
+  ]
+}

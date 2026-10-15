@@ -167,25 +167,27 @@
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* A slightly darker neutral gray, not --color-gray-light's bluish one; the
+   same hover as the Add popup's Due Date and Time buttons. */
 .division-option:hover:not(.division-option--selected) {
-  background: var(--color-gray-light);
+  background: color-mix(in srgb, var(--color-gray-dark) 12%, var(--color-gray-lighter));
 }
 
-/* --chip-color is the course's calendar color, when it has one (see
-   syncDivisionPicker). The text picks black or white by that color's
-   lightness, as on the Add popup's button, so it stays readable on yellow. */
+/* The theme's blue, with white text: --color-accent, #1051cf in light mode
+   and #2f6bff in dark. */
 .division-option--selected {
-  background: var(--chip-color, var(--color-accent));
-  color: oklch(from var(--chip-color, var(--color-accent)) clamp(0, (0.78 - l) * 1000, 1) 0 0);
+  background: var(--color-accent);
+  color: #ffffff;
 }
 
 /* icons/close.svg, used as a mask so it takes its button's text color (dark
-   gray, darkening on hover) in either theme instead of the file's own black.
+   gray) in either theme instead of the file's own black.
    Sized in em, so each button's old font-size for the "×" still sets how big
    its X is. */
 .close-icon {

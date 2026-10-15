@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grade Calculator</title>
+  <title>KIS Cal</title>
   <link rel="icon" href="icons/logos/page-icon.png" />
   <!-- Sets data-theme/data-hide-breakdown before the stylesheet below
        ever gets a chance to paint — deferred scripts don't run until the
@@ -31,13 +31,11 @@
       }
     })();
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
-    rel="stylesheet"
-  />
+  <!-- Inter, hosted here (see the @font-face in tokens.css) and fetched
+       first, so it's ready by the first paint and pages never flash the
+       browser's font on the way in. -->
+  <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="css/tokens.css" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/nav.css" />
@@ -59,15 +57,52 @@
   <nav class="tab-bar">
     <img class="tab-bar-logo tab-bar-logo--light" src="icons/logos/light-logo.png" alt="" />
     <img class="tab-bar-logo tab-bar-logo--dark" src="icons/logos/dark-logo.png" alt="" />
-    <a class="tab tab--active" href="my-courses">Calendar</a>
+    <a class="tab tab--active" href="calendar">Calendar<span class="tab-underline" aria-hidden="true"></span></a>
     <a class="tab" href="domain">Domain</a>
     <a class="tab" href="gpa">GPA</a>
     <a class="tab tab--admin-only" href="assessments">Assessments</a>
-    <a class="tab tab--admin-only" href="suggestions">Suggestions</a>
     <a class="tab tab--admin-only" href="posts">Posts</a>
     <div class="auth-container"></div>
   </nav>
-  <div class="page-content page-content--flush-bottom page-content--fill">
+  <!-- Slides the open tab's blue bar in from where the previous page's was.
+       Inline, right after the tab bar, so it runs before the page first
+       paints: the bar starts at the old tab's place with no flash at the new
+       one, and nothing waits on a download. The tab clicked saves where the
+       bar is; the next page reads it back and animates the bar from there
+       to its own place (transform only, so it stays smooth). -->
+  <script>
+    (function () {
+      var KEY = "tabUnderlineFrom";
+      var bar = document.querySelector(".tab--active .tab-underline");
+      document.querySelectorAll(".tab-bar .tab").forEach(function (tab) {
+        tab.addEventListener("click", function (event) {
+          if (!bar || tab.classList.contains("tab--active")) return;
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          var rect = bar.getBoundingClientRect();
+          try {
+            sessionStorage.setItem(KEY, JSON.stringify({ left: rect.left, width: rect.width, at: Date.now() }));
+          } catch (error) {}
+        });
+      });
+      var from = null;
+      try {
+        from = JSON.parse(sessionStorage.getItem(KEY));
+        sessionStorage.removeItem(KEY);
+      } catch (error) {}
+      if (!bar || !from || !bar.animate || Date.now() - from.at > 3000) return;
+      if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      var to = bar.getBoundingClientRect();
+      if (!to.width || !from.width) return;
+      bar.animate(
+        [
+          { transform: "translateX(" + (from.left - to.left) + "px) scaleX(" + from.width / to.width + ")" },
+          { transform: "none" },
+        ],
+        { duration: 300, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+      );
+    })();
+  </script>
+  <div class="page-content page-content--fill page-content--calendar">
     <!-- Hidden by default and only revealed once at least one period has
          a course typed in — nothing to show a calendar for otherwise. -->
     <div class="my-courses-calendar" id="my-courses-calendar-card" hidden>
@@ -79,6 +114,9 @@
           <span class="assessment-calendar-spinner"></span>
         </div>
         <div class="assessment-calendar-weeks" id="assessment-cal-weeks" hidden></div>
+        <!-- The By Class view (see renderClassGrid): a row per course, a
+             column per day. -->
+        <div class="class-grid" id="assessment-class-grid" hidden></div>
       </div>
       <div class="calendar-side">
         <section class="calendar-side-card todo-card">
@@ -94,9 +132,15 @@
                copied buttons can't be tabbed to or clicked. -->
           <div class="upcoming-blur" aria-hidden="true" inert></div>
         </section>
+        <div class="calendar-side-divider"></div>
         <section class="calendar-side-card calendar-legend-card">
           <div class="calendar-legend-column">
-            <span class="calendar-legend-label">Show on Calendar</span>
+            <span class="calendar-legend-label">View</span>
+            <div class="segmented-control calendar-view-toggle" id="calendar-view-toggle">
+              <button type="button" class="segmented-option segmented-option--active" data-value="calendar">Calendar</button>
+              <button type="button" class="segmented-option" data-value="byClass">Courses</button>
+            </div>
+            <span class="calendar-legend-label">Filters</span>
             <div class="calendar-filter-list" id="calendar-filter-list">
               <button type="button" class="calendar-filter calendar-filter--filled" data-category="summative">Summatives</button>
               <button type="button" class="calendar-filter calendar-filter--filled" data-category="reassessment">Reassessments</button>
@@ -104,7 +148,6 @@
               <button type="button" class="calendar-filter" data-category="assignment">Assignments</button>
             </div>
           </div>
-          <div class="calendar-legend-divider"></div>
           <div class="calendar-legend-column">
             <span class="calendar-legend-label">Course Colors</span>
             <ul class="course-color-list" id="course-color-list"></ul>

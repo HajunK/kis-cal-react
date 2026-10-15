@@ -22,9 +22,10 @@ body {
   overscroll-behavior: none;
 }
 
+/* 16px down from the tab bar, as on Domain and Calendar. */
 .page-content {
   padding: 64px 48px;
-  padding-top: 32px;
+  padding-top: 16px;
 }
 
 /* box-shadow overflow doesn't extend scrollable height, so a tall card's shadow
@@ -36,7 +37,7 @@ body {
 /* Exactly the space below the tab bar, so the calendar can take what's left. */
 .page-content--fill {
   box-sizing: border-box;
-  height: calc(100vh - 71px);
+  height: calc(100vh - var(--tab-bar-h));
   display: flex;
   flex-direction: column;
 }
@@ -89,4 +90,43 @@ body {
   margin: 0;
   font-size: 16px;
   color: var(--color-gray-dark);
+}
+
+/* Each tab's content arrives with a slight rise as it fades in: 6px over
+   0.32s, easing out so it settles rather than stops. On whole blocks, not
+   card by card, so it reads as one calm movement. Blocks that start hidden
+   (the admin pages' until sign-in confirms, the Calendar's until its data
+   is in) play it when they're revealed, since an animation restarts when
+   an element goes from display: none to shown. On the Calendar, everything
+   but its loading spinner, which is pinned to the window's middle and
+   would be carried off it by the rise's transform. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.classes-container,
+.domain-card-nav,
+.my-courses-calendar-box > :not(.assessment-calendar-loading),
+.calendar-side,
+.gpa-layout,
+.admin-calendar-layout,
+.suggestions-card,
+.posts-admin-panel {
+  animation: page-enter 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .classes-container,
+  .domain-card-nav,
+  .my-courses-calendar-box > :not(.assessment-calendar-loading),
+.calendar-side,
+  .gpa-layout,
+  .admin-calendar-layout,
+  .suggestions-card,
+  .posts-admin-panel {
+    animation: none;
+  }
 }

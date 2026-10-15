@@ -42,22 +42,25 @@
   transform: translateY(0);
 }
 
+/* The X a fifth bigger than its old 22px, and the same gray hovered or not.
+   Tucked into the corner, 16px in from the top and right. */
 .grade-protection-close-btn {
   position: absolute;
-  top: 24px;
-  right: 24px;
+  top: 16px;
+  right: 16px;
+  /* The X centered in the button, not sat on a text baseline in it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   width: 28px;
   height: 28px;
   border: none;
   background: none;
   color: var(--color-gray-dark);
-  font-size: 22px;
+  font-size: 26.4px;
   line-height: 1;
   cursor: pointer;
-}
-
-.grade-protection-close-btn:hover {
-  color: var(--color-text-primary);
 }
 
 .grade-protection-title {

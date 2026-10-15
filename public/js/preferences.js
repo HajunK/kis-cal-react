@@ -1,13 +1,7 @@
-// Site preferences: appearance (light/dark/system), date format, whether
-// the FA/SA/D breakdown line shows, whether a new Formative starts linked
-// to its Summative by default, and whether scores are blurred until hovered (privacy blur: never/school/always). Loaded
-// right after firebase-config.js so cached preferences apply before the
-// rest of the page builds.
-//
-// Signed in, preferences live under their own "preferences" field on the
-// user's Firestore doc, written with merge so this never touches the rest
-// of the user's data. Signed out, they're kept in localStorage under
-// PREFS_ANON_KEY instead, scoped to this device.
+// Loaded right after firebase-config.js so cached preferences apply before the
+// rest of the page builds. Signed in, they live in the user doc's "preferences"
+// field (written with merge, so nothing else is touched); signed out, in
+// localStorage for this device.
 
 const DEFAULT_PREFERENCES = {
   appearance: "system", // "light" | "dark" | "system"
@@ -17,12 +11,14 @@ const DEFAULT_PREFERENCES = {
   replaceFormativesByDefault: true, // a newly-qualifying Formative starts linked to its Summative
   privacyBlurMode: "never", // "never" | "school" | "always" — blurs Domain scores until hovered
   courseColors: {}, // typed course name -> color name picked in the Calendar tab's Course Colors
+  calendarView: "calendar", // "calendar" | "byClass": the Calendar tab's layout, kept from the last visit
+  hideAdminTabs: false,  // admins only: hides the admin tabs (Assessments, Posts)
 };
 
 const PREFS_CACHE_PREFIX = "prefs_";
 const PREFS_ANON_KEY = "prefs_anon";
-const PREFS_LAST_UID_KEY = "lastKnownUid"; // same key app.js reads/writes
-const APP_DATA_CACHE_PREFIX = "cachedAppData_"; // same key app.js reads/writes
+const PREFS_LAST_UID_KEY = "lastKnownUid";  // shared with boot.js
+const APP_DATA_CACHE_PREFIX = "cachedAppData_";  // shared with boot.js
 
 function prefsCacheKeyFor(uid) {
   return PREFS_CACHE_PREFIX + uid;
@@ -48,8 +44,8 @@ window.formatPreferredDate = function formatPreferredDate(date, formatOverride) 
   }
 };
 
-// Stored as { prefs, modified } — modified guards against a stale
-// confirmation fetch overwriting a just-applied change (see below).
+// modified guards against a stale confirmation fetch overwriting a change just
+// made.
 function readCachedPrefs(key) {
   try {
     const raw = localStorage.getItem(key);
@@ -65,31 +61,27 @@ function writeCachedPrefs(key, prefs, modified) {
   try {
     localStorage.setItem(key, JSON.stringify({ prefs, modified }));
   } catch (error) {
-    // ignore — cache is optional
   }
 }
 
-// "system" defers to the OS — see watchSystemTheme below for what keeps
-// this in sync while the page stays open.
 function resolveTheme(appearance) {
   if (appearance === "dark") return "dark";
   if (appearance === "light") return "light";
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-// Settings.js listens for this to re-sync its controls once the real
-// confirmed preferences come back (sign-in) or revert (sign-out).
+// Settings re-syncs its controls on this when confirmed preferences arrive or
+// revert.
 function notifyPreferencesChanged() {
   window.dispatchEvent(new CustomEvent("app:preferences-changed"));
 }
 
-// Whether html[data-privacy-blur] (what domain.css actually keys off) is on
-// right now: always in "always", never in "never", and in "school" only
-// while isDuringSchoolNow (assessments-shared.js) says it's inside the
-// school day — re-checked on a timer so it flips on its own as the day
-// starts/ends. A page that doesn't load that file never blurs in "school".
+// "school" mode depends on the time of day, so it's re-checked on a timer.
+// Pages without assessments-shared.js never blur in that mode.
 let privacyBlurMode = "never";
 let privacyBlurTimer = null;
+let privacyBlurChangingTimer = null;
+let privacyBlurEvaluated = false;
 
 function evaluatePrivacyBlur() {
   const on =
@@ -97,8 +89,23 @@ function evaluatePrivacyBlur() {
     (privacyBlurMode === "school" &&
       typeof window.isDuringSchoolNow === "function" &&
       window.isDuringSchoolNow());
-  if (on) document.documentElement.dataset.privacyBlur = "true";
-  else delete document.documentElement.dataset.privacyBlur;
+  const root = document.documentElement;
+  const first = !privacyBlurEvaluated;
+  if (on === (root.dataset.privacyBlur === "true")) {
+    privacyBlurEvaluated = true;
+    return;
+  }
+  // Lets domain.css ease the toggle itself without those transitions catching
+  // every other change. Skipped on the first evaluation so the page doesn't
+  // animate into its starting state.
+  if (privacyBlurEvaluated) {
+    root.classList.add("privacy-blur-changing");
+    clearTimeout(privacyBlurChangingTimer);
+    privacyBlurChangingTimer = setTimeout(() => root.classList.remove("privacy-blur-changing"), 300);
+  }
+  if (on) root.dataset.privacyBlur = "true";
+  else delete root.dataset.privacyBlur;
+  if (first) privacyBlurEvaluated = true;
 }
 window.refreshPrivacyBlur = evaluatePrivacyBlur;
 
@@ -124,8 +131,7 @@ function applyPreferences(prefs) {
   applyPrivacyBlur(prefs.privacyBlurMode);
 }
 
-// Re-applies the resolved theme the moment the OS setting changes, while
-// appearance is "system". Torn down/rebuilt on every preferences change.
+// Keeps "system" appearance in step with the OS while the page is open.
 let systemThemeQuery = null;
 function onSystemThemeChange() {
   document.documentElement.dataset.theme = resolveTheme("system");
@@ -142,10 +148,8 @@ function watchSystemTheme(appearance) {
   systemThemeQuery.addEventListener("change", onSystemThemeChange);
 }
 
-// The appData cache used elsewhere round-trips whatever "preferences" it
-// last fetched, and re-uploads it verbatim on every unrelated save (a
-// plain, non-merge .set()) — updating it here too keeps that from stomping
-// this change back to its old value.
+// The appData cache re-uploads its copy of preferences on every unrelated save,
+// so it has to be updated too or it would undo this change.
 function syncAppDataCache(uid, prefs, timestamp) {
   try {
     const key = APP_DATA_CACHE_PREFIX + uid;
@@ -156,7 +160,6 @@ function syncAppDataCache(uid, prefs, timestamp) {
     cached.lastModified = timestamp;
     localStorage.setItem(key, JSON.stringify(cached));
   } catch (error) {
-    // ignore
   }
 }
 
@@ -167,10 +170,9 @@ try {
   prefsUid = null;
 }
 
-// Best guess, applied synchronously before Firebase has even loaded.
-// appliedPrefsModified tracks how recent that guess is, so the confirmation
-// fetch below can tell a genuinely newer read apart from a stale one. No
-// known uid falls back to the anonymous local preferences.
+// Applied synchronously, before Firebase loads, so the page never flashes the
+// wrong theme. appliedPrefsModified lets the confirmation fetch tell newer data
+// from stale.
 const initialCached = (prefsUid && readCachedPrefs(prefsCacheKeyFor(prefsUid))) || readCachedPrefs(PREFS_ANON_KEY);
 let currentPrefs = { ...DEFAULT_PREFERENCES, ...(initialCached ? initialCached.prefs : null) };
 let appliedPrefsModified = initialCached ? initialCached.modified || 0 : 0;
@@ -188,15 +190,11 @@ window.setPreference = function setPreference(key, value) {
   watchSystemTheme(currentPrefs.appearance);
   if (typeof window.refreshGradeIcons === "function") window.refreshGradeIcons();
   if (typeof window.refreshUiIcons === "function") window.refreshUiIcons();
-  // Previously only dispatched once a cross-device confirmation/revert came
-  // back (see the auth listener below) — meaning a change made right here,
-  // in this tab, never told the rest of the page anything had changed at
-  // all. Whatever depends on a preference (e.g. Domain's class-card
-  // heights reacting to "Show upcoming assessments") listens for this.
+  // So anything depending on a preference reacts to changes made in this tab
+  // too, not only ones confirmed from the cloud.
   notifyPreferencesChanged();
 
   if (!prefsUid || typeof firebase === "undefined" || !firebase.firestore) {
-    // Not signed in — keep it locally, scoped to this device.
     writeCachedPrefs(PREFS_ANON_KEY, currentPrefs, Date.now());
     return;
   }
@@ -213,12 +211,31 @@ window.setPreference = function setPreference(key, value) {
     .catch((error) => console.error("Failed to save preferences:", error));
 };
 
+// Preferences saved to the cloud, at load or as they change in another tab or
+// device (see watchUserDocForChanges in boot.js). Ignored unless newer than
+// what this tab has, as a read can race this tab's own write.
+window.applyCloudPreferences = function applyCloudPreferences(uid, cloudPrefs) {
+  const confirmedModified = cloudPrefs.modified || 0;
+  if (uid !== prefsUid || confirmedModified <= appliedPrefsModified) return;
+
+  const { modified, ...rest } = cloudPrefs;
+  const confirmed = { ...DEFAULT_PREFERENCES, ...rest };
+  appliedPrefsModified = confirmedModified;
+  writeCachedPrefs(prefsCacheKeyFor(uid), confirmed, confirmedModified);
+  currentPrefs = confirmed;
+  applyPreferences(currentPrefs);
+  watchSystemTheme(currentPrefs.appearance);
+  if (typeof window.refreshGradeIcons === "function") window.refreshGradeIcons();
+  if (typeof window.refreshUiIcons === "function") window.refreshUiIcons();
+  notifyPreferencesChanged();
+};
+
 if (typeof firebase !== "undefined" && firebase.auth) {
   firebase.auth().onAuthStateChanged((user) => {
     if (!user) {
       prefsUid = null;
       appliedPrefsModified = 0;
-      // Revert to this browser's own anonymous preferences, not the defaults.
+      // Back to this browser's own anonymous preferences, not the defaults.
       const anon = readCachedPrefs(PREFS_ANON_KEY);
       currentPrefs = { ...DEFAULT_PREFERENCES, ...(anon ? anon.prefs : null) };
       applyPreferences(currentPrefs);
@@ -234,30 +251,13 @@ if (typeof firebase !== "undefined" && firebase.auth) {
       .firestore()
       .collection("users")
       .doc(user.uid)
-      // source: "server" — a plain .get() right after sign-in can be
-      // satisfied from Firestore's local cache before the real doc has
-      // synced down, making this look like a user with no saved
-      // preferences at all.
+      // A plain .get() right after sign-in can come from Firestore's local
+      // cache before the doc has synced, which would look like a user with no
+      // preferences.
       .get({ source: "server" })
       .then((snapshot) => {
         const cloud = snapshot.exists ? snapshot.data() : {};
-        const cloudPrefs = cloud.preferences || {};
-        const confirmedModified = cloudPrefs.modified || 0;
-
-        // This read can race a write already in flight from this device —
-        // only trust it if it's not older than what's already applied.
-        if (confirmedModified < appliedPrefsModified) return;
-
-        const { modified, ...rest } = cloudPrefs;
-        const confirmed = { ...DEFAULT_PREFERENCES, ...rest };
-        appliedPrefsModified = confirmedModified;
-        writeCachedPrefs(prefsCacheKeyFor(user.uid), confirmed, confirmedModified);
-        currentPrefs = confirmed;
-        applyPreferences(currentPrefs);
-        watchSystemTheme(currentPrefs.appearance);
-        if (typeof window.refreshGradeIcons === "function") window.refreshGradeIcons();
-        if (typeof window.refreshUiIcons === "function") window.refreshUiIcons();
-        notifyPreferencesChanged();
+        window.applyCloudPreferences(user.uid, cloud.preferences || {});
       })
       .catch((error) => console.error("Failed to load preferences:", error));
   });

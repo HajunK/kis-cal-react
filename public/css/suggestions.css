@@ -23,6 +23,34 @@
   color: var(--color-text-primary);
 }
 
+.suggestions-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* How many suggestions are waiting: white on dark blue, round for a single
+   digit and a pill past that. */
+.suggestions-count {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-dark-blue);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.suggestions-count[hidden] {
+  display: none;
+}
+
 .suggestions-empty {
   margin: 0;
   font-size: 15px;
@@ -42,7 +70,10 @@
 
 .suggestions-row {
   display: grid;
-  grid-template-columns: 80px 1fr 100px 70px 1.6fr 190px;
+  /* The last column fits a Monday or Friday summative's three buttons on one
+     line. Fixed, not sized to each row's own buttons, so every row's columns
+     still line up. */
+  grid-template-columns: 130px 80px 1fr 100px 70px 1.6fr 310px;
   gap: 16px;
   align-items: center;
   padding: 14px 0;
@@ -108,6 +139,8 @@
 
 .suggestions-accept-btn,
 .suggestions-decline-btn {
+  flex: none;
+  white-space: nowrap;
   padding: 8px 14px;
   border: none;
   border-radius: 999px;
@@ -133,4 +166,17 @@
 
 .suggestions-decline-btn:hover {
   background: linear-gradient(var(--color-hover-overlay), var(--color-hover-overlay)), var(--color-gray-lighter);
+}
+
+/* On the Assessments page, under the calendar and day panel: their full
+   width, as tall as its rows up to the card's usual height (then they
+   scroll). */
+.admin-calendar-layout + .suggestions-card {
+  /* width: 100% counts the padding too, so it ends where the day panel
+     does rather than 64px past it. */
+  box-sizing: border-box;
+  max-width: none;
+  height: auto;
+  max-height: 654px;
+  margin-top: 32px;
 }

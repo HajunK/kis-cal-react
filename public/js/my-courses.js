@@ -1,27 +1,18 @@
-// The 8 period-name inputs (shown in a popup opened from the account-menu
-// dropdown — see openMyCoursesModal below), the course-catalog search
-// dropdown, saving each period as it's typed, and the Calendar page's
-// read-only assessment calendar.
 
 function savePeriods(periods) {
   appData.periods = periods;
   pushDataToCloud();
 }
 
-// Saves the division picked for each period (parallel to periods, "" where
-// not applicable/not yet picked).
 function savePeriodDivisions(periodDivisions) {
-  // Picking a division for a later period before an earlier one has ever
-  // had one set leaves a sparse "hole" that reads back as undefined, not
-  // "". Firestore's .set() rejects undefined outright, so densify first —
-  // Array.from (not .map, which skips holes) fills every index.
+  // Picking a later period's division first leaves holes that read as
+  // undefined, which Firestore's .set() rejects. Array.from fills every index
+  // (.map would skip holes).
   appData.periodDivisions = Array.from({ length: periodDivisions.length }, (_, i) => periodDivisions[i] || "");
   pushDataToCloud();
 }
 
-// After picking a course via Enter, move on to the next period's input with
-// its text selected (ready to be typed over) — or, if this was Period 8
-// (the last one), just deselect instead of wrapping around.
+// The last period deselects instead of wrapping around.
 function moveToNextPeriod(input) {
   const index = Number(input.dataset.period);
   if (index >= 7) {
@@ -35,26 +26,19 @@ function moveToNextPeriod(input) {
   }
 }
 
-// Type-to-search dropdown for a course-name input, sourced from
-// COURSE_CATALOG. Matches use mousedown (not click) so the option is
-// selected before the input's blur handler hides the dropdown. Also
-// supports keyboard use: Up/Down moves a highlighted suggestion, Enter
-// selects it — or, if nothing's been highlighted yet, the first suggestion.
+// Options use mousedown so they're picked before the input's blur hides the
+// dropdown.
 function setupCourseDropdown(input) {
   const field = input.closest(".schedule-field");
   const dropdown = field.querySelector(".schedule-dropdown");
   let highlightedIndex = -1;
 
-  // Moved out to <body> as a position: fixed layer — inside the popup it
-  // would be clipped by the card's own overflow/rounded edge (and a
-  // transformed ancestor makes fixed positioning relative to the card, not
-  // the screen). Any left over once the popup closes are swept up in
-  // closeMyCoursesModal.
+  // Moved to <body>: inside the popup the card's overflow and transform would
+  // clip and misplace it. closeMyCoursesModal sweeps up any left behind.
   dropdown.classList.add("schedule-dropdown--floating");
   document.body.appendChild(dropdown);
 
-  // Sits under the field, or above it when there's more room there, and
-  // shrinks to whatever fits so it never runs off the screen.
+  // Flips above or shrinks so it never runs off the screen.
   const SCREEN_MARGIN = 8;
   const FIELD_GAP = 8;
   function positionDropdown() {
@@ -102,29 +86,25 @@ function setupCourseDropdown(input) {
   function selectItem(item) {
     input.value = item.textContent;
     dropdown.innerHTML = "";
-    // "change", not "input" — "input" would re-trigger renderMatches
-    // (also bound to it), repopulating the dropdown with the just-
-    // selected name matching itself.
+    // "change", not "input", which would repopulate the dropdown with the
+    // picked name matching itself.
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
   function renderMatches() {
-    // Spaces are ignored on both sides, so "APLit" or "Algebra  II" still
-    // match.
+    // So "APLit" or "Algebra  II" still match.
     const squash = (text) => text.toLowerCase().replace(/\s+/g, "");
     const query = squash(input.value);
     dropdown.innerHTML = "";
     highlightedIndex = -1;
     if (query === "") return;
 
-    // Matches only from the start of a word ("calc" finds AP Calculus, "es"
-    // doesn't find Chinese), in the full name or the short one. A word starts
-    // after a space or other punctuation, like the "Dual" in
-    // Individual/Dual Pursuits.
+    // Word starts only, so "es" doesn't find Chinese. Punctuation starts a word
+    // too (the "Dual" in Individual/Dual Pursuits).
     const matches = (name) =>
       [...name.matchAll(/[a-z0-9]+/gi)].some((word) => squash(name.slice(word.index)).startsWith(query));
-    // A short name typed out in full goes first, so "PE" leads with the PE
-    // courses rather than whatever else has a word starting with "pe".
+    // So "PE" leads with the PE courses rather than any word starting with
+    // "pe".
     const isExactShort = (course) => Boolean(course.short) && squash(course.short) === query;
     COURSE_CATALOG.filter((course) => matches(course.name) || (course.short && matches(course.short)))
       .sort((a, b) => Number(isExactShort(b)) - Number(isExactShort(a)))
@@ -151,8 +131,7 @@ function setupCourseDropdown(input) {
   });
 
   input.addEventListener("keydown", (event) => {
-    // Both checked before the dropdown-items early return, so they always
-    // fire even with no matches showing.
+    // Before the early return, so they work even with no matches showing.
     if (event.key === "Escape") {
       event.preventDefault();
       input.blur();
@@ -165,10 +144,8 @@ function setupCourseDropdown(input) {
       if (all.length > 0) {
         selectItem(all[highlightedIndex >= 0 ? highlightedIndex : 0]);
       } else {
-        // Nothing to autocomplete into — either the field's empty, or it
-        // holds text matching no real course, cleared + warned right here
-        // rather than letting the blur handler (which also refocuses on
-        // rejection) fight moveToNextPeriod's own focus change.
+        // Rejected here rather than in the blur handler, whose own refocus
+        // would fight moveToNextPeriod's.
         const name = input.value.trim();
         if (name !== "" && !findCourseCatalogEntry(name)) {
           showToast("The course you typed does not exist.");
@@ -193,24 +170,18 @@ function setupCourseDropdown(input) {
   });
 }
 
-// --- Assessment calendar ---
-// Read-only, Google Calendar-style grid showing which days have an
-// assessment for any of the student's own 8 selected courses, Sunday
-// through Saturday. Builds the current week plus the following 3. Rebuilt once the
-// assessments collection loads, and whenever a period is typed/cleared.
+// Opens on the current week and scrolls back to the start of the school year.
+
+const CALENDAR_SCROLL_SETTLE_MS = 150;
 
 const ASSESSMENT_CALENDAR_WEEK_COUNT = 4;
 const ASSESSMENT_CALENDAR_WEEKDAYS_PER_WEEK = 7;
 
 const CAL_WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// The { name, periodIndex } pairs actually used to match this student's
-// assessments, plus which base names are unambiguous. A divided course with
-// a division already picked matches just that one combined name; with
-// nothing picked yet, every division's combined name is included instead
-// (ambiguous — any could be the student's actual section), all sharing that
-// same period index. periodIndex is what lets an A/B-day assessment show
-// only for a student whose period for that course actually meets that day.
+// With no division picked yet, any division could be the student's, so all are
+// matched. periodIndex lets A/B-day assessments show only when this period
+// meets.
 function myAssessmentMatchEntries() {
   const periods = loadPeriods();
   const divisions = loadPeriodDivisions();
@@ -242,20 +213,17 @@ function myAssessmentMatchEntries() {
   return { matchEntries, resolvedNames };
 }
 
-// Assigned in period order, one per distinct course. Skips yellow and lime,
-// which are too faint for a dot or pill text on a light background.
+// Yellow and lime are skipped: too faint for a dot or pill text on a light
+// background.
 const COURSE_COLOR_PALETTE = ["red", "dark-blue", "orange", "purple", "light-blue", "green", "pink", "teal"];
 
-// Every color the Course Colors picker offers, in picker order.
 const COURSE_COLOR_CHOICES = [
   "red", "coral", "orange", "amber", "yellow", "lime", "true-green", "green",
   "teal", "cyan", "light-blue", "dark-blue", "indigo", "purple", "magenta", "pink",
   "rose", "brown", "slate", "gray",
 ];
 
-// Each distinct typed course, in period order, with its color name: the one
-// picked for it, else the palette's next default. Keyed by the typed name, so a
-// course in two periods keeps one color.
+// Keyed by the typed name, so a course in two periods keeps one color.
 function courseColorNames() {
   const picked = window.getPreferences().courseColors || {};
   const colors = new Map();
@@ -274,13 +242,12 @@ function courseColorAssignments() {
 
 let openCourseColorPicker = null; // { anchor, panel }
 
-// Same entrance and exit as Domain's date popup, but opening to the left of the
-// dot and growing out of the side facing it.
+// Matches Domain's date popup, but opening to the dot's left.
 function closeCourseColorPicker() {
   if (!openCourseColorPicker) return;
   const { panel } = openCourseColorPicker;
   openCourseColorPicker = null;
-  // A swatch's tooltip won't get a mouseleave once its panel is gone.
+  // Its swatch won't get a mouseleave once the panel is gone.
   hideHoverTooltip();
   panel.classList.remove("course-color-picker--visible");
   setTimeout(() => panel.remove(), 180);
@@ -309,19 +276,18 @@ function openCourseColorPickerFor(anchor, courseName, currentColor) {
   document.body.appendChild(panel);
 
   const dot = anchor.querySelector(".course-color-dot").getBoundingClientRect();
-  // offsetWidth/Height, not getBoundingClientRect: the panel starts scaled
-  // down, and the rect would measure that shrunken size.
+  // The panel starts scaled down, which getBoundingClientRect would measure.
   const width = panel.offsetWidth;
   const height = panel.offsetHeight;
   const dotCenterY = dot.top + dot.height / 2;
   const top = Math.max(8, Math.min(dotCenterY - height / 2, window.innerHeight - height - 8));
   panel.style.top = `${top}px`;
-  // Leaves room for the pointer, whose tip sits 8px from the dot.
+  // Room for the pointer, whose tip sits 8px from the dot.
   panel.style.left = `${Math.max(8, dot.left - 24 - width)}px`;
   panel.style.setProperty("--pointer-y", `${dotCenterY - top}px`);
   panel.style.transformOrigin = `calc(100% + 16px) ${dotCenterY - top}px`;
 
-  void panel.offsetWidth; // force reflow so the entrance transition below actually plays
+  void panel.offsetWidth;  // so the entrance transitions
   panel.classList.add("course-color-picker--visible");
   openCourseColorPicker = { anchor, panel };
 }
@@ -336,25 +302,20 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeCourseColorPicker();
 });
 
-// Which "Show on Calendar" filter an assessment falls under. Reassessments are
-// entered as a custom type, so they're recognized by name.
+// Reassessments are a custom type, so they're recognized by name.
 function assessmentCategory(entry) {
-  if (/reassess/i.test(entry.type)) return "reassessment";
+  if (isReassessment(entry)) return "reassessment";
   if (entry.type === "In-Class" || entry.type === "Testing Block" || entry.type === "Summative") return "summative";
   if (entry.type === "Homework" || entry.type === "Assignment") return "assignment";
   return "formative";
 }
 
-// Strips a trailing " (division)" — used to hide the division on a pill
-// once it's unambiguous which one applies (see resolvedNames above).
 function stripDivisionSuffix(courseName) {
   return courseName.replace(/ \([^)]*\)$/, "");
 }
 
-// Shows short in textEl in place of full whenever full would be cut off by
-// windowEl (the two can be the same element). Checked once the window is laid
-// out and again whenever its size changes, since a hidden grid can't be
-// measured and a day's width follows the page's.
+// Rechecked whenever the window resizes, since a hidden grid can't be measured
+// and day widths follow the page.
 const nameFitObserver = new ResizeObserver((records) =>
   records.forEach(({ target }) => {
     if (!target.isConnected) nameFitObserver.unobserve(target);
@@ -372,7 +333,11 @@ function fitName(windowEl, textEl, full, short) {
   nameFitObserver.observe(windowEl);
 }
 
-// The Sunday that starts the (Sun-Sat) week containing `date`.
+function latestAugustFirst() {
+  const today = new Date();
+  return new Date(today.getMonth() >= 7 ? today.getFullYear() : today.getFullYear() - 1, 7, 1);
+}
+
 function startOfWeek(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
 }
@@ -380,54 +345,65 @@ function startOfWeek(date) {
 function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseColors) {
   const pill = document.createElement("span");
   const category = assessmentCategory(entry);
-  // Reassessments share the summative look, as in the "Show on Calendar" key.
+  // Reassessments share the summative look.
   const kind = category === "assignment" ? "assignment" : category === "formative" ? "formative" : "summative";
-  // A plain assignment, not classList.add — must come before every
-  // classList.add call below, or it wipes them out.
+  // Assigned outright, so it must come before any classList.add.
   pill.className = `assessment-chip assessment-chip--${kind}`;
-  // Not for a reassessment: its name already says so (see isCustomType below).
+  // A reassessment's name already says so.
   if (category !== "reassessment") {
-    attachHoverTooltip(
-      pill,
-      entry.type === "Testing Block"
-        ? "Testing Block"
-        : { summative: "Summative", formative: "Formative", assignment: "Assignment" }[category]
-    );
+    // A Testing Block counts as a summative. _noTooltip skips it where the
+    // pill's text already says the same.
+    attachHoverTooltip(pill, { summative: "Summative", formative: "Formative", assignment: "Assignment" }[category], {
+      when: () => !pill._noTooltip,
+    });
   }
-  // Matches this pill up with itself across rebuilds (see animatePillChanges).
+  // Lets animatePillChanges match this pill across rebuilds.
   pill.dataset.entryId = entry.id;
 
   const dot = document.createElement("span");
   dot.className = "assessment-chip-dot";
   pill.appendChild(dot);
 
-  // Drop the "(division)" suffix once the student's picked division makes
-  // it unambiguous.
   const strippedName = stripDivisionSuffix(entry.courseName);
   const label = resolvedNames.has(strippedName) ? strippedName : entry.courseName;
   const color = courseColors.get(entry.courseName) || courseColors.get(strippedName);
   if (color) pill.style.setProperty("--chip-color", color);
-  // Text lives in its own inner .assessment-pill-text span — the outer
-  // .assessment-pill-name is the fixed-width clipping window, this inner
-  // one is what the hover marquee (see buildDayCell below) scrolls.
+  // The outer span is the clipping window; the inner one is what the marquee
+  // scrolls.
   const nameEl = document.createElement("span");
   nameEl.className = "assessment-pill-name";
   const nameText = document.createElement("span");
   nameText.className = "assessment-pill-text";
-  // A custom label (e.g. "Reassessment") isn't told apart by the pill's style
-  // alone, so its type text stays in the name.
+  // Custom types ("Reassessment") look like a standard style, so the type stays
+  // in the name.
   const isCustomType = !["In-Class", "Testing Block", "Summative", "Formative", "Assignment"].includes(entry.type);
   const shortLabel = shortCourseName(label);
   const withType = (name) => (isCustomType ? `${name} ${entry.type}` : name);
   nameEl.appendChild(nameText);
   fitName(nameEl, nameText, withType(label), shortLabel && withType(shortLabel));
   if (kind === "assignment") {
-    // The course on top and what's due underneath, like a to-do item.
+    // Like a to-do item: the course, then what's due.
     const lines = document.createElement("span");
     lines.className = "assessment-chip-lines";
     const subtitle = document.createElement("span");
     subtitle.className = "assessment-chip-subtitle";
-    subtitle.textContent = entry.title || "";
+    // Its own span so the subtitle can fold to nothing when done.
+    const subtitleText = document.createElement("span");
+    subtitleText.textContent = entry.title || "";
+    subtitle.appendChild(subtitleText);
+    lines.append(nameEl, subtitle);
+    pill.appendChild(lines);
+    if (completedTaskRecords().some((record) => record.id === entry.id)) {
+      pill.classList.add("assessment-chip--done");
+    }
+  } else if (entry.type === "Testing Block") {
+    // Otherwise it looks like any summative.
+    pill.classList.add("assessment-chip--stacked");
+    const lines = document.createElement("span");
+    lines.className = "assessment-chip-lines";
+    const subtitle = document.createElement("span");
+    subtitle.className = "assessment-pill-testing-label";
+    subtitle.textContent = "Testing block";
     lines.append(nameEl, subtitle);
     pill.appendChild(lines);
   } else {
@@ -443,33 +419,40 @@ function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseColors) 
 const PILL_FADE_MS = 200;
 const PILL_MOVE_MS = 200;
 
-// The pills each day showed, in order, keyed by date. Pills still on their way
-// out from an earlier change are left out; as far as the calendar is
-// concerned they're already gone.
-function renderedPillsByDate(weeksContainer) {
+const MONTH_PILL_CELLS = {
+  selector: ".assessment-week-day",
+  key: (cell) => cell.dataset.iso,
+  list: (cell) => cell.querySelector(".assessment-week-day-pills"),
+};
+const CLASS_GRID_PILL_CELLS = {
+  selector: ".class-grid-cell",
+  key: (cell) => `${cell.dataset.course}|${cell.dataset.iso}`,
+  list: (cell) => cell.querySelector(".class-grid-cell-pills"),
+};
+
+// Pills still leaving from an earlier change count as already gone.
+function renderedPillsByDate(container, cells = MONTH_PILL_CELLS) {
   const byDate = new Map();
-  weeksContainer.querySelectorAll(".assessment-week-day").forEach((cell) => {
+  container.querySelectorAll(cells.selector).forEach((cell) => {
     const pills = [...cell.querySelectorAll(".assessment-chip")].filter(
       (pill) => !pill.closest(".assessment-pill-slot--leaving")
     );
     byDate.set(
-      cell.dataset.iso,
+      cells.key(cell),
       pills.map((pill) => ({ id: pill.dataset.entryId, el: pill }))
     );
   });
   return byDate;
 }
 
-// A pill coming or going sits in a slot whose height is what animates: the pill
-// can't shrink below its own padding and border, but a slot with overflow
-// hidden can squeeze it down to nothing. A bottom margin of minus the list's
-// gap cancels the gap too, so a closed slot takes no room at all.
+// A pill can't shrink below its padding and border, but a slot with hidden
+// overflow can squeeze it to nothing. The negative margin cancels the list's
+// gap so a closed slot takes no room.
 function pillListGap(list) {
   return parseFloat(getComputedStyle(list).rowGap) || 0;
 }
 
-// The pills below move down to make room first, then the new one fades into
-// the space.
+// Space opens first, then the pill fades in.
 function enterPill(pill) {
   const list = pill.parentElement;
   const slot = document.createElement("div");
@@ -485,10 +468,9 @@ function enterPill(pill) {
     ],
     { duration: PILL_MOVE_MS, easing: "ease" }
   );
-  // Held invisible by the fade's own backwards fill while the slot opens,
-  // rather than by an inline opacity: pills have an opacity transition (for
-  // the pick-a-date dimming), which would fade an inline 0 in gradually and
-  // leave the pill showing, cut off, as its space opens.
+  // Hidden by the animation's fill rather than inline opacity: pills have an
+  // opacity transition, which would fade an inline 0 in and show the pill cut
+  // off while its space opens.
   pill
     .animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: PILL_FADE_MS,
@@ -502,14 +484,13 @@ function enterPill(pill) {
     });
 }
 
-// The pill fades out where it was, then its space closes and the pills below
-// move up into it. before is the pill it goes back in front of (null: the end).
+// before is the pill it goes back in front of (null: the end).
 function leavePill(pill, list, before) {
   pill.getAnimations().forEach((animation) => animation.cancel());
   pill.style.opacity = "";
   pill.querySelectorAll(".assessment-pill-text").forEach((textEl) => {
     cancelMarqueeReturn(textEl);
-    textEl.classList.remove("assessment-pill-text--marquee-in", "assessment-pill-text--marquee-loop");
+    stopMarqueeText(textEl);
   });
   const slot = document.createElement("div");
   slot.className = "assessment-pill-slot assessment-pill-slot--leaving";
@@ -533,13 +514,12 @@ function leavePill(pill, list, before) {
     .finally(() => slot.remove());
 }
 
-// Compares each day's pills before and after a rebuild: new ones animate in,
-// and ones that are gone are put back where they were so they can animate out.
-function animatePillChanges(weeksContainer, pillsBefore) {
-  weeksContainer.querySelectorAll(".assessment-week-day").forEach((cell) => {
-    const before = pillsBefore.get(cell.dataset.iso);
+// Departed pills are put back where they were so they can animate out.
+function animatePillChanges(container, pillsBefore, cells = MONTH_PILL_CELLS) {
+  container.querySelectorAll(cells.selector).forEach((cell) => {
+    const before = pillsBefore.get(cells.key(cell));
     if (!before) return;
-    const list = cell.querySelector(".assessment-week-day-pills");
+    const list = cells.list(cell);
     const pillsNow = [...list.querySelectorAll(".assessment-chip")];
     const idsNow = new Set(pillsNow.map((pill) => pill.dataset.entryId));
     const idsBefore = new Set(before.map(({ id }) => id));
@@ -547,8 +527,7 @@ function animatePillChanges(weeksContainer, pillsBefore) {
     pillsNow.forEach((pill) => {
       if (!idsBefore.has(pill.dataset.entryId)) enterPill(pill);
     });
-    // A departing pill goes back in just before the next pill after it that's
-    // staying, so it leaves from the spot it was actually in.
+    // So it leaves from the spot it was actually in.
     before.forEach(({ id, el }, index) => {
       if (idsNow.has(id)) return;
       const nextStaying = before.slice(index + 1).find((later) => idsNow.has(later.id));
@@ -560,21 +539,67 @@ function animatePillChanges(weeksContainer, pillsBefore) {
 
 const CAL_MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// weekdayLabel is only passed for the top row, where each cell carries its
-// column's weekday name above its date (there's no separate header row).
 const MARQUEE_RETURN_FADE_MS = 250;
-// How long the mouse has to stay still over a day before its names scroll.
-const MARQUEE_REST_MS = 150;
+// So sweeping across the calendar doesn't set every name scrolling.
+const MARQUEE_REST_MS = 50;
 
-// Leaving a scrolling name: rather than snapping back to its start mid-scroll,
-// it fades out where it is, jumps back while invisible, and fades back in.
+// A fixed speed, whatever the name's length.
+const MARQUEE_SPEED_PX_PER_S = 100;
+const MARQUEE_ACCEL_MS = 400;
+
+// Worked out from time rather than added up per frame, so it's the same at any
+// frame rate.
+function marqueeDistance(elapsed) {
+  const rampSeconds = MARQUEE_ACCEL_MS / 1000;
+  const seconds = elapsed / 1000;
+  if (seconds < rampSeconds) {
+    return (MARQUEE_SPEED_PX_PER_S * seconds ** 2) / (2 * rampSeconds);
+  }
+  return MARQUEE_SPEED_PX_PER_S * (rampSeconds / 2 + (seconds - rampSeconds));
+}
+
+// Driven per frame from marqueeDistance rather than a timed CSS animation, so
+// speed doesn't depend on how far a pass goes.
+function startMarqueeText(textEl) {
+  stopMarqueeText(textEl);
+  const textWidth = textEl.offsetWidth;
+  const windowWidth = textEl.parentElement.clientWidth;
+  let startTime = null;
+  const step = (time) => {
+    // Its pill or day was rebuilt away.
+    if (!textEl.isConnected) {
+      stopMarqueeText(textEl);
+      return;
+    }
+    if (startTime === null) startTime = time;
+    const distance = marqueeDistance(time - startTime);
+    // The first pass starts where the text rests; later ones come in from the
+    // right edge.
+    const offset =
+      distance < textWidth
+        ? -distance
+        : windowWidth - ((distance - textWidth) % (textWidth + windowWidth));
+    textEl.style.transform = `translateX(${offset}px)`;
+    textEl._marqueeFrame = requestAnimationFrame(step);
+  };
+  textEl._marqueeFrame = requestAnimationFrame(step);
+  textEl.classList.add("assessment-pill-text--scrolling");
+}
+
+function stopMarqueeText(textEl) {
+  cancelAnimationFrame(textEl._marqueeFrame);
+  textEl._marqueeFrame = null;
+  textEl.classList.remove("assessment-pill-text--scrolling");
+  textEl.style.transform = "";
+}
+
+// Rather than snapping back mid-scroll, it fades out, jumps back while
+// invisible and fades in.
 function returnMarqueeText(textEl) {
-  const stopMarquee = () =>
-    textEl.classList.remove("assessment-pill-text--marquee-in", "assessment-pill-text--marquee-loop");
   textEl.style.transition = `opacity ${MARQUEE_RETURN_FADE_MS}ms ease`;
   textEl.style.opacity = "0";
   textEl._marqueeReturnTimer = setTimeout(() => {
-    stopMarquee();
+    stopMarqueeText(textEl);
     textEl.style.opacity = "";
     textEl._marqueeReturnTimer = setTimeout(() => {
       textEl.style.transition = "";
@@ -587,37 +612,33 @@ function cancelMarqueeReturn(textEl) {
   if (!textEl._marqueeReturnTimer) return;
   clearTimeout(textEl._marqueeReturnTimer);
   textEl._marqueeReturnTimer = null;
-  textEl.classList.remove("assessment-pill-text--marquee-in", "assessment-pill-text--marquee-loop");
+  stopMarqueeText(textEl);
   textEl.style.transition = "";
   textEl.style.opacity = "";
 }
 
-function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onContextMenu, courseColors, weekdayLabel = null) {
+function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onContextMenu, courseColors) {
   const iso = toISODate(date);
   const today = new Date();
 
   const cell = document.createElement("div");
   cell.className = "assessment-week-day";
   cell.dataset.iso = iso;
+  // Pills keep their own tooltips.
+  // Not while the type menu or add popup is already open.
+  attachHoverTooltip(cell, "Click to add", {
+    when: (event) => !event.target.closest(".assessment-chip") && !document.querySelector(".add-popup, .popup-menu"),
+  });
   if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("assessment-week-day--weekend");
 
-  if (weekdayLabel) {
-    cell.classList.add("assessment-week-day--first-row");
-    const weekday = document.createElement("span");
-    weekday.className = "assessment-week-day-weekday";
-    weekday.textContent = weekdayLabel;
-    cell.appendChild(weekday);
-  }
-
-  // The 1st of a month also gets the month ("Dec"), to the left of the date
-  // — which itself stays centered over the column like every other day's.
-  // So does the grid's first cell, so the month is named from the start.
+  // The 1st of a month and the top week's Sunday name the month, so it's always
+  // shown.
   const head = document.createElement("div");
   head.className = "assessment-week-day-head";
-  const isFirstCell = weekdayLabel === CAL_WEEKDAY_LABELS[0];
-  if (date.getDate() === 1 || isFirstCell) {
+  if (date.getDate() === 1 || date.getDay() === 0) {
     const month = document.createElement("span");
     month.className = "assessment-week-day-month";
+    if (date.getDate() !== 1) month.classList.add("assessment-week-day-month--top-only");
     month.textContent = CAL_MONTH_SHORT[date.getMonth()];
     head.appendChild(month);
   }
@@ -629,10 +650,16 @@ function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onCont
     dayNumber.classList.add("assessment-week-day-number--today");
   }
   head.appendChild(dayNumber);
+  const dayType = allDayTypes[iso];
+  if (dayType === "A" || dayType === "B") {
+    const dayTypeLabel = document.createElement("span");
+    dayTypeLabel.className = "assessment-week-day-type";
+    dayTypeLabel.textContent = dayType;
+    head.appendChild(dayTypeLabel);
+  }
   cell.appendChild(head);
 
-  // Testing blocks always lead the list — a stable sort, so entries
-  // without one keep their original relative order.
+  // A stable sort, so the rest keep their order.
   const entries = (entriesByDate[iso] || [])
     .slice()
     .sort((a, b) => Number(b.type === "Testing Block") - Number(a.type === "Testing Block"));
@@ -644,32 +671,15 @@ function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onCont
   );
   cell.appendChild(pillList);
 
-  // Which school day it is, shown in the corner on hover.
-  const dayType = allDayTypes[iso];
-  if (dayType === "A" || dayType === "B") {
-    const dayTypeLabel = document.createElement("span");
-    dayTypeLabel.className = "assessment-week-day-type";
-    dayTypeLabel.textContent = dayType;
-    cell.appendChild(dayTypeLabel);
-  }
-
-  // LED-sign-style auto-scroll, but only for text that's actually cut off
-  // — checked fresh on every hover, since which names overflow can change
-  // with the day cell's own width. Starts on the one-shot "-in" variant
-  // (see calendar.css) so the very first pass continues from the text's
-  // current position instead of jumping offscreen first; once that pass's
-  // animationend fires below, it hands off to the ordinary looping variant.
-  // Starts only once the mouse comes to rest over the day, so sweeping across
-  // the calendar doesn't set every name scrolling. Once it has started it
-  // keeps going for as long as the mouse stays on the day, moving or not.
+  // Only for names actually cut off, checked on every hover since day widths
+  // change. Waits for the mouse to rest, then keeps going while it stays on the
+  // day.
   let restTimer = null;
   let marqueeStarted = false;
   const startMarquee = () => {
     marqueeStarted = true;
     cell.querySelectorAll(".assessment-pill-text").forEach((textEl) => {
-      if (textEl.scrollWidth > textEl.parentElement.clientWidth) {
-        textEl.classList.add("assessment-pill-text--marquee-in");
-      }
+      if (textEl.scrollWidth > textEl.parentElement.clientWidth) startMarqueeText(textEl);
     });
   };
   const waitForRest = () => {
@@ -678,7 +688,7 @@ function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onCont
     restTimer = setTimeout(startMarquee, MARQUEE_REST_MS);
   };
   cell.addEventListener("mouseenter", () => {
-    // Back before a leave's fade finished: drop it and start clean.
+    // Returned before a fade finished: start clean.
     cell.querySelectorAll(".assessment-pill-text").forEach(cancelMarqueeReturn);
     waitForRest();
   });
@@ -686,22 +696,14 @@ function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onCont
   cell.addEventListener("mouseleave", () => {
     clearTimeout(restTimer);
     marqueeStarted = false;
-    cell
-      .querySelectorAll(".assessment-pill-text--marquee-in, .assessment-pill-text--marquee-loop")
-      .forEach(returnMarqueeText);
-  });
-  cell.addEventListener("animationend", (event) => {
-    if (event.animationName !== "assessment-pill-marquee-in") return;
-    event.target.classList.remove("assessment-pill-text--marquee-in");
-    event.target.classList.add("assessment-pill-text--marquee-loop");
+    cell.querySelectorAll(".assessment-pill-text--scrolling").forEach(returnMarqueeText);
   });
 
   weeksContainer.appendChild(cell);
 }
 
-// Wires the render; returns a render()
-// function so callers elsewhere (e.g. a period being typed) can trigger a
-// refresh. A no-op (returns null) on any page without the calendar markup.
+// Returns render so other code (a period being typed) can refresh it; null
+// without the calendar markup.
 function initAssessmentCalendar() {
   const cardEl = document.getElementById("my-courses-calendar-card");
   const weeksContainer = document.getElementById("assessment-cal-weeks");
@@ -709,33 +711,63 @@ function initAssessmentCalendar() {
 
   const loadingEl = document.getElementById("assessment-cal-loading");
 
-  // Which assessment ids were on screen after the last render — compared
-  // on the next one so a render that changes nothing can be skipped.
+  function weekRowHeight() {
+    const cell = weeksContainer.querySelector(".assessment-week-day");
+    // Unrounded: the cells' height is fractional, and rounding would drift
+    // further each week.
+    return cell ? cell.getBoundingClientRect().height + pillListGap(weeksContainer) : 0;
+  }
+
+  // Like the first row of a paper calendar.
+  function markTopWeek() {
+    const rowHeight = weekRowHeight();
+    if (!rowHeight) return;
+    const cells = weeksContainer.querySelectorAll(".assessment-week-day");
+    const topIndex = Math.min(Math.round(weeksContainer.scrollTop / rowHeight) * 7, cells.length - 7);
+    weeksContainer
+      .querySelectorAll(".assessment-week-day--top-week")
+      .forEach((cell) => cell.classList.remove("assessment-week-day--top-week"));
+    if (cells[topIndex]) cells[topIndex].classList.add("assessment-week-day--top-week");
+  }
+  weeksContainer.addEventListener("scroll", markTopWeek, { passive: true });
+
+  // See-through only while scrolling; a constant backdrop blur caused rendering
+  // glitches.
+  let scrollingTimer = null;
+  weeksContainer.addEventListener(
+    "scroll",
+    () => {
+      weeksContainer.classList.add("assessment-calendar-weeks--scrolling");
+      clearTimeout(scrollingTimer);
+      scrollingTimer = setTimeout(
+        () => weeksContainer.classList.remove("assessment-calendar-weeks--scrolling"),
+        CALENDAR_SCROLL_SETTLE_MS
+      );
+    },
+    { passive: true }
+  );
+
+  // So a render that changes nothing can be skipped.
   let previousPillIds = new Set();
   let previousMatchNamesKey = "";
-  // False until this calendar has actually built its grid once — nothing
-  // should animate in on the tab's own initial load, only on a genuinely
-  // live change afterward (a filter, a new or removed assessment, etc.).
+  // Nothing should animate in just from opening the tab.
   let calendarSettled = false;
-  // Ids of this render's self-added entries — read by handlePillContextMenu
-  // below, kept fresh every render rather than threaded through the whole
-  // buildDayCell/buildAssessmentPill call chain.
+  // Kept fresh each render rather than threaded through the whole pill-building
+  // chain.
   let currentAddedIds = new Set();
-  // "Show on Calendar" filters turned off. Deliberately not saved, so every
-  // visit starts with everything shown.
+  // Not saved, so every visit starts with everything shown.
   const hiddenCategories = new Set();
 
   function deleteAddedAssessment(id) {
     const entries = loadAddedAssessments();
     const removed = entries.find((entry) => entry.id === id);
     saveAddedAssessments(entries.filter((entry) => entry.id !== id));
-    // Assignments were never suggested to admins, so there's nothing to take back.
+    // Assignments are never suggested to admins.
     if (removed && removed.type !== "Assignment") unlogSuggestedAssessment(removed.date, removed.courseName, removed.type);
     render(true, false);
   }
 
-  // Right-click on a pill: only a self-added entry can be removed —
-  // anything from the admin-scheduled collection just explains why not.
+  // Only the student's own entries can be removed.
   function handlePillContextMenu(entry, pillEl) {
     if (!currentAddedIds.has(entry.id)) {
       showToast("Only assessments added by you can be removed.");
@@ -746,15 +778,14 @@ function initAssessmentCalendar() {
 
   const CALENDAR_REVEAL_MS = 300;
 
-  // Fades in only when actually asked to — never on page load itself,
-  // even for an account that already has courses.
+  // Never on page load, even for an account with courses.
   function revealCalendarCard(animate) {
     if (!cardEl || !cardEl.hidden) return;
     cardEl.hidden = false;
     if (!animate) return;
     cardEl.style.opacity = "0";
     cardEl.style.transition = `opacity ${CALENDAR_REVEAL_MS}ms ease`;
-    void cardEl.offsetWidth; // force reflow so the "0" above actually takes effect first
+    void cardEl.offsetWidth;  // so the "0" applies first
     cardEl.style.opacity = "1";
   }
 
@@ -765,13 +796,10 @@ function initAssessmentCalendar() {
     cardEl.style.transition = "";
   }
 
-  // commit/animate default to true/false so a call with no arguments
-  // (the page's initial load) still gets a correct instant show-or-hide
-  // decision, just never animated. A live edit passes both explicitly:
-  // while still typing (commit=false), visibility is untouched; finishing
-  // and leaving the field is what reveals/fades.
+  // Without arguments (page load) it decides show or hide instantly. While
+  // typing (commit=false) visibility is left alone; leaving the field reveals
+  // or fades it.
   function render(commit = true, animate = false) {
-    // Whole card starts hidden — nothing to show with no courses typed.
     const hasAnyCourse = loadPeriods().some((name) => (name || "").trim() !== "");
     if (commit) {
       if (hasAnyCourse) revealCalendarCard(animate);
@@ -779,15 +807,14 @@ function initAssessmentCalendar() {
     }
     if (!hasAnyCourse) return;
 
-    // Keyed by each assessment's resolved course name (division included), so
-    // pills can look their color up directly.
+    // Keyed by resolved course name (division included) so pills can look
+    // colors up directly.
     const colorNames = courseColorNames();
     const typedColors = courseColorAssignments();
     renderCourseColorLegend(colorNames);
 
-    // Also reused as refreshAssessmentCalendar whenever a period/division
-    // changes — skip if the assessments/day-type collections haven't
-    // loaded yet; loadAssessmentData below guarantees a real render once they do.
+    // Also called on period changes; a real render is guaranteed once both
+    // collections load.
     if (!assessmentsLoaded || !dayTypesLoaded) return;
 
     const { matchEntries, resolvedNames } = myAssessmentMatchEntries();
@@ -798,15 +825,11 @@ function initAssessmentCalendar() {
     ]);
     const matchNames = new Set(matchEntries.map((entry) => entry.name));
     const schoolWideEntries = assessmentsForCourses(matchEntries);
-    // Alongside the school-wide collection: assessments this student added
-    // themselves (see "Add Missing Assessment"), filtered to whichever of
-    // their current courses each one was added against.
+    // Only those added against one of the student's current courses.
     const addedEntries = loadAddedAssessments().filter((entry) => matchNames.has(entry.courseName));
 
-    // A self-added entry becomes redundant the moment the admin schedules
-    // (or accepts a suggestion for) the exact same {date, courseName, type}
-    // — drop it from this student's own list rather than showing the same
-    // assessment twice, once from each source.
+    // Once an admin schedules the same {date, courseName, type}, the student's
+    // own copy is redundant, so it's dropped instead of showing twice.
     const schoolWideKeys = new Set(schoolWideEntries.map((entry) => `${entry.date}|${entry.courseName}|${entry.type}`));
     const staleAdded = addedEntries.filter((entry) => schoolWideKeys.has(`${entry.date}|${entry.courseName}|${entry.type}`));
     let effectiveAddedEntries = addedEntries;
@@ -821,18 +844,30 @@ function initAssessmentCalendar() {
     const matchingEntries = schoolWideEntries
       .concat(effectiveAddedEntries)
       .filter((entry) => !hiddenCategories.has(assessmentCategory(entry)));
-    // Colors are part of the key, so picking a new one repaints the pills.
+    // Includes colors, so a new color repaints the pills.
     const matchNamesKey =
       matchEntries.map((entry) => `${entry.name}|${entry.periodIndex}`).join(" ") + " " + [...colorNames.values()].join(" ");
 
-    // loadAssessments can call this render's callback twice on the very
-    // first load: once from a cache, then again once the real fetch
-    // confirms it. If that confirmation shows the same assessments, skip
-    // rebuilding the grid — otherwise it would replace pills still
-    // mid-animation, cutting it short. matchNamesKey is checked
-    // too, not just the entry ids — a division just being picked can
-    // leave the exact same entries on screen while still needing a
-    // rebuild, since which of them now count as unambiguous changed.
+    // The callback can run twice on first load (cache, then fetch); an
+    // identical result skips the rebuild, which would cut pill animations
+    // short. matchNamesKey is checked too: a division pick can change which
+    // names are unambiguous without changing the entries.
+    const classGrid = document.getElementById("assessment-class-grid");
+    if (classGrid) {
+      if (calendarViewMode === "byClass") {
+        // Shown first: a hidden grid can't be scrolled.
+        loadingEl.hidden = true;
+        weeksContainer.hidden = true;
+        // Not when the grid was just switched to; its old pills are out of
+        // date.
+        const animateClassPills = !classGrid.hidden && classGrid.childElementCount > 0;
+        classGrid.hidden = false;
+        renderClassGrid(classGrid, matchingEntries, matchEntries, resolvedNames, courseColors, handlePillContextMenu, animateClassPills);
+        return;
+      }
+      classGrid.hidden = true;
+    }
+
     if (!weeksContainer.hidden && matchNamesKey === previousMatchNamesKey) {
       const currentPillIds = new Set(matchingEntries.map((entry) => entry.id));
       const unchanged =
@@ -845,85 +880,104 @@ function initAssessmentCalendar() {
       (entriesByDate[entry.date] = entriesByDate[entry.date] || []).push(entry);
     });
 
-    // Not gated on the `animate` param above — that one only controls the
-    // card's own reveal fade. Pills animate in and out on any later render,
-    // just not on the calendar's own first-ever build (nothing should animate
-    // in just from opening the tab).
+    // Separate from animate, which is only the card's reveal; pills animate on
+    // any render after the first build.
     const animatePills = calendarSettled;
     calendarSettled = true;
     const pillsBefore = animatePills ? renderedPillsByDate(weeksContainer) : null;
 
     // The pill under the cursor is about to be replaced, and its mouseleave
-    // won't fire to hide its tooltip.
+    // won't fire.
     hideHoverTooltip();
+    // The same weeks come back, so the rebuild keeps its place.
+    const scrollTop = weeksContainer.scrollTop;
+    const firstBuild = weeksContainer.childElementCount === 0;
+    // A hidden element's scrollTop reads 0, so after By Class it reopens on
+    // this week.
+    const openOnThisWeek = firstBuild || weeksContainer.hidden;
     weeksContainer.innerHTML = "";
+    CAL_WEEKDAY_LABELS.forEach((label, dayIndex) => {
+      const weekday = document.createElement("span");
+      weekday.className = "assessment-week-day-weekday";
+      if (dayIndex === 0 || dayIndex === 6) weekday.classList.add("assessment-week-day-weekday--weekend");
+      weekday.textContent = label;
+      weeksContainer.appendChild(weekday);
+    });
     const thisWeekStart = startOfWeek(new Date());
-    for (let weekIndex = 0; weekIndex < ASSESSMENT_CALENDAR_WEEK_COUNT; weekIndex++) {
+    const firstWeekStart = startOfWeek(latestAugustFirst());
+    const pastWeeks = Math.round((thisWeekStart - firstWeekStart) / (7 * 86400000));
+    for (let weekIndex = -pastWeeks; weekIndex < ASSESSMENT_CALENDAR_WEEK_COUNT; weekIndex++) {
       for (let dayIndex = 0; dayIndex < ASSESSMENT_CALENDAR_WEEKDAYS_PER_WEEK; dayIndex++) {
         const date = new Date(
           thisWeekStart.getFullYear(),
           thisWeekStart.getMonth(),
           thisWeekStart.getDate() + weekIndex * 7 + dayIndex
         );
-        buildDayCell(
-          weeksContainer,
-          date,
-          entriesByDate,
-          resolvedNames,
-          handlePillContextMenu,
-          courseColors,
-          weekIndex === 0 ? CAL_WEEKDAY_LABELS[dayIndex] : null
-        );
+        buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, handlePillContextMenu, courseColors);
       }
     }
     previousPillIds = new Set(matchingEntries.map((entry) => entry.id));
     previousMatchNamesKey = matchNamesKey;
 
-    // Reveal the real calendar (and hide the spinner) the first time this
-    // runs. Done before the pill animations below, which measure pill heights
-    // and can't inside a still-hidden grid.
+    // Before the pill animations, which measure heights and can't in a hidden
+    // grid.
     loadingEl.hidden = true;
     weeksContainer.hidden = false;
+    weeksContainer.scrollTop = openOnThisWeek ? weekRowHeight() * pastWeeks : scrollTop;
+    markTopWeek();
 
     if (pillsBefore) animatePillChanges(weeksContainer, pillsBefore);
   }
 
-  // The Upcoming card: the next UPCOMING_LIMIT things due, soonest first, laid
-  // out like Google Tasks, each with a circle to check it off. An assignment
-  // still unchecked after its day stays at the top as overdue; an assessment
-  // simply drops off once its day has passed.
+  // Laid out like Google Tasks. Overdue assignments stay at the top;
+  // assessments drop off once over.
   const upcomingList = document.getElementById("upcoming-list");
   let lastUpcomingArgs = null;
 
-  // The blurred copy of the list shown under the header (see .upcoming-blur).
-  // Re-copied whenever the list changes, and lined up with it on every
-  // scroll and resize.
+  // Realigned on every scroll and resize.
   const upcomingBlur = upcomingList && upcomingList.parentElement.querySelector(".upcoming-blur");
   let upcomingBlurCopy = null;
 
   function copyUpcomingForBlur() {
     upcomingBlurCopy = document.createElement("div");
     upcomingBlurCopy.className = "upcoming-blur-copy";
-    upcomingBlurCopy.append(...[...upcomingList.children].map((node) => node.cloneNode(true)));
+    upcomingBlurCopy.append(
+      ...[...upcomingList.children].filter((node) => !node.classList.contains("upcoming-ghost")).map((node) => node.cloneNode(true))
+    );
     upcomingBlur.replaceChildren(upcomingBlurCopy);
     placeUpcomingBlur();
   }
 
   function placeUpcomingBlur() {
-    // For the fades, which leave the scrollbar alone (see .upcoming-list).
-    // At least UPCOMING_SCROLLBAR_MIN_PX: an overlay scrollbar (macOS) takes
-    // no room of its own, so it measures 0 while still drawn over the rows'
-    // right padding.
+    // The fades leave the scrollbar alone. At least UPCOMING_SCROLLBAR_MIN_PX,
+    // because a macOS overlay scrollbar measures 0 while still drawn over the
+    // rows.
     const scrollbarWidth = Math.max(UPCOMING_SCROLLBAR_MIN_PX, upcomingList.offsetWidth - upcomingList.clientWidth);
     upcomingList.closest(".todo-card").style.setProperty("--upcoming-scrollbar-w", `${scrollbarWidth}px`);
     upcomingBlur.style.top = `${upcomingList.offsetTop}px`;
     if (!upcomingBlurCopy) return;
-    upcomingBlurCopy.style.marginLeft = `${upcomingList.offsetLeft}px`;
-    // clientWidth, so the copy's rows wrap the same as the real ones beside
-    // the scrollbar.
+    upcomingBlurCopy.style.marginLeft = `${upcomingList.offsetLeft - upcomingBlur.offsetLeft}px`;
+    // clientWidth, so the copy's rows wrap like the real ones beside the
+    // scrollbar.
     upcomingBlurCopy.style.width = `${upcomingList.clientWidth}px`;
     upcomingBlurCopy.style.paddingTop = getComputedStyle(upcomingList).paddingTop;
     upcomingBlurCopy.style.transform = `translateY(${-upcomingList.scrollTop}px)`;
+    outlineAddButtonIfCovered();
+  }
+
+  // Outlined while a date chip or countdown touches it, so it doesn't blend
+  // into them as they scroll behind the header.
+  const upcomingAddBtn = document.getElementById("add-assessment-trigger-btn");
+  function outlineAddButtonIfCovered() {
+    if (!upcomingAddBtn) return;
+    const btn = upcomingAddBtn.getBoundingClientRect();
+    const covered = [...upcomingList.querySelectorAll(".upcoming-date-chip, .upcoming-countdown:not([hidden])")].some(
+      (el) => {
+        const r = el.getBoundingClientRect();
+        return r.right >= btn.left - 1 && r.left <= btn.right + 1 && r.bottom >= btn.top - 1 && r.top <= btn.bottom + 1;
+      }
+    );
+    upcomingAddBtn.classList.toggle("todo-add-btn--covered", covered);
   }
 
   if (upcomingBlur) {
@@ -936,8 +990,10 @@ function initAssessmentCalendar() {
     new ResizeObserver(placeUpcomingBlur).observe(upcomingList);
   }
 
-  // Whether the Completed section is open. Not saved: it starts closed.
+  // Not saved: it starts closed.
   let completedExpanded = false;
+  // For its roll.
+  let shownCompletedCount = null;
 
   function renderUpcoming(entries, resolvedNames, courseColors, matchEntries) {
     if (!upcomingList) return;
@@ -945,13 +1001,23 @@ function initAssessmentCalendar() {
     const today = todayISODate();
     const completed = new Map(completedTaskRecords().map((record) => [record.id, record.completedAt]));
     const periodIndexOf = new Map(matchEntries.map((entry) => [entry.name, entry.periodIndex]));
+    const tomorrow = toISODate(new Date(Date.now() + 86400000));
+    // Everything due by tomorrow always shows; UPCOMING_LIMIT only caps what
+    // comes later.
+    let laterShown = 0;
     const due = entries
       .filter((entry) => !completed.has(entry.id))
-      .filter((entry) => entry.date >= today || assessmentCategory(entry) === "assignment")
-      .sort((a, b) => (a.date === b.date ? dueTimeRank(a) - dueTimeRank(b) : a.date < b.date ? -1 : 1))
-      .slice(0, UPCOMING_LIMIT);
+      .filter(
+        (entry) =>
+          assessmentCategory(entry) === "assignment" ||
+          assessmentStillUpcoming(entry, periodIndexOf.get(entry.courseName))
+      )
+      .sort(
+        (a, b) =>
+          upcomingSortTime(a, periodIndexOf.get(a.courseName)) - upcomingSortTime(b, periodIndexOf.get(b.courseName))
+      )
+      .filter((entry) => entry.date <= tomorrow || laterShown++ < UPCOMING_LIMIT);
 
-    // Checked off in the last COMPLETED_SHOWN_DAYS, most recent first.
     const recentCutoff = Date.now() - COMPLETED_SHOWN_DAYS * 86400000;
     const recentlyCompleted = entries
       .filter((entry) => completed.has(entry.id) && completed.get(entry.id) >= recentCutoff)
@@ -962,8 +1028,7 @@ function initAssessmentCalendar() {
       const courseLabel = resolvedNames.has(strippedName) ? strippedName : entry.courseName;
       const color = courseColors.get(entry.courseName) || courseColors.get(strippedName);
       const periodIndex = periodIndexOf.get(entry.courseName);
-      // An assignment turns overdue once its moment passes, not only once
-      // its day has.
+      // Overdue from the moment it's due, not only from the next day.
       const dueAt = upcomingDueAt(entry, periodIndex);
       const overdue =
         !done &&
@@ -973,31 +1038,58 @@ function initAssessmentCalendar() {
     };
 
     upcomingList.innerHTML = "";
-    due.forEach((entry) => upcomingList.appendChild(itemFor(entry, false)));
+    due.forEach((entry, index) => {
+      if (index > 0 && entry.date > tomorrow && due[index - 1].date <= tomorrow) {
+        const divider = upcomingList.appendChild(document.createElement("li"));
+        divider.className = "upcoming-divider";
+        divider.dataset.rowKey = "divider";
+        divider.setAttribute("aria-hidden", "true");
+      }
+      upcomingList.appendChild(itemFor(entry, false));
+    });
     if (due.length === 0) {
       const empty = upcomingList.appendChild(document.createElement("li"));
       empty.className = "upcoming-empty";
+      empty.dataset.rowKey = "empty";
       empty.textContent = "Nothing coming up";
     }
     if (recentlyCompleted.length > 0) {
       const toggleItem = upcomingList.appendChild(document.createElement("li"));
+      toggleItem.dataset.rowKey = "completed-toggle";
       const toggle = toggleItem.appendChild(document.createElement("button"));
       toggle.type = "button";
       toggle.className = "upcoming-completed-toggle";
       toggle.setAttribute("aria-expanded", String(completedExpanded));
-      toggle.innerHTML = `<span>Completed (${recentlyCompleted.length})</span>${ICON_CHEVRON_DOWN}`;
+      toggle.innerHTML = `<span>Completed (<span class="upcoming-completed-count"></span>)</span>${ICON_CHEVRON_DOWN}`;
+      const countEl = toggle.querySelector(".upcoming-completed-count");
+      const count = String(recentlyCompleted.length);
+      if (shownCompletedCount === null || shownCompletedCount === count) {
+        countEl.textContent = count;
+      } else {
+        countEl.textContent = shownCompletedCount;
+        animateNumberChange(countEl, count);
+      }
+      shownCompletedCount = count;
+      // In place rather than rebuilt, so the arrow turns instead of being
+      // replaced.
       toggle.addEventListener("click", () => {
         completedExpanded = !completedExpanded;
-        renderUpcoming(...lastUpcomingArgs);
+        toggle.setAttribute("aria-expanded", String(completedExpanded));
+        if (completedExpanded) {
+          recentlyCompleted.forEach((entry) => upcomingList.appendChild(itemFor(entry, true)));
+        } else {
+          upcomingList.querySelectorAll(".upcoming-item--completed").forEach((item) => item.remove());
+        }
       });
       if (completedExpanded) recentlyCompleted.forEach((entry) => upcomingList.appendChild(itemFor(entry, true)));
+    } else {
+      shownCompletedCount = null;
     }
     tickUpcomingCountdowns();
   }
 
-  // Once a second: each item due within UPCOMING_COUNTDOWN_MS shows the time
-  // left, its digits rolling like an odometer; one whose moment has come
-  // rebuilds the list, so it can turn overdue or drop off.
+  // Rebuilds the list when an item's moment comes, so it can turn overdue or
+  // drop off.
   function tickUpcomingCountdowns() {
     const now = Date.now();
     let passed = false;
@@ -1006,31 +1098,34 @@ function initAssessmentCalendar() {
       const left = Number(item.dataset.dueAt) - now;
       if (left <= 0 && !countdown.hidden) passed = true;
       const show = left > 0 && left < UPCOMING_COUNTDOWN_MS;
-      // Appearing, it starts on the right numbers rather than rolling up to
-      // them from nothing.
-      const style = countdown.hidden ? "instant" : undefined;
+      const wasHidden = countdown.hidden;
       countdown.hidden = !show;
+      item.querySelector(".upcoming-date-chip-label").hidden = show;
       if (!show) return;
+      // "2h 05m", "25m", or in the last minute "45s". Minutes and seconds
+      // are rounded up, so it never shows less time than is left.
       const totalSeconds = Math.ceil(left / 1000);
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      // Rolled as three separate numbers: the roll picks its direction from
-      // the number as a whole, so "2:14:05" as one would read as just 2.
-      countdown.classList.toggle("upcoming-countdown--under-hour", hours === 0);
-      animateNumberChange(countdown.querySelector(".upcoming-countdown-hours"), String(hours), style);
-      animateNumberChange(
-        countdown.querySelector(".upcoming-countdown-minutes"),
-        String(minutes).padStart(2, "0"),
-        style
-      );
-      animateNumberChange(
-        countdown.querySelector(".upcoming-countdown-seconds"),
-        String(seconds).padStart(2, "0"),
-        style
-      );
+      const totalMinutes = Math.ceil(totalSeconds / 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const parts = {
+        hours: totalSeconds >= 60 && hours > 0 ? String(hours) : null,
+        minutes: totalSeconds >= 60 ? String(totalMinutes % 60).padStart(hours > 0 ? 2 : 1, "0") : null,
+        seconds: totalSeconds < 60 ? String(totalSeconds) : null,
+      };
+      // Separate numbers, as the roll judges direction from the whole number.
+      // A part just appearing starts on its number rather than rolling to it.
+      Object.entries(parts).forEach(([unit, value]) => {
+        const part = countdown.querySelector(`.upcoming-countdown-${unit}-part`);
+        const partWasHidden = wasHidden || part.hidden;
+        part.hidden = value === null;
+        if (value === null) return;
+        animateNumberChange(part.querySelector(`.upcoming-countdown-${unit}`), value, partWasHidden ? "instant" : "countdown");
+      });
     });
-    if (passed && lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
+    const ended = [...upcomingList.querySelectorAll(".upcoming-item[data-ends-at]")].some(
+      (item) => Number(item.dataset.endsAt) <= now
+    );
+    if ((passed || ended) && lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
   }
   if (upcomingList) setInterval(tickUpcomingCountdowns, 1000);
 
@@ -1038,6 +1133,8 @@ function initAssessmentCalendar() {
   function buildUpcomingItem(entry, courseLabel, color, periodIndex, overdue, done) {
     const item = document.createElement("li");
     item.className = "upcoming-item";
+    // Lets moveUpcomingItem match this row across rebuilds.
+    item.dataset.rowKey = entry.id;
     if (done) item.classList.add("upcoming-item--done", "upcoming-item--completed");
     if (color) item.style.setProperty("--chip-color", color);
 
@@ -1047,19 +1144,23 @@ function initAssessmentCalendar() {
     check.setAttribute("aria-label", done ? "Mark not complete" : "Mark complete");
     check.innerHTML = '<span class="upcoming-check-icon" aria-hidden="true"></span>';
     item.appendChild(check);
-    // Anywhere on the item, not just the ring: a click on the ring (or the
-    // ring pressed with the keyboard) reaches here too.
+    // A click on the ring, or the ring pressed by keyboard, lands here too.
     item.addEventListener("click", () =>
-      done ? uncompleteUpcomingItem(entry.id) : completeUpcomingItem(item, entry.id)
+      done ? uncompleteUpcomingItem(entry.id, item) : completeUpcomingItem(item, entry.id)
     );
 
     const titleEl = item.appendChild(document.createElement("span"));
     titleEl.className = "upcoming-title";
-    titleEl.textContent = upcomingTitle(entry);
-    const courseEl = item.appendChild(document.createElement("span"));
-    courseEl.className = "upcoming-course";
-    courseEl.textContent = courseLabel;
-    fitName(courseEl, courseEl, courseLabel, shortCourseName(courseLabel));
+    titleEl.textContent = upcomingTitle(entry, courseLabel);
+    // An assessment's title already names its course.
+    if (assessmentCategory(entry) === "assignment") {
+      const courseEl = item.appendChild(document.createElement("span"));
+      courseEl.className = "upcoming-course";
+      courseEl.textContent = courseLabel;
+      fitName(courseEl, courseEl, courseLabel, shortCourseName(courseLabel));
+    } else {
+      item.classList.add("upcoming-item--single-line");
+    }
 
     const due = item.appendChild(document.createElement("div"));
     due.className = "upcoming-due";
@@ -1067,30 +1168,37 @@ function initAssessmentCalendar() {
     chip.className = "upcoming-date-chip";
     if (overdue) chip.classList.add("upcoming-date-chip--overdue");
     const time = entry.dueTime ? upcomingTimeLabel(entry.dueTime, periodIndex) : "";
-    chip.textContent = upcomingDateLabel(entry.date) + (time ? `, ${time}` : "");
-    // Under 12 hours out, a live countdown shows under the chip (see
-    // tickUpcomingCountdowns). Not for something already done.
+    const chipLabel = chip.appendChild(document.createElement("span"));
+    chipLabel.className = "upcoming-date-chip-label";
+    chipLabel.textContent =
+      upcomingDateLabel(entry.date) + (time ? `, ${time}` : "") + (overdue ? " - Overdue" : "");
+    // Not for something already done.
+    const endsAt = done || assessmentCategory(entry) === "assignment" ? null : assessmentEndsAt(entry, periodIndex);
+    if (endsAt) item.dataset.endsAt = String(endsAt.getTime());
     const dueAt = done ? null : upcomingDueAt(entry, periodIndex);
     if (dueAt) {
       item.dataset.dueAt = String(dueAt.getTime());
-      const countdown = due.appendChild(document.createElement("span"));
+      const countdown = chip.appendChild(document.createElement("span"));
       countdown.className = "upcoming-countdown";
       countdown.hidden = true;
-      countdown.innerHTML =
-        '<span class="upcoming-countdown-hours-part"><span class="upcoming-countdown-hours"></span>:</span>' +
-        '<span class="upcoming-countdown-minutes"></span>:<span class="upcoming-countdown-seconds"></span>';
+      countdown.innerHTML = ["hours", "minutes", "seconds"]
+        .map(
+          (unit) =>
+            `<span class="upcoming-countdown-part upcoming-countdown-${unit}-part" hidden>` +
+            `<span class="upcoming-countdown-${unit}"></span>${unit[0]}</span>`
+        )
+        .join("");
     }
     return item;
   }
 
-  // As in Google Tasks: the circle fills in with a check and the title is
-  // struck through, then the item folds away and the next one due takes its
-  // place. The toast's Undo puts it back.
+  // As in Google Tasks. The toast's Undo puts it back.
   function completeUpcomingItem(item, id) {
     if (item.classList.contains("upcoming-item--done")) return;
     item.classList.add("upcoming-item--done");
     saveCompletedTasks([...completedTaskRecords(), { id, completedAt: Date.now() }]);
-    setTimeout(() => foldAwayUpcomingItem(item), UPCOMING_DONE_HOLD_MS);
+    markCalendarPillDone(id, true);
+    setTimeout(() => moveUpcomingItem(item), UPCOMING_DONE_HOLD_MS);
 
     const message = document.createDocumentFragment();
     message.append("Marked as complete. ");
@@ -1106,44 +1214,79 @@ function initAssessmentCalendar() {
     showToast(message);
   }
 
-  // The item fades out, then everything below it slides up into its space.
-  // Opacity and transform only, which the browser can animate without
-  // touching layout: shrinking the item's height instead relaid out and
-  // repainted the whole (masked) list on every frame, and couldn't shrink
-  // its padding, leaving a jump at the end. The list is then rebuilt
-  // without it, every row landing right where the slide left it.
-  function foldAwayUpcomingItem(item) {
-    // Undone in the meantime, or the list already rebuilt.
-    if (!item.isConnected) return;
-    const shift = item.offsetHeight;
-    const below = [];
-    for (let row = item.nextElementSibling; row; row = row.nextElementSibling) below.push(row);
-    const animations = [
-      item.animate([{ opacity: 1 }, { opacity: 0 }], {
+  // Rebuilds first, then plays every moved row from its old position (FLIP), so
+  // the slow rebuild finishes before anything moves instead of hitching at the
+  // end. Removed elements are shown fading out as ghosts. Transforms and
+  // opacity only, so nothing is relaid out or repainted while it plays.
+  function moveUpcomingItem(item) {
+    if (!item.isConnected || !lastUpcomingArgs) return;
+    const movingKey = item.dataset.rowKey;
+    const keyedRows = () => [...upcomingList.children].filter((row) => row.dataset.rowKey);
+    const before = new Map(keyedRows().map((row) => [row.dataset.rowKey, row]));
+    const firstRects = new Map([...before].map(([key, row]) => [key, row.getBoundingClientRect()]));
+
+    renderUpcoming(...lastUpcomingArgs);
+
+    const listRect = upcomingList.getBoundingClientRect();
+    const slide = { duration: UPCOMING_SLIDE_MS, delay: UPCOMING_FADE_MS * 0.6, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+    const play = (row, keyframes, timing) => {
+      row.style.willChange = "transform, opacity";
+      const animation = row.animate(keyframes, { ...timing, fill: "backwards" });
+      animation.finished.catch(() => {}).finally(() => (row.style.willChange = ""));
+      return animation;
+    };
+
+    const after = keyedRows();
+    const afterKeys = new Set(after.map((row) => row.dataset.rowKey));
+    after.forEach((row) => {
+      const key = row.dataset.rowKey;
+      if (key !== movingKey && firstRects.has(key)) {
+        const shift = firstRects.get(key).top - row.getBoundingClientRect().top;
+        if (Math.abs(shift) >= 0.5) {
+          play(row, [{ transform: `translateY(${shift}px)` }, { transform: "translateY(0)" }], slide);
+        }
+        return;
+      }
+      play(row, [{ opacity: 0 }, { opacity: 1 }], {
         duration: UPCOMING_FADE_MS,
+        delay: slide.delay + UPCOMING_SLIDE_MS * 0.4,
         easing: "ease",
-        fill: "forwards",
-      }),
-      ...below.map((row) =>
-        row.animate([{ transform: "translateY(0)" }, { transform: `translateY(${-shift}px)` }], {
-          duration: UPCOMING_SLIDE_MS,
-          delay: UPCOMING_FADE_MS * 0.6,
-          easing: "cubic-bezier(0.2, 0, 0, 1)",
-          fill: "forwards",
-        })
-      ),
-    ];
-    Promise.all(animations.map((animation) => animation.finished))
-      .catch(() => {})
-      .finally(() => {
-        if (lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
       });
+    });
+
+    before.forEach((row, key) => {
+      if (key !== movingKey && afterKeys.has(key)) return;
+      const rect = firstRects.get(key);
+      // border-box, so its padding is inside the width; otherwise it stuck out
+      // and brought up a scrollbar.
+      row.style.cssText += `;position:absolute;top:${rect.top - listRect.top + upcomingList.scrollTop}px;left:${rect.left - listRect.left}px;width:${rect.width}px;box-sizing:border-box;margin:0;pointer-events:none;`;
+      row.classList.add("upcoming-ghost");
+      upcomingList.appendChild(row);
+      play(row, [{ opacity: 1 }, { opacity: 0 }], { duration: UPCOMING_FADE_MS, easing: "ease" })
+        .finished.catch(() => {})
+        .finally(() => row.remove());
+    });
   }
 
-  // Back into the list, in its place by date.
-  function uncompleteUpcomingItem(id) {
+  // From the Completed section it moves back up like checking one off moves it
+  // down; from the toast's Undo the list just rebuilds.
+  function uncompleteUpcomingItem(id, item = null) {
+    if (item && !item.classList.contains("upcoming-item--done")) return;
     saveCompletedTasks(completedTaskRecords().filter((record) => record.id !== id));
+    markCalendarPillDone(id, false);
+    if (item) {
+      item.classList.remove("upcoming-item--done");
+      setTimeout(() => moveUpcomingItem(item), UPCOMING_DONE_HOLD_MS);
+      return;
+    }
     if (lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
+  }
+
+  // Assessments aren't struck through there.
+  function markCalendarPillDone(id, done) {
+    document
+      .querySelectorAll(`#assessment-cal-weeks .assessment-chip--assignment[data-entry-id="${CSS.escape(id)}"]`)
+      .forEach((pill) => pill.classList.toggle("assessment-chip--done", done));
   }
 
   function renderCourseColorLegend(colorNames) {
@@ -1185,8 +1328,8 @@ function initAssessmentCalendar() {
       render();
     });
   });
-  // Course colors are saved preferences, so a pick made on another device
-  // arrives this way too.
+  // Course colors are synced preferences, so a pick on another device arrives
+  // here too.
   window.addEventListener("app:preferences-changed", () => render());
 
   loadAssessmentData(() => render());
@@ -1194,22 +1337,13 @@ function initAssessmentCalendar() {
   return render;
 }
 
-// --- Add to calendar ---
-// Lets a student add an assignment, or an assessment that isn't in the admin-
-// scheduled collection yet — saved to their own addedAssessments (see
-// shared.js), merged into the calendar above like any other entry. Missing
-// assessments are also tallied in the school-wide "suggested" collection, so
-// admins can see which come up across multiple students. Right-clicking a
-// self-added pill removes it again — see handlePillContextMenu in
-// initAssessmentCalendar.
+// Students can add assignments, and assessments the school calendar is missing;
+// the latter are also tallied in "suggested" so admins see what multiple
+// students report.
 
-// Every period whose course is unambiguous right now (no divisions, or a
-// division already picked) — the courses this modal can log an assessment
-// against. displayName is the plain typed name (shown on the button);
-// courseName is the fully resolved name (what gets saved/matched).
-// periodIndex is carried along so isDuplicateSelection can tell whether a
-// same-key school-wide entry is actually visible to this student's own
-// section, the same way the calendar itself decides pill visibility.
+// Only courses that are unambiguous now (no divisions, or one picked).
+// periodIndex lets isDuplicateSelection judge visibility the way the calendar
+// does.
 function addableCourseOptions() {
   const periods = loadPeriods();
   const divisions = loadPeriodDivisions();
@@ -1233,10 +1367,8 @@ function addableCourseOptions() {
   return options;
 }
 
-// Deterministic, non-cryptographic string hash — used only to build a
-// stable "suggested" doc id from {date, courseName, type}, so repeated
-// suggestions of the same assessment land on the same doc instead of
-// creating duplicates.
+// Not cryptographic: it only needs a stable doc id so repeat suggestions land
+// on one doc.
 function simpleHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -1245,12 +1377,8 @@ function simpleHash(str) {
   return (hash >>> 0).toString(36);
 }
 
-// Tags a student-added assessment (Summative or Formative) with who
-// suggested it in the school-wide "suggested" collection — keyed by a hash
-// of {date, courseName, type}, so the same suggestion from multiple
-// students lands on one shared document instead of creating duplicates.
-// The "count" is just emails.length — arrayUnion is what makes a repeat
-// suggestion from the same email a no-op instead of double-counting them.
+// arrayUnion makes a repeat suggestion from the same email a no-op, so
+// emails.length is the count.
 function suggestedAssessmentDocId(date, courseName, type) {
   return simpleHash(`${date}|${courseName}|${type}`);
 }
@@ -1276,33 +1404,24 @@ function logSuggestedAssessment(date, courseName, type) {
     .catch((error) => console.error("Failed to log suggested assessment:", error));
 }
 
-// Reverses logSuggestedAssessment when a student deletes their own added
-// entry — a transaction, not a plain arrayRemove, since deleting the doc
-// outright (once no emails would be left) has to be a deliberate branch
-// based on what's actually stored right now, not assumed from this one
-// client's own view of it.
+// arrayRemove writes without reading first, so it still works when the daily
+// read quota has run out. Emptied docs are cleared by the admin page, since
+// students can't delete them. A missing doc (accepted, declined) is ignored.
 function unlogSuggestedAssessment(date, courseName, type) {
   if (!currentUid || typeof firebase === "undefined" || !firebase.firestore) return;
   const email = (auth.currentUser && auth.currentUser.email) || "";
   if (!email) return;
-  const docRef = firebase.firestore().collection("suggested").doc(suggestedAssessmentDocId(date, courseName, type));
   firebase
     .firestore()
-    .runTransaction((transaction) =>
-      transaction.get(docRef).then((snapshot) => {
-        if (!snapshot.exists) return;
-        const remainingEmails = (snapshot.data().emails || []).filter((existing) => existing !== email);
-        if (remainingEmails.length === 0) {
-          transaction.delete(docRef);
-        } else {
-          transaction.update(docRef, { emails: remainingEmails });
-        }
-      })
-    )
-    .catch((error) => console.error("Failed to remove suggested assessment:", error));
+    .collection("suggested")
+    .doc(suggestedAssessmentDocId(date, courseName, type))
+    .update({ emails: firebase.firestore.FieldValue.arrayRemove(email) })
+    .catch((error) => {
+      if (error && error.code === "not-found") return;
+      console.error("Failed to remove suggested assessment:", error);
+    });
 }
 
-// The types the + popup can add; noun goes in "New …" and "Add …".
 const ADD_POPUP_TYPES = [
   { value: "Assignment", noun: "assignment" },
   { value: "Formative", noun: "formative" },
@@ -1311,35 +1430,30 @@ const ADD_POPUP_TYPES = [
 ];
 const CAL_WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const ADD_POPUP_STEP_MS = 220;
+// Room kept below the popup when it opens from a calendar day, so its steps can
+// grow.
+const ADD_POPUP_MIN_ROOM_PX = 420;
 const UPCOMING_LIMIT = 10;
-// How long a checked-off Upcoming item stays, struck through, before folding
-// away.
 const UPCOMING_DONE_HOLD_MS = 600;
-// The narrowest strip kept clear of the Upcoming list's fades for its
-// scrollbar.
 const UPCOMING_SCROLLBAR_MIN_PX = 10;
-// Then it fades out, and the items below slide up into its place.
 const UPCOMING_FADE_MS = 150;
 const UPCOMING_SLIDE_MS = 260;
 
-// An Upcoming item's title: an assignment's own description, else what kind
-// of assessment it is.
-function upcomingTitle(entry) {
-  if (assessmentCategory(entry) === "assignment") return entry.title || "Homework";
-  return entry.type === "In-Class" ? "Summative" : entry.type;
+// A Testing Block is just a summative here.
+function upcomingTitle(entry, courseLabel) {
+  if (assessmentCategory(entry) === "assignment") return entry.title || "Assignment";
+  const type = entry.type === "In-Class" || entry.type === "Testing Block" ? "Summative" : entry.type;
+  return `${courseLabel} ${type}`;
 }
 
-// Orders things due the same day: the start of the day first, then by
-// period, then by clock time.
-function dueTimeRank(entry) {
-  if (!entry.dueTime || entry.dueTime === "start") return -2;
-  if (entry.dueTime === "period") return -1;
-  const [hours, minutes] = entry.dueTime.split(":").map(Number);
-  return hours * 60 + minutes;
+// By the actual moment due, so midnight homework comes before a Period 1
+// formative that day. Unknown times go just after that day's midnight.
+function upcomingSortTime(entry, periodIndex) {
+  const dueAt = upcomingDueAt(entry, periodIndex);
+  return dueAt ? dueAt.getTime() : fromISODate(entry.date).getTime() + 1;
 }
 
-// Like Google Tasks' date chip: a relative day nearby, the weekday within
-// the week, else the weekday and date.
+// Like Google Tasks' date chip.
 function upcomingDateLabel(iso) {
   const date = fromISODate(iso);
   const today = fromISODate(todayISODate());
@@ -1347,27 +1461,22 @@ function upcomingDateLabel(iso) {
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   if (days === -1) return "Yesterday";
-  if (days > 1 && days < 7) return CAL_WEEKDAY_NAMES[date.getDay()];
   return `${CAL_WEEKDAY_LABELS[date.getDay()]}, ${window.formatPreferredDate(date)}`;
 }
 
-// "15:30" as "3:30 PM".
 function formatClockTime(hhmm) {
   const [hours, minutes] = hhmm.split(":").map(Number);
   return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
 }
 
-// How far back the Upcoming card's Completed section goes.
 const COMPLETED_SHOWN_DAYS = 14;
 
-// What's been checked off, as { id, completedAt }. Ids of things that no
-// longer exist anywhere (an assignment deleted, an assessment the admin
-// removed) are dropped and the list saved without them, so it doesn't grow
-// forever. Checked against every assessment, not just this student's current
-// courses, so taking a course off My Courses for a while loses nothing.
+// Ids that no longer exist anywhere are dropped so the list doesn't grow
+// forever. Checked against every assessment, not just current courses, so
+// dropping a course for a while loses nothing.
 function completedTaskRecords() {
   const records = loadCompletedTasks().map((record) =>
-    // The ids-only form from before completedAt was kept; counted as done now.
+    // Older saves stored bare ids.
     typeof record === "string" ? { id: record, completedAt: Date.now() } : record
   );
   if (!assessmentsLoaded) return records;
@@ -1377,14 +1486,10 @@ function completedTaskRecords() {
   return kept;
 }
 
-// How close something has to be due before its countdown shows.
 const UPCOMING_COUNTDOWN_MS = 12 * 60 * 60 * 1000;
 
-// The moment something is due, from the admin's bell schedule: an assignment
-// at its own time, the start of its class period, or the start of the school
-// day; an assessment at the start of its class. null when there's no
-// schedule to go by (no period times set, or the class doesn't meet that
-// day).
+// null for period-based times when there's no bell schedule or the class
+// doesn't meet that day.
 function upcomingDueAt(entry, periodIndex) {
   const at = (hhmm) => {
     const [hours, minutes] = hhmm.split(":").map(Number);
@@ -1392,24 +1497,25 @@ function upcomingDueAt(entry, periodIndex) {
     date.setHours(hours, minutes, 0, 0);
     return date;
   };
+  if (isReassessment(entry)) return at((scheduledTimeOn(entry.date, "academicSupport") || academicSupportTimes()).start);
+  if (entry.type === "Testing Block") {
+    const time =
+      scheduledTimeOn(entry.date, "testingBlock") ||
+      (defaultPeriodTimes && defaultPeriodTimes.testingBlock) ||
+      TESTING_BLOCK_FALLBACK_TIMES;
+    return at(time.start);
+  }
   const dueTime = assessmentCategory(entry) === "assignment" ? entry.dueTime || "start" : "period";
   if (/^\d{1,2}:\d{2}$/.test(dueTime)) return at(dueTime);
+  if (dueTime === "start") return at("00:00");
   const times = defaultPeriodTimes && defaultPeriodTimes.times;
   if (!times) return null;
-  if (dueTime === "start") {
-    const first = times.find((time) => time && time.start);
-    return first ? at(first.start) : null;
-  }
-  // A period's start, on a day it actually meets: periods 1-4 on A days,
-  // 5-8 on B days.
+  // Only on a day the period actually meets.
   if (periodIndex === undefined) return null;
-  if (allDayTypes[entry.date] !== (periodIndex < 4 ? "A" : "B")) return null;
-  const blockIndex = SCHEDULE_BLOCKS.findIndex((block) => block.slot === periodIndex % 4);
-  const time = times[blockIndex];
-  return time && time.start ? at(time.start) : null;
+  const time = scheduledTimeOn(entry.date, `period${periodIndex + 1}`);
+  return time ? at(time.start) : null;
 }
 
-// The time part of the chip; nothing for the start of the day.
 function upcomingTimeLabel(dueTime, periodIndex) {
   if (dueTime === "start") return "";
   if (dueTime === "period") return periodIndex === undefined ? "" : `Period ${periodIndex + 1}`;
@@ -1417,9 +1523,7 @@ function upcomingTimeLabel(dueTime, periodIndex) {
 }
 const CALENDAR_PICK_FADE_MS = 200;
 
-// The next few days a course meets after today: its A-days (periods 1-4) or
-// B-days (periods 5-8) on the school calendar. With no school calendar to go
-// on, every weekday.
+// With no school calendar set up, every weekday counts.
 function upcomingClassDays(periodIndex, count) {
   const days = [];
   const today = new Date();
@@ -1439,36 +1543,18 @@ const ICON_BACK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.5L
 const ICON_CHEVRON_DOWN = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" /></svg>';
 const ICON_CHEVRON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5" /></svg>';
 
-// The Upcoming card's + opens this, anchored under the button like a menu.
-// The + menu picks the type, step 1 the course; picking a course turns the
-// same popup into step 2, the details and date. An assignment is the
-// student's own; an assessment is also suggested to admins, since it's one
-// the school calendar is missing.
-// Fills windowEl with text in the same clipping window and marquee as a
-// Calendar pill's name, but scrolling as soon as hoverEl is hovered rather
-// than waiting for the mouse to rest.
-// shortText, if given, stands in for text whenever text is cut off (see
-// fitName).
+// Unlike a calendar pill's, scrolls as soon as it's hovered. shortText stands
+// in when the full text is cut off.
 function attachHoverMarquee(hoverEl, windowEl, text, shortText = null) {
   const textEl = windowEl.appendChild(document.createElement("span"));
   textEl.className = "assessment-pill-text";
   fitName(windowEl, textEl, text, shortText);
   hoverEl.addEventListener("mouseenter", () => {
     cancelMarqueeReturn(textEl);
-    if (textEl.scrollWidth > windowEl.clientWidth) textEl.classList.add("assessment-pill-text--marquee-in");
+    if (textEl.scrollWidth > windowEl.clientWidth) startMarqueeText(textEl);
   });
   hoverEl.addEventListener("mouseleave", () => {
-    if (
-      textEl.classList.contains("assessment-pill-text--marquee-in") ||
-      textEl.classList.contains("assessment-pill-text--marquee-loop")
-    ) {
-      returnMarqueeText(textEl);
-    }
-  });
-  textEl.addEventListener("animationend", (event) => {
-    if (event.animationName !== "assessment-pill-marquee-in") return;
-    textEl.classList.remove("assessment-pill-text--marquee-in");
-    textEl.classList.add("assessment-pill-text--marquee-loop");
+    if (textEl.classList.contains("assessment-pill-text--scrolling")) returnMarqueeText(textEl);
   });
 }
 
@@ -1477,9 +1563,8 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
   if (!triggerBtn) return;
   attachHoverTooltip(triggerBtn, "Add to calendar");
 
-  // Adding writes to this student's own addedAssessments (and suggested),
-  // which needs a real uid. Signing in/out always reloads the page (see
-  // handleAuthResolved), so currentUid here reflects this load's state.
+  // Saving needs a real uid. Sign-in changes reload the page, so this reflects
+  // the current state.
   if (!currentUid) {
     triggerBtn.hidden = true;
     return;
@@ -1489,9 +1574,22 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
   let selectedType = ADD_POPUP_TYPES[0].value;
   let selectedCourse = null; // an addableCourseOptions() entry | null
   let selectedDate = null; // ISO string | null
+  // Opened from a calendar day, the date is already chosen.
+  let presetDate = null;
+  // In the By Class grid, only this cell is grayed, not the whole day.
+  let presetCell = null;
+  // That row's course needn't be asked for.
+  let presetCourse = null;
+  let anchorPoint = null;
+
+  // Opened at a click, it grows out of that point, even when it's had to sit
+  // higher up (no room below the click) or further left; and then it rises
+  // into place rather than dropping.
+  function growFromPoint(el, left, top) {
+    el.style.transformOrigin = `${anchorPoint.x - left}px ${anchorPoint.y - top}px`;
+    if (top < anchorPoint.y) el.style.setProperty("--popup-shift", "4px");
+  }
   let title = "";
-  // When on its day an assignment is due: "start" (the start of the day),
-  // "period" (by the course's own period), or a custom "HH:MM".
   let dueTime = "start";
 
   const typeInfo = () => ADD_POPUP_TYPES.find((type) => type.value === selectedType);
@@ -1501,10 +1599,9 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     return color ? `var(--color-${color})` : "var(--color-gray-dark)";
   };
 
-  // The school-wide entry (if any) with the same course, type and date,
-  // visible to this student's section or not. A course split across A- and
-  // B-day sections can have one that only shows for the other section, so it
-  // doesn't block adding one, but see submit() for why it isn't suggested.
+  // A course split across A- and B-day sections can have an entry only the
+  // other section sees, so it doesn't block adding, though it isn't suggested
+  // either (see submit).
   function matchingSchoolWideEntry() {
     if (!selectedCourse || !selectedDate) return null;
     return (
@@ -1515,8 +1612,7 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     );
   }
 
-  // An assessment already on this student's calendar: one they added, or a
-  // school-wide one their own section can see. Assignments can repeat.
+  // Assignments can repeat.
   function isDuplicateSelection() {
     if (isAssignment() || !selectedCourse || !selectedDate) return false;
     const matchesSelection = (entry) =>
@@ -1546,9 +1642,8 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     return btn;
   }
 
-  // withDot puts the course's color dot in front of the title. A title too
-  // long for one line switches to shortHeading if there is one, and past that
-  // fades out at the edge and scrolls on hover, rather than wrapping.
+  // Long titles switch to shortHeading, then fade and scroll on hover, rather
+  // than wrapping.
   function header({ heading, shortHeading, back, withDot }) {
     const bar = el("div", "add-popup-header");
     if (back) bar.appendChild(iconButton(ICON_BACK, "Back", back));
@@ -1558,7 +1653,6 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     return bar;
   }
 
-  // Step 1: the course list. The type was picked from the + menu.
   function buildPickStep() {
     const step = el("div", "add-popup-step");
     step.appendChild(el("p", "add-popup-prompt")).textContent = "Which course?";
@@ -1577,25 +1671,28 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
       const nameWindow = row.appendChild(el("span", "add-popup-course-name"));
       attachHoverMarquee(row, nameWindow, option.displayName, shortCourseName(option.displayName));
       row.appendChild(el("span", "add-popup-course-chevron", ICON_CHEVRON));
-      // A-day periods (1-4) down the first column, B-day (5-8) down the second,
-      // each in its period's row, so a course with no period set leaves a gap
-      // rather than shifting the others.
+      // Each period keeps its own slot, so a missing period leaves a gap rather
+      // than shifting the others.
       row.style.gridColumn = String(option.periodIndex < 4 ? 1 : 2);
       row.style.gridRow = String((option.periodIndex % 4) + 1);
       row.addEventListener("click", (event) => {
         selectedCourse = option;
         title = "";
-        selectedDate = null;
+        selectedDate = presetDate;
         dueTime = "start";
         if (isAssignment()) {
           showStep(buildDetailsStep(), 1);
           return;
         }
-        // An assessment has nothing to fill in but its date, so it skips the
-        // second step: the date is picked straight off the calendar and saved.
-        // Leaving the pick returns to this list.
-        // Kept from the document handler, as with the date button (see
-        // buildDetailsStep), and blurred so Escape draws no focus ring.
+        // Opened from a calendar day: that's the date, so it saves straight
+        // away.
+        if (presetDate) {
+          submit();
+          return;
+        }
+        // An assessment needs only a date, so it skips the second step and
+        // picks straight off the calendar. Stopped from reaching the document
+        // handler, and blurred so Escape draws no focus ring.
         event.stopPropagation();
         row.blur();
         startDatePick(
@@ -1612,11 +1709,8 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     return step;
   }
 
-  // Step 2, for assignments only (assessments go straight to picking a date;
-  // see buildPickStep): what's due, when, and the save button.
   function buildDetailsStep() {
     const step = el("div", "add-popup-step add-popup-step--details");
-    // The course's color stands in for the accent everywhere on this step.
     step.style.setProperty("--chip-color", colorFor(selectedCourse));
     step.appendChild(
       header({
@@ -1658,15 +1752,11 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     const dayFromToday = (offset) => toISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset));
     if (!selectedDate) selectedDate = nextClass ? toISODate(nextClass) : dayFromToday(1);
 
-    // Clicking the date picks a new one straight off the big calendar (see
-    // startDatePick).
     const dateBtn = dueRow.appendChild(
       el("button", "add-popup-date-btn", `<span class="add-popup-date-btn-text"></span><img class="add-popup-date-icon" src="${uiIconPath("date.png")}" alt="" />`)
     );
     dateBtn.type = "button";
     const dateBtnText = dateBtn.querySelector(".add-popup-date-btn-text");
-    // Names the date where it can ("Next class", "Today", "Tomorrow"), else by
-    // its weekday, then gives the date and which day of the rotation it is.
     function showSelectedDate() {
       const date = fromISODate(selectedDate);
       const relativeNames = { [dayFromToday(-1)]: "Yesterday", [dayFromToday(0)]: "Today", [dayFromToday(1)]: "Tomorrow" };
@@ -1681,18 +1771,20 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
         window.formatPreferredDate(date) + (dayType === "A" || dayType === "B" ? ` (${dayType}-day)` : "");
     }
     dateBtn.addEventListener("click", (event) => {
-      // Kept from the document handler, which would read the click as outside
-      // the popup once the dim layer is over it.
+      // Otherwise the document handler would read it as a click outside once
+      // the dim layer covers the popup.
       event.stopPropagation();
-      // Otherwise it keeps focus under the dim layer, and pressing Escape to
-      // leave counts as keyboard use, which draws its focus ring.
+      // Otherwise it keeps focus under the dim layer and Escape would draw its
+      // focus ring.
       dateBtn.blur();
+      dateBtnText.innerHTML = "";
+      dateBtnText.appendChild(el("span", "add-popup-date-label")).textContent = "Select from calendar";
       startDatePick(
         (iso) => {
           selectedDate = iso;
           refresh();
         },
-        { cursor: event }
+        { cursor: event, onEnd: showSelectedDate }
       );
     });
 
@@ -1709,17 +1801,14 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     return step;
   }
 
-  // The assignment's time on its due day. Its options open inside the popup,
-  // which grows to fit them, rather than in a menu floating over it.
+  // Its options open inside the popup, which grows to fit, rather than in a
+  // floating menu.
   function buildDueTimeField() {
     const field = el("div", "add-popup-time-field");
     const period = selectedCourse.periodIndex + 1;
-    // A period only means a time on a day the admin has set as the course's
-    // own day: periods 1-4 meet on A days, 5-8 on B days. Any other day has
-    // no such period to go by.
+    // A period only means a time on a day that period meets.
     const periodKnown = () => allDayTypes[selectedDate] === (selectedCourse.periodIndex < 4 ? "A" : "B");
     const isWeekday = () => fromISODate(selectedDate).getDay() % 6 !== 0;
-    // Each shown only on the dates it applies to.
     const presets = [
       { value: "start", label: "Start of the day", applies: () => true },
       { value: "period", label: `By Period ${period}`, applies: periodKnown },
@@ -1740,8 +1829,8 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     options.hidden = true;
     const setOpen = (open) => {
       if (options.hidden === !open) return;
-      // Closed with Custom chosen but no time typed: the highlight goes back
-      // to whichever time is actually set.
+      // Closed with Custom chosen but nothing typed: back to the time actually
+      // set.
       if (!open) sync();
       resizeAround(() => {
         options.hidden = !open;
@@ -1762,13 +1851,11 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
       return option;
     });
 
-    // Custom takes a typed time; Enter closes the list once one is in.
     const custom = options.appendChild(el("label", "add-popup-time-option add-popup-time-option--custom"));
     custom.appendChild(el("span")).textContent = "Custom";
     const customInput = custom.appendChild(el("input", "add-popup-time-input"));
     customInput.type = "time";
-    // Highlighted the moment it's clicked (or tabbed to), before any time is
-    // typed in, with the time field ready to type into.
+    // Highlighted before a time is typed, with the field ready to type into.
     const chooseCustom = () => {
       presetBtns.forEach((option) => option.classList.remove("add-popup-time-option--selected"));
       custom.classList.add("add-popup-time-option--selected");
@@ -1783,9 +1870,7 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
       dueTime = customInput.value;
       sync();
     });
-    // Done typing: Enter, or AM/PM (the last part of the time) once the rest
-    // is in. The field lets go of focus, so it stops showing the part being
-    // typed into.
+    // Losing focus stops the field showing the part being typed into.
     customInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && customInput.value) {
         customInput.blur();
@@ -1806,8 +1891,8 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
       custom.classList.toggle("add-popup-time-option--selected", !isPreset);
       if (!isPreset) customInput.value = dueTime;
     }
-    // A new date can take options away; one that was chosen falls back to the
-    // start of the day.
+    // A new date can remove options; a removed choice falls back to the start
+    // of the day.
     field.syncToDate = () => {
       const chosen = presets.find((preset) => preset.value === dueTime);
       if (chosen && !chosen.applies()) dueTime = "start";
@@ -1817,7 +1902,6 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     return field;
   }
 
-  // Animates the popup's height across a change that resizes its content.
   function resizeAround(change) {
     const from = popup.offsetHeight;
     change();
@@ -1827,13 +1911,13 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     }
   }
 
-  // Swaps in the other step: the old one slides out one way as the new one
-  // slides in from the other (direction 1 = forward, -1 = back), while the
-  // popup's height eases between the two.
   function showStep(next, direction) {
     const current = popup.querySelector(".add-popup-step:not(.add-popup-step--leaving)");
     if (!current) {
       popup.appendChild(next);
+      // Opening straight onto the details (the course already known, as from
+      // a Courses view cell) is ready to type into too.
+      if (next._focusTarget) next._focusTarget.focus({ preventScroll: true });
       return;
     }
     resizeAround(() => {
@@ -1872,48 +1956,95 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     title = "";
     dueTime = "start";
 
+    // The row already says which course, unless that course can't be added yet
+    // (no division picked).
+    const knownCourse = presetCourse && addableCourseOptions().find((option) => option.displayName === presetCourse);
+    if (knownCourse) {
+      selectedCourse = knownCourse;
+      selectedDate = presetDate;
+      if (!isAssignment()) {
+        submit();
+        return;
+      }
+    }
+
     popup = el("div", "add-popup");
+    syncSelectedDay();
     popup.setAttribute("role", "dialog");
     popup.setAttribute("aria-label", "Add to calendar");
     document.body.appendChild(popup);
-    const rect = triggerBtn.getBoundingClientRect();
-    const top = rect.bottom + 8;
-    popup.style.top = `${top}px`;
-    popup.style.right = `${Math.max(16, window.innerWidth - rect.right)}px`;
-    popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
+    if (anchorPoint) {
+      // Kept on screen, with room below for its steps.
+      const left = Math.max(16, Math.min(anchorPoint.x, window.innerWidth - popup.offsetWidth - 16));
+      const top = Math.max(16, Math.min(anchorPoint.y, window.innerHeight - ADD_POPUP_MIN_ROOM_PX));
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
+      popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
+      growFromPoint(popup, left, top);
+      // Opened over the calendar itself, so it's glass, like the tooltips.
+      popup.classList.add("calendar-glass");
+    } else {
+      const rect = triggerBtn.getBoundingClientRect();
+      const top = rect.bottom + 8;
+      popup.style.top = `${top}px`;
+      popup.style.right = `${Math.max(16, window.innerWidth - rect.right)}px`;
+      popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
+    }
 
-    const first = buildPickStep();
+    const first = knownCourse ? buildDetailsStep() : buildPickStep();
     showStep(first, 1);
-    void popup.offsetWidth; // force reflow so the entrance transition below actually plays
+    void popup.offsetWidth;  // so the entrance transitions
     popup.classList.add("add-popup--visible");
   }
 
-  // "Pick another date": everything but the big calendar dims, its pills fade
-  // back, and the day clicked there becomes the date. Clicking the dimmed
-  // area or pressing Escape leaves without picking.
+  // Clicking the dim area or pressing Escape leaves without picking.
   let datePick = null; // { overlay, box, onClick } while picking
 
-  // cursor: where the pointer is, to start the "Select date" tooltip there.
-  // activeEl: a course button that started this, kept looking hovered while
-  // picking.
-  function startDatePick(onPick, { cursor, activeEl } = {}) {
+  // activeEl stays looking hovered while picking. onEnd runs either way, before
+  // onPick.
+  function startDatePick(onPick, { cursor, activeEl, onEnd } = {}) {
     const box = document.querySelector(".my-courses-calendar-box");
     if (!box || datePick) return;
     const overlay = el("div", "calendar-pick-overlay");
     document.body.appendChild(overlay);
     box.style.setProperty("--chip-color", colorFor(selectedCourse));
     box.classList.add("my-courses-calendar-box--raised", "my-courses-calendar-box--picking");
+    // Faded out so every day can be seen and clicked.
+    if (popup) popup.classList.add("add-popup--picking");
+    syncSelectedDay();
 
-    // Capture phase, ahead of the pills' own handlers; stopped there so the
-    // document handler doesn't count it as a click outside the popup.
+    // Capture phase, ahead of the pills' handlers, and stopped so the document
+    // doesn't treat it as a click outside.
+    // A month grid day, or in the Courses view any cell or date in a day's
+    // column.
     const onClick = (event) => {
-      const cell = event.target.closest(".assessment-week-day");
+      const cell = event.target.closest(".assessment-week-day, .class-grid-cell, .class-grid-head");
       if (!cell) return;
       event.stopPropagation();
       endDatePick();
       onPick(cell.dataset.iso);
     };
     box.addEventListener("click", onClick, true);
+    // In the Courses view a date is a whole column, so the whole column is
+    // outlined: its date and every course's cell under it.
+    let pickColumn = null;
+    const markColumn = (iso) => {
+      if (iso === pickColumn) return;
+      box.querySelectorAll(".class-grid-pick-col").forEach((node) =>
+        node.classList.remove("class-grid-pick-col", "class-grid-pick-col--last")
+      );
+      pickColumn = iso;
+      if (!iso) return;
+      const nodes = box.querySelectorAll(`.class-grid-head[data-iso="${iso}"], .class-grid-cell[data-iso="${iso}"]`);
+      nodes.forEach((node) => node.classList.add("class-grid-pick-col"));
+      nodes[nodes.length - 1]?.classList.add("class-grid-pick-col--last");
+    };
+    const onHover = (event) => {
+      const column = event.target.closest(".class-grid-cell, .class-grid-head");
+      markColumn(column ? column.dataset.iso : null);
+    };
+    box.addEventListener("mouseover", onHover);
+    box.addEventListener("mouseleave", onHover);
     overlay.addEventListener("click", (event) => {
       event.stopPropagation();
       endDatePick();
@@ -1922,25 +2053,35 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     hideHoverTooltip();
     if (activeEl) activeEl.classList.add("add-popup-course--active");
     const removeTooltip = cursor ? showCursorTooltip("Select date", cursor.clientX, cursor.clientY) : null;
-    datePick = { overlay, box, onClick, activeEl, removeTooltip };
-    void overlay.offsetWidth; // force reflow so the fade below actually plays
+    datePick = { overlay, box, onClick, activeEl, removeTooltip, onEnd, onHover, markColumn };
+    void overlay.offsetWidth;  // so the fade plays
     overlay.classList.add("calendar-pick-overlay--visible");
   }
 
   function endDatePick() {
     if (!datePick) return;
-    const { overlay, box, onClick, activeEl, removeTooltip } = datePick;
+    const { overlay, box, onClick, activeEl, removeTooltip, onEnd, onHover, markColumn } = datePick;
     datePick = null;
+    syncSelectedDay();
+    if (onEnd) onEnd();
+    // Lifted over the dim layer while it fades, so it isn't seen through it.
+    const returning = popup;
+    if (returning) returning.classList.replace("add-popup--picking", "add-popup--lifted");
     if (activeEl) activeEl.classList.remove("add-popup-course--active");
     if (removeTooltip) removeTooltip();
     delete document.documentElement.dataset.suppressTooltips;
     box.removeEventListener("click", onClick, true);
+    box.removeEventListener("mouseover", onHover);
+    box.removeEventListener("mouseleave", onHover);
+    markColumn(null);
     box.classList.remove("my-courses-calendar-box--picking");
     overlay.classList.remove("calendar-pick-overlay--visible");
-    // Stays above the dim layer until it has faded, or it would dim with it.
+    // Above the dim layer until it has faded, or it would dim with it.
     setTimeout(() => {
       overlay.remove();
-      if (!datePick) box.classList.remove("my-courses-calendar-box--raised");
+      if (returning) returning.classList.remove("add-popup--lifted");
+      if (datePick) return;
+      box.classList.remove("my-courses-calendar-box--raised");
     }, CALENDAR_PICK_FADE_MS);
   }
 
@@ -1949,6 +2090,7 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     if (!popup) return;
     const closing = popup;
     popup = null;
+    syncSelectedDay();
     closing.classList.remove("add-popup--visible");
     setTimeout(() => closing.remove(), 150);
   }
@@ -1966,16 +2108,13 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
       createdAt: Date.now(),
     };
     if (isAssignment()) {
-      // Left blank, it's just homework.
-      entry.title = title.trim() || "Homework";
+      entry.title = title.trim() || "Assignment";
       entry.dueTime = dueTime;
     }
 
     saveAddedAssessments([...loadAddedAssessments(), entry]);
-    // Assignments are personal. An assessment already scheduled server-side
-    // under this same key, just for a section this student's A/B pattern
-    // doesn't show it for (see isDuplicateSelection), has nothing new for the
-    // admin to add either.
+    // Assignments are personal. A matching school-wide entry for another
+    // section means the admin already has it.
     if (!isAssignment() && !matchingSchoolWideEntry()) {
       logSuggestedAssessment(entry.date, entry.courseName, entry.type);
     }
@@ -1984,8 +2123,6 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     if (refreshAssessmentCalendar) refreshAssessmentCalendar(true, true);
   }
 
-  // The + first opens a short menu of what to add; picking one opens the
-  // popup on that type. Same order as before the popup had its own tabs.
   const MENU_TYPES = ["Assignment", "Summative", "Formative", "Reassessment"];
   let menu = null;
 
@@ -1993,19 +2130,39 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
     if (!menu) return;
     const closing = menu;
     menu = null;
+    syncSelectedDay();
     closing.classList.remove("popup-menu--visible");
     setTimeout(() => closing.remove(), 150);
   }
 
+  // Checked a moment later, so going from the menu to the popup doesn't flicker
+  // the day off and on.
+  function syncSelectedDay() {
+    queueMicrotask(() => {
+      const keptDate = !datePick && (!selectedDate || selectedDate === presetDate);
+      const iso = (menu || popup) && keptDate && presetDate;
+      document.querySelectorAll("#assessment-cal-weeks .assessment-week-day").forEach((cell) => {
+        cell.classList.toggle("assessment-week-day--selected", cell.dataset.iso === iso);
+      });
+      document.querySelectorAll("#assessment-class-grid .class-grid-cell").forEach((cell) => {
+        cell.classList.toggle("class-grid-cell--selected", Boolean(iso) && cell === presetCell);
+      });
+    });
+  }
+
   function openMenu() {
     menu = el("div", "popup-menu");
+    // Left over from the last popup, it would read as a different day picked
+    // and keep this one from graying.
+    selectedDate = null;
+    syncSelectedDay();
     MENU_TYPES.forEach((type) => {
       const item = el("button", "popup-menu-item");
       item.type = "button";
       item.textContent = type;
       item.addEventListener("click", (event) => {
-        // Kept from the document handler below, which would otherwise see a
-        // click outside the popup it's about to open and close it again.
+        // Otherwise the document handler would see a click outside the popup
+        // it's about to open.
         event.stopPropagation();
         closeMenu();
         openPopup(type);
@@ -2013,25 +2170,63 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
       menu.appendChild(item);
     });
     document.body.appendChild(menu);
-    const rect = triggerBtn.getBoundingClientRect();
-    menu.style.top = `${rect.bottom + 8}px`;
-    menu.style.right = `${window.innerWidth - rect.right}px`;
-    void menu.offsetWidth; // force reflow so the entrance transition below actually plays
+    if (anchorPoint) {
+      const left = Math.min(anchorPoint.x, window.innerWidth - menu.offsetWidth - 16);
+      const top = Math.min(anchorPoint.y, window.innerHeight - menu.offsetHeight - 16);
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      growFromPoint(menu, left, top);
+      menu.classList.add("calendar-glass");
+    } else {
+      const rect = triggerBtn.getBoundingClientRect();
+      menu.style.top = `${rect.bottom + 8}px`;
+      menu.style.right = `${window.innerWidth - rect.right}px`;
+    }
+    void menu.offsetWidth;  // so the entrance transitions
     menu.classList.add("popup-menu--visible");
   }
 
-  // The click is left to reach the document, so an open account menu closes;
-  // the handler below skips clicks on this button or inside the menu or popup.
-  // The popup rebuilds parts of itself on click, so "inside" is judged by the
-  // event's path, fixed when the click happened.
+  // Left to reach the document so an open account menu closes. The popup
+  // rebuilds itself on click, so "inside" is judged by the event's path at the
+  // time.
   triggerBtn.addEventListener("click", () => {
     if (menu) closeMenu();
     else if (popup) closePopup();
-    else openMenu();
+    else {
+      presetDate = null;
+      presetCell = null;
+      presetCourse = null;
+      anchorPoint = null;
+      openMenu();
+    }
   });
+
+  // Cells are rebuilt each render, so this listens on the container.
+  const calendarWeeks = document.getElementById("assessment-cal-weeks");
+  const classGridEl = document.getElementById("assessment-class-grid");
+  [calendarWeeks, classGridEl].filter(Boolean).forEach((grid) => {
+    grid.addEventListener("click", (event) => {
+      if (datePick) return;
+      const cell = event.target.closest(".assessment-week-day, .class-grid-cell");
+      if (!cell || event.target.closest(".assessment-chip")) return;
+      // Clicking the same day again closes what it opened, like the + button.
+      const sameDay = (menu || popup) && presetDate === cell.dataset.iso;
+      if (menu) closeMenu();
+      if (popup) closePopup();
+      if (sameDay) return;
+      presetDate = cell.dataset.iso;
+      presetCell = cell;
+      presetCourse = cell.dataset.course || null;
+      anchorPoint = { x: event.clientX, y: event.clientY };
+      openMenu();
+      // So the document handler doesn't close the menu this click just opened.
+      event.openedAddMenu = true;
+    });
+  });
+
   document.addEventListener("click", (event) => {
     const path = event.composedPath();
-    if (path.includes(triggerBtn)) return;
+    if (path.includes(triggerBtn) || event.openedAddMenu) return;
     if (menu && !path.includes(menu)) closeMenu();
     if (popup && !path.includes(popup)) closePopup();
   });
@@ -2043,27 +2238,359 @@ function initAddToCalendarPopup(refreshAssessmentCalendar) {
   });
 }
 
-// Calendar page: sets up the read-only assessment calendar and its "Add to
-// calendar" popup. A no-op on any other page (both check for
-// their own page-specific markup and bail if it's missing). The period
-// inputs themselves no longer live on this page at all — see
-// openMyCoursesModal below, opened from the account-menu dropdown (see
-// auth.js) on any page.
+// Each part checks for its own markup, so this is a no-op on other pages.
 let myCoursesRefreshCalendar = null;
+
+// Admins can't touch students' data, so each student's app drops its own copy
+// once an admin accepts it. Only an exact match its section can see counts (a
+// suggested Summative may come back as In-Class or Testing Block). A checked-
+// off copy passes its done state on. Only on confirmed data, never cache:
+// saving pushes all of appData, and stale data would overwrite newer cloud
+// data.
+const SUMMATIVE_TYPES = ["Summative", "In-Class", "Testing Block"];
+
+function dropAcceptedSuggestions() {
+  loadAssessments(() => {
+    if (!assessmentsFetchDone) return;
+    const added = loadAddedAssessments();
+    const periodIndexOf = new Map(myAssessmentMatchEntries().matchEntries.map((entry) => [entry.name, entry.periodIndex]));
+    const sameKind = (mine, school) =>
+      mine.type === school.type || (mine.type === "Summative" && SUMMATIVE_TYPES.includes(school.type));
+    const replacedBy = new Map();
+    added.forEach((mine) => {
+      if (assessmentCategory(mine) === "assignment") return;
+      const school = allAssessments.find(
+        (entry) =>
+          entry.date === mine.date &&
+          entry.courseName === mine.courseName &&
+          sameKind(mine, entry) &&
+          isAssessmentVisibleForPeriod(entry, periodIndexOf.get(mine.courseName))
+      );
+      if (school) replacedBy.set(mine.id, school.id);
+    });
+    if (replacedBy.size === 0) return;
+
+    const completed = loadCompletedTasks();
+    const completedIds = new Set(completed.map((record) => (typeof record === "string" ? record : record.id)));
+    const carried = completed
+      .filter((record) => typeof record !== "string" && replacedBy.has(record.id))
+      .map((record) => ({ id: replacedBy.get(record.id), completedAt: record.completedAt }))
+      .filter((record) => !completedIds.has(record.id));
+    if (carried.length > 0) appData.completedTasks = [...completed, ...carried];
+    saveAddedAssessments(added.filter((entry) => !replacedBy.has(entry.id)));
+    if (myCoursesRefreshCalendar) myCoursesRefreshCalendar(true, true);
+  });
+}
+
+// Laid out like a school's assessment spreadsheet. Pills show what they are,
+// not the course, since the row already names it.
+const CLASS_GRID_DAY_PX = 123;
+
+function classGridPill(entry, resolvedNames, onContextMenu, courseColors) {
+  const pill = buildAssessmentPill(entry, resolvedNames, onContextMenu, courseColors);
+  const category = assessmentCategory(entry);
+  const label =
+    category === "assignment"
+      ? entry.title || "Assignment"
+      : entry.type === "In-Class" || entry.type === "Testing Block"
+        ? "Summative"
+        : entry.type;
+  const windowEl = pill.querySelector(".assessment-pill-name");
+  const textEl = pill.querySelector(".assessment-pill-text");
+  if (entry.type === "Testing Block") {
+    // One line rather than "Summative" over "Testing block", shortened to fit
+    // narrow cells.
+    const lines = pill.querySelector(".assessment-chip-lines");
+    if (lines) lines.replaceWith(windowEl);
+    pill.classList.remove("assessment-chip--stacked");
+    fitName(windowEl, textEl, "Testing Block", "Test Block");
+    // Keeps its "Summative" tooltip, which the label alone doesn't say.
+  } else {
+    textEl.textContent = label;
+    // Otherwise fitName would put the course name back on resize.
+    windowEl._fitName = () => (textEl.textContent = label);
+    // A tooltip would only repeat the label. Custom labels ("Quiz") keep
+    // theirs.
+    if (label === "Summative" || label === "Formative") pill._noTooltip = true;
+  }
+  const subtitle = pill.querySelector(".assessment-chip-subtitle");
+  if (subtitle) subtitle.remove();
+  // The row already gives the course. Assignments keep their ring, which shows
+  // the check-off.
+  if (category !== "assignment") pill.querySelector(".assessment-chip-dot").remove();
+  return pill;
+}
+
+const CLASS_GRID_MIN_ROW_PX = 72;
+
+// The course rows share the grid's height, at least 72px each. In whole
+// pixels: an even 1fr split of a window-based height gives fractional rows,
+// which left some of the 1px lines between them straddling two pixels and
+// looking thinner than the rest. The few spare pixels go one each to the top
+// rows.
+function sizeClassGridRows(grid) {
+  const count = grid._courseCount || 0;
+  const headHeight = parseFloat(getComputedStyle(grid).getPropertyValue("--class-grid-head-h")) || 52;
+  // One 1px row gap above each course row.
+  const room = grid.clientHeight - headHeight - count;
+  const base = Math.max(CLASS_GRID_MIN_ROW_PX, Math.floor(room / Math.max(count, 1)));
+  const spare = base === CLASS_GRID_MIN_ROW_PX ? 0 : Math.max(0, room - base * count);
+  const rows = Array.from({ length: count }, (_, index) => `${base + (index < spare ? 1 : 0)}px`);
+  grid.style.gridTemplateRows = `var(--class-grid-head-h) ${rows.join(" ")}`;
+}
+
+function renderClassGrid(grid, entries, matchEntries, resolvedNames, courseColors, onContextMenu, animatePills) {
+  const periods = loadPeriods();
+  const courses = [];
+  periods.forEach((name) => {
+    const trimmed = (name || "").trim();
+    if (trimmed && !courses.includes(trimmed)) courses.push(trimmed);
+  });
+  const courseOf = new Map(matchEntries.map((entry) => [entry.name, (periods[entry.periodIndex] || "").trim()]));
+  const byCell = new Map();
+  entries.forEach((entry) => {
+    const key = `${courseOf.get(entry.courseName)}|${entry.date}`;
+    (byCell.get(key) || byCell.set(key, []).get(key)).push(entry);
+  });
+
+  const thisWeekStart = startOfWeek(new Date());
+  const firstWeekStart = startOfWeek(latestAugustFirst());
+  const pastWeeks = Math.round((thisWeekStart - firstWeekStart) / (7 * 86400000));
+  const days = [];
+  for (let offset = -pastWeeks * 7; offset < ASSESSMENT_CALENDAR_WEEK_COUNT * 7; offset++) {
+    days.push(new Date(thisWeekStart.getFullYear(), thisWeekStart.getMonth(), thisWeekStart.getDate() + offset));
+  }
+  const today = toISODate(new Date());
+
+  const firstBuild = grid.childElementCount === 0;
+  const scrollLeft = grid.scrollLeft;
+  const scrollTop = grid.scrollTop;
+  const pillsBefore = animatePills ? renderedPillsByDate(grid, CLASS_GRID_PILL_CELLS) : null;
+  hideHoverTooltip();
+  grid.innerHTML = "";
+  grid.style.gridTemplateColumns = `var(--class-grid-course-w) repeat(${days.length}, ${CLASS_GRID_DAY_PX}px)`;
+  grid._courseCount = courses.length;
+  sizeClassGridRows(grid);
+  if (!grid._rowSizer) {
+    grid._rowSizer = new ResizeObserver(() => sizeClassGridRows(grid));
+    grid._rowSizer.observe(grid);
+  }
+
+  // So the date row only needs the day numbers.
+  const corner = grid.appendChild(document.createElement("div"));
+  corner.className = "class-grid-corner";
+  const cornerMonth = corner.appendChild(document.createElement("span"));
+  cornerMonth.className = "class-grid-corner-month";
+  const todayBtn = corner.appendChild(document.createElement("button"));
+  todayBtn.type = "button";
+  todayBtn.className = "class-grid-today-btn";
+  todayBtn.innerHTML =
+    '<svg class="class-grid-today-arrow class-grid-today-arrow--left" viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.5L6.5 10l5.5 5.5" /></svg>' +
+    "<span>Today</span>" +
+    '<svg class="class-grid-today-arrow class-grid-today-arrow--right" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4.5l5.5 5.5L8 15.5" /></svg>';
+  const todayLeft = (pastWeeks * 7 + new Date().getDay()) * CLASS_GRID_DAY_PX;
+  const showCornerMonth = () => {
+    const first = days[Math.min(days.length - 1, Math.max(0, Math.round(grid.scrollLeft / CLASS_GRID_DAY_PX)))];
+    cornerMonth.textContent = CAL_MONTH_SHORT[first.getMonth()];
+    // The course column covers part of the grid.
+    const daysWidth = grid.clientWidth - corner.offsetWidth;
+    const todayBehind = todayLeft + CLASS_GRID_DAY_PX <= grid.scrollLeft;
+    const todayAhead = todayLeft >= grid.scrollLeft + daysWidth;
+    todayBtn.classList.toggle("class-grid-today-btn--shown", todayBehind || todayAhead);
+    // Kept while the button fades out, so the arrow doesn't flip mid-fade.
+    if (todayBehind || todayAhead) todayBtn.classList.toggle("class-grid-today-btn--ahead", todayAhead);
+  };
+  grid._showCornerMonth = showCornerMonth;
+  if (!grid._cornerMonthListener) {
+    grid._cornerMonthListener = true;
+    grid.addEventListener("scroll", () => grid._showCornerMonth && grid._showCornerMonth(), { passive: true });
+  }
+  // Its cells aren't inside the head, so the grid tracks the pointer's column
+  // itself.
+  const headsByIso = new Map();
+  grid._headsByIso = headsByIso;
+  if (!grid._hoverColumnListener) {
+    grid._hoverColumnListener = true;
+    let hovered = null;
+    const setHovered = (head) => {
+      if (head === hovered) return;
+      if (hovered) hovered.classList.remove("class-grid-head--hover");
+      hovered = head;
+      if (hovered) hovered.classList.add("class-grid-head--hover");
+    };
+    grid.addEventListener("mouseover", (event) => {
+      const column = event.target.closest(".class-grid-head, .class-grid-cell");
+      setHovered(column ? grid._headsByIso.get(column.dataset.iso) || null : null);
+    });
+    grid.addEventListener("mouseleave", () => setHovered(null));
+  }
+  days.forEach((date) => {
+    const head = grid.appendChild(document.createElement("div"));
+    head.className = "class-grid-head";
+    head.dataset.iso = toISODate(date);
+    headsByIso.set(head.dataset.iso, head);
+    if (date.getDay() === 0 || date.getDay() === 6) head.classList.add("class-grid-head--weekend");
+    const weekday = head.appendChild(document.createElement("span"));
+    weekday.className = "class-grid-head-weekday";
+    weekday.textContent = CAL_WEEKDAY_LABELS[date.getDay()];
+    const dateRow = head.appendChild(document.createElement("div"));
+    dateRow.className = "class-grid-head-row";
+    if (date.getDate() === 1) {
+      const month = dateRow.appendChild(document.createElement("span"));
+      month.className = "class-grid-head-month";
+      month.textContent = CAL_MONTH_SHORT[date.getMonth()];
+    }
+    const dateEl = dateRow.appendChild(document.createElement("span"));
+    dateEl.className = "class-grid-head-date";
+    if (toISODate(date) === today) dateEl.classList.add("class-grid-head-date--today");
+    dateEl.textContent = String(date.getDate());
+    const dayType = allDayTypes[head.dataset.iso];
+    if (dayType === "A" || dayType === "B") {
+      const type = dateRow.appendChild(document.createElement("span"));
+      type.className = "class-grid-head-type";
+      type.textContent = dayType;
+    }
+  });
+
+  const colors = courseColorAssignments();
+  courses.forEach((course) => {
+    const name = grid.appendChild(document.createElement("div"));
+    name.className = "class-grid-course";
+    if (colors.get(course)) name.style.setProperty("--chip-color", colors.get(course));
+    const dot = name.appendChild(document.createElement("span"));
+    dot.className = "class-grid-course-dot";
+    const label = name.appendChild(document.createElement("span"));
+    label.className = "class-grid-course-name";
+    label.textContent = course;
+    fitName(label, label, course, shortCourseName(course));
+
+    days.forEach((date) => {
+      const iso = toISODate(date);
+      const cell = grid.appendChild(document.createElement("div"));
+      cell.className = "class-grid-cell";
+      if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("class-grid-cell--weekend");
+      cell.dataset.iso = iso;
+      cell.dataset.course = course;
+      // So a busy day scrolls instead of stretching the row.
+      const pills = cell.appendChild(document.createElement("div"));
+      pills.className = "class-grid-cell-pills";
+      // For when pills fill the cell and leave nowhere to click. Its click
+      // reaches the grid's own handler.
+      const add = cell.appendChild(document.createElement("button"));
+      add.type = "button";
+      add.className = "class-grid-cell-add";
+      add.setAttribute("aria-label", "Add to calendar");
+      add.hidden = true;
+      add.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" /></svg>';
+      (byCell.get(`${course}|${iso}`) || []).forEach((entry) =>
+        pills.appendChild(classGridPill(entry, resolvedNames, onContextMenu, courseColors))
+      );
+    });
+  });
+
+  // A rebuild keeps its place.
+  grid.scrollLeft = firstBuild ? todayLeft : scrollLeft;
+  todayBtn.addEventListener("click", () => grid.scrollTo({ left: todayLeft, behavior: "smooth" }));
+  grid.scrollTop = firstBuild ? 0 : scrollTop;
+  showCornerMonth();
+  if (pillsBefore) animatePillChanges(grid, pillsBefore, CLASS_GRID_PILL_CELLS);
+  updateClassCellAdds(grid);
+  if (pillsBefore) setTimeout(() => updateClassCellAdds(grid), PILL_FADE_MS + PILL_MOVE_MS + 50);
+  if (!grid._addResizeObserver && window.ResizeObserver) {
+    grid._addResizeObserver = new ResizeObserver(() => updateClassCellAdds(grid));
+    grid._addResizeObserver.observe(grid);
+  }
+}
+
+const CLASS_CELL_MIN_FREE_PX = 20;
+
+// Measured with the + hidden, since showing it shortens the list and would sway
+// the next check.
+function updateClassCellAdd(cell) {
+  const list = cell.querySelector(".class-grid-cell-pills");
+  const add = cell.querySelector(".class-grid-cell-add");
+  if (!list || !add) return;
+  const last = list.lastElementChild;
+  if (!last) {
+    add.hidden = true;
+    return;
+  }
+  add.hidden = true;
+  const paddingBottom = parseFloat(getComputedStyle(list).paddingBottom) || 0;
+  const used = last.offsetTop - list.offsetTop + last.offsetHeight;
+  add.hidden = list.clientHeight - paddingBottom - used >= CLASS_CELL_MIN_FREE_PX;
+}
+
+function updateClassCellAdds(grid) {
+  grid.querySelectorAll(".class-grid-cell").forEach(updateClassCellAdd);
+}
+
+// Saved as a synced preference so the page opens on whichever view was used
+// last.
+let calendarViewMode = window.getPreferences().calendarView === "byClass" ? "byClass" : "calendar";
+
+function initCalendarViewToggle() {
+  const container = document.getElementById("calendar-view-toggle");
+  if (!container) return;
+  const thumb = document.createElement("span");
+  thumb.className = "segmented-thumb";
+  container.insertBefore(thumb, container.firstChild);
+  const options = container.querySelectorAll(".segmented-option");
+  const markActive = () =>
+    options.forEach((btn) => btn.classList.toggle("segmented-option--active", btn.dataset.value === calendarViewMode));
+  markActive();
+  const placeThumb = (animate) => {
+    const active = container.querySelector(".segmented-option--active");
+    if (!active) return;
+    if (!animate) thumb.style.transition = "none";
+    // offsetLeft/Width round to whole pixels, and the uneven split left the rim
+    // beside the thumb wider.
+    const optionRect = active.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    thumb.style.left = `${optionRect.left - containerRect.left - container.clientLeft}px`;
+    thumb.style.width = `${optionRect.width}px`;
+    if (!animate) {
+      void thumb.offsetWidth;  // so the "none" transition applies first
+      thumb.style.transition = "";
+    }
+  };
+  options.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("segmented-option--active")) return;
+      calendarViewMode = btn.dataset.value;
+      markActive();
+      placeThumb(true);
+      window.setPreference("calendarView", calendarViewMode);
+      if (myCoursesRefreshCalendar) myCoursesRefreshCalendar(false);
+    });
+  });
+  placeThumb(false);
+  window.addEventListener("app:preferences-changed", () => {
+    const saved = window.getPreferences().calendarView === "byClass" ? "byClass" : "calendar";
+    if (saved === calendarViewMode) return;
+    calendarViewMode = saved;
+    markActive();
+    placeThumb(true);
+    if (myCoursesRefreshCalendar) myCoursesRefreshCalendar(false);
+  });
+  if (document.fonts) document.fonts.ready.then(() => placeThumb(false));
+  if (window.ResizeObserver) new ResizeObserver(() => placeThumb(false)).observe(container);
+}
 
 function initMyCoursesPage() {
   myCoursesRefreshCalendar = initAssessmentCalendar();
   initAddToCalendarPopup(myCoursesRefreshCalendar);
+  initCalendarViewToggle();
+  // The Calendar is empty without courses, so it opens My Courses to fill them
+  // in.
+  if (myCoursesRefreshCalendar && loadPeriods().every((name) => !(name || "").trim())) {
+    openMyCoursesModal();
+  }
 }
 
-// Shows a row of division circles next to a period's input once its
-// typed text exactly matches a course that has them; removes them
-// otherwise, correcting a stale division left over from a previously
-// different course in this slot. commit=false (while typing) only ever
-// updates what's shown, never what's saved — a keystroke mid-edit
-// briefly not matching any catalog course shouldn't wipe an
-// already-picked division. commit=true (blur, a real selection, clear)
-// is when a stale division actually gets corrected/persisted.
+// commit=false (typing) only updates what's shown, so a half-typed name doesn't
+// wipe a picked division. commit=true is when a stale division is corrected and
+// saved.
 function syncDivisionPicker(input, index, commit = true) {
   const row = input.closest(".schedule-row");
   const picker = row.querySelector(".division-picker");
@@ -2090,16 +2617,29 @@ function syncDivisionPicker(input, index, commit = true) {
   }
 
   picker.hidden = false;
-  picker.innerHTML = "";
 
-  // Absolutely positioned in CSS, so adding it never shifts the circles
-  // below — only shown while nothing's been picked yet.
-  if (!current) {
-    const label = document.createElement("span");
-    label.className = "division-picker-label";
-    label.textContent = "Select division";
-    picker.appendChild(label);
+  // Absolutely positioned, so adding it never shifts the circles.
+  const syncLabel = () => {
+    const label = picker.querySelector(".division-picker-label");
+    if (current && label) label.remove();
+    if (!current && !label) {
+      const newLabel = document.createElement("span");
+      newLabel.className = "division-picker-label";
+      newLabel.textContent = "Select division";
+      picker.prepend(newLabel);
+    }
+  };
+
+  // Reused rather than replaced, so the selection's color transition plays.
+  const existing = [...picker.querySelectorAll(".division-option")];
+  if (existing.length === divisions.length && existing.every((btn, i) => btn.textContent === divisions[i])) {
+    existing.forEach((btn) => btn.classList.toggle("division-option--selected", btn.textContent === current));
+    syncLabel();
+    return;
   }
+
+  picker.innerHTML = "";
+  syncLabel();
 
   divisions.forEach((division) => {
     const btn = document.createElement("button");
@@ -2107,9 +2647,8 @@ function syncDivisionPicker(input, index, commit = true) {
     btn.className = "division-option";
     btn.textContent = division;
     btn.classList.toggle("division-option--selected", division === current);
-    // mousedown + preventDefault — clicking would otherwise blur the
-    // course-name input first, whose blur handler rebuilds this whole
-    // picker, destroying this button before its click fires.
+    // mousedown, not click: blurring the course input first would rebuild this
+    // picker before the click fires.
     btn.addEventListener("mousedown", (event) => {
       event.preventDefault();
     });
@@ -2117,10 +2656,7 @@ function syncDivisionPicker(input, index, commit = true) {
       const all = loadPeriodDivisions();
       all[index] = division;
       savePeriodDivisions(all);
-      // Rebuilt rather than patched — the "Select your division" label
-      // above also needs to disappear.
       syncDivisionPicker(input, index);
-      // A real, finished choice — same as any other commit.
       if (myCoursesRefreshCalendar) myCoursesRefreshCalendar(true, true);
       refreshDomainClasses();
     });
@@ -2128,46 +2664,31 @@ function syncDivisionPicker(input, index, commit = true) {
   });
 }
 
-// Only defined on a page that also loads domain.js — a no-op everywhere
-// else (Calendar, GPA). animate=true fades the change in/out the same way
-// the manual hide button on Domain does (see fadeInCard/fadeOutAndRemoveCard
-// there), since unlike the page's own first render, this is a live edit
-// happening while Domain might already be on screen.
+// Only defined where domain.js is loaded. Animated, since this is a live edit
+// while Domain may be on screen.
 function refreshDomainClasses() {
   if (typeof renderDomainClasses === "function") renderDomainClasses(true);
 }
 
-// .schedule-field grows to fill whatever room .show-course-btn frees up
-// when it disappears (see syncShowCourseButton) — flex: 1 does that
-// instantly on its own, but a brief transition reads better than a snap.
-// Classic FLIP: measure the width before removing the button, lock it in
-// place with an explicit flex-basis, then transition to the new natural
-// width once the button's actually gone.
+// flex: 1 would snap to the new width; a FLIP transition reads better.
 function animateFieldGrowth(field, hideBtn) {
   const startWidth = field.getBoundingClientRect().width;
   hideBtn();
   const endWidth = field.getBoundingClientRect().width;
 
-  // getBoundingClientRect measures the border box (content + padding), but
-  // flex-basis sizes .schedule-field's own content box by default (its
-  // padding: 6px 10px isn't included) — locking flex-basis to those
-  // measured widths without this would render ~20px too wide the entire
-  // time (its own left+right padding), overshooting past the real end
-  // width until the lock is released, worse the less room .show-course-btn
-  // itself was actually taking (e.g. a row with a division picker too).
+  // The measured widths include padding, so flex-basis must too, or it renders
+  // about 20px too wide until released.
   field.style.boxSizing = "border-box";
   field.style.transition = "none";
   field.style.flex = `0 0 ${startWidth}px`;
-  void field.offsetWidth; // force reflow so the starting width above takes effect first
+  void field.offsetWidth;  // so the starting width applies first
   field.style.transition = "flex-basis 250ms ease";
   field.style.flex = `0 0 ${endWidth}px`;
 
   field.addEventListener(
     "transitionend",
     () => {
-      // Back to the CSS class's own flex: 1 and content-box sizing — this
-      // was only ever a temporary lock for the animation, not a permanent
-      // fixed width.
+      // Only a temporary lock for the animation.
       field.style.transition = "";
       field.style.flex = "";
       field.style.boxSizing = "";
@@ -2176,9 +2697,7 @@ function animateFieldGrowth(field, hideBtn) {
   );
 }
 
-// Shows the show-course button next to a period whenever the course
-// currently typed there has at least one card hidden on Domain — a
-// combo course can have either of its two cards hidden independently.
+// A combo course can have either of its cards hidden.
 function syncShowCourseButton(input, index) {
   const row = input.closest(".schedule-row");
   const btn = row.querySelector(".show-course-btn");
@@ -2195,8 +2714,7 @@ function syncShowCourseButton(input, index) {
   const icon = btn.querySelector(".show-course-icon");
   if (icon && !icon.src) icon.src = uiIconPath("show.png");
 
-  // Re-bound on every sync so it always un-hides whatever's actually
-  // relevant right now, since the course in this slot may have changed.
+  // Re-bound on every sync since the course in this slot may have changed.
   btn.onclick = () => {
     saveHiddenCourses(loadHiddenCourses().filter((cardName) => !relevant.includes(cardName)));
     animateFieldGrowth(row.querySelector(".schedule-field"), () => {
@@ -2207,17 +2725,12 @@ function syncShowCourseButton(input, index) {
   };
 }
 
-// Wires every .schedule-input inside a freshly-built My Courses popup —
-// loads its saved value, sets up the catalog dropdown/division
-// picker/show-course button, and persists on input/change/blur/clear.
-// Split out from openMyCoursesModal below since the popup's markup is
-// rebuilt from scratch on every open (see buildScheduleRowHTML).
+// Separate from openMyCoursesModal because the popup's markup is rebuilt on
+// every open.
 function wireScheduleRows(overlay) {
   const periods = loadPeriods();
   const firstPeriodInput = overlay.querySelector('.schedule-input[data-period="0"]');
 
-  // Only Period 1 ever gets the placeholder, and only while every period is
-  // still empty — once any course is entered anywhere, it goes away.
   const updateFirstPeriodPlaceholder = () => {
     if (!firstPeriodInput) return;
     const allEmpty = loadPeriods().every((name) => !name || name.trim() === "");
@@ -2226,9 +2739,7 @@ function wireScheduleRows(overlay) {
   };
   const showingPlaceholder = updateFirstPeriodPlaceholder();
 
-  // The placeholder above only means anything if it's actually focused —
-  // auto-select it (nothing to select yet, but this also focuses the
-  // field) so the popup opens ready to type into immediately.
+  // Focused so the popup opens ready to type into.
   if (showingPlaceholder && firstPeriodInput) {
     firstPeriodInput.focus();
     firstPeriodInput.select();
@@ -2257,32 +2768,24 @@ function wireScheduleRows(overlay) {
       updateFirstPeriodPlaceholder();
       syncDivisionPicker(input, index, commit);
       syncShowCourseButton(input, index);
-      // Only on a finished edit (Enter, picking from the list, or leaving the
-      // field), not every keystroke: the calendar's pills and Course Colors
-      // would otherwise follow each half-typed name ("kore"), and a Domain
-      // card would fade out and in on every letter. null on any page without
-      // the calendar (e.g. Domain, GPA).
+      // Only on a finished edit: otherwise colors would follow every half-typed
+      // name and Domain cards would fade on every letter.
       if (!commit) return;
       if (myCoursesRefreshCalendar) myCoursesRefreshCalendar(true, true);
       refreshDomainClasses();
     };
-    // "input" (every keystroke) never commits a division correction.
-    // "change" and a direct blur both do.
     input.addEventListener("input", () => persist(false));
     input.addEventListener("change", () => persist(true));
 
-    // Only a real catalog course or a blank field is allowed to leave this
-    // cell. Anything else gets rejected back: cleared, refocused, and
-    // warned. This also covers Escape (see setupCourseDropdown's own
-    // handler, which just calls input.blur()).
+    // Only a real course or a blank may stay; anything else is cleared and
+    // warned. Covers Escape too, which just blurs.
     input.addEventListener("blur", () => {
       const name = input.value.trim();
       if (name !== "" && !findCourseCatalogEntry(name)) {
         showToast("The course you typed does not exist.");
         input.value = "";
         persist(true);
-        // Deferred so this wins over the browser's own in-progress focus
-        // transition, which could otherwise override a synchronous call.
+        // Deferred so it wins over the browser's own focus change in progress.
         setTimeout(() => input.focus(), 0);
         return;
       }
@@ -2297,13 +2800,8 @@ function wireScheduleRows(overlay) {
   });
 }
 
-// --- My Courses popup ---
-// Opened from the account-menu dropdown (see auth.js), on whichever page
-// the user happens to be on — Calendar, Domain, or GPA (the only pages
-// that load this file). Built fresh each time, same as Settings/Login Keys
-// (see settings-modal.js), rather than toggled on static markup, since
-// there's no longer a page that's guaranteed to already have these rows
-// sitting in its DOM.
+// Built fresh on each open: it can open on any page, so no page has its rows in
+// its markup.
 
 let myCoursesModalOverlay = null;
 
@@ -2324,14 +2822,13 @@ function buildScheduleRowHTML(index) {
   `;
 }
 
-function openMyCoursesModal() {
-  // One popup at a time — mirrors closeMyCoursesModal's own guarded call
-  // from settings-modal.js.
+// focusPeriod opens with that period's course selected; Domain's class names
+// use it.
+function openMyCoursesModal(focusPeriod = null) {
+  // One popup at a time.
   if (typeof closeSettingsModal === "function") closeSettingsModal();
   closeMyCoursesModal();
 
-  // A-day (Periods 1-4) / B-day (Periods 5-8) split — same divider as the
-  // Settings popup's own rows (see .settings-divider).
   const rowsHTML = Array.from({ length: 8 }, (_, index) => {
     const divider = index === 4 ? `<div class="settings-divider"></div>` : "";
     return divider + buildScheduleRowHTML(index);
@@ -2356,9 +2853,17 @@ function openMyCoursesModal() {
   });
 
   const card = overlay.querySelector(".settings-modal-card");
-  void card.offsetWidth; // force reflow so the entrance transition below actually plays
+  void card.offsetWidth;  // so the entrance transitions
   card.classList.add("settings-modal-card--visible");
   overlay.classList.add("settings-modal-overlay--visible");
+
+  if (focusPeriod !== null) {
+    const input = overlay.querySelector(`.schedule-input[data-period="${focusPeriod}"]`);
+    if (input) {
+      input.focus({ preventScroll: true });
+      input.select();
+    }
+  }
 }
 
 function closeMyCoursesModal() {
@@ -2366,10 +2871,8 @@ function closeMyCoursesModal() {
   const closingOverlay = myCoursesModalOverlay;
   const card = closingOverlay.querySelector(".settings-modal-card");
   myCoursesModalOverlay = null;
-  // Course-suggestion lists live on <body> while the popup is open (see
-  // setupCourseDropdown).
+  // Course suggestion lists live on <body> while the popup is open.
   document.querySelectorAll("body > .schedule-dropdown--floating").forEach((el) => el.remove());
-  // Reverses the entrance transition above.
   card.classList.remove("settings-modal-card--visible");
   closingOverlay.classList.remove("settings-modal-overlay--visible");
   setTimeout(() => closingOverlay.remove(), 250);

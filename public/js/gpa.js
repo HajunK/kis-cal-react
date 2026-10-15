@@ -1,6 +1,3 @@
-// GPA page: the class list (grade picker, link/unlink-independent letter
-// badges), unweighted/weighted GPA calculation, and "Paste from Domain
-// Tab".
 
 function loadDomainSnapshot() {
   return appData.domainSnapshot;
@@ -28,9 +25,8 @@ function loadGpaClasses() {
 
 const GPA_DROPDOWN_ANIMATION_MS = 180;
 
-// Shrinks back into the badge before emptying, the reverse of
-// openGpaDropdown. The pending empty is cancelled if the dropdown reopens
-// mid-close, so it can't wipe out the new options.
+// The pending empty is cancelled if it reopens mid-close, so it can't wipe the
+// new options.
 function closeAllGpaDropdowns() {
   document.querySelectorAll(".gpa-grade-dropdown--visible").forEach((dropdown) => {
     dropdown.classList.remove("gpa-grade-dropdown--visible");
@@ -43,12 +39,10 @@ function closeAllGpaDropdowns() {
 
 function openGpaDropdown(dropdown) {
   clearTimeout(dropdown._closeTimer);
-  void dropdown.offsetWidth; // force reflow so the entrance transition below actually plays
+  void dropdown.offsetWidth;  // so the entrance transitions
   dropdown.classList.add("gpa-grade-dropdown--visible");
 }
 
-// Builds either a real letter-grade icon or, if this class has no grade
-// yet, a hollow gray-outlined ring.
 function createGpaBadgeContent(slug, label) {
   if (!slug) {
     const span = document.createElement("span");
@@ -74,19 +68,15 @@ function setGpaRowGrade(row, slug, label) {
 const GPA_BADGE_TRANSITION_MS = 180;
 const GPA_BADGE_FLIP_HALF_MS = 130;
 
-// Picking or clearing a grade: the badge turns edge-on, swaps to the new grade
-// (or the empty ring) while it's invisible side-on, then turns back to face
-// front, like a flipped coin.
+// The grade swaps while the badge is edge-on and invisible, like a coin flip.
 function flipGpaBadge(row, slug, label) {
   const btn = row.querySelector(".gpa-grade-badge-btn");
   if (!btn.animate) {
     setGpaRowGrade(row, slug, label);
     return;
   }
-  // A second pick mid-flip starts over from wherever the badge is now.
   if (btn._gpaFlip) btn._gpaFlip.cancel();
-  // Recorded now rather than at the swap, so saving right after the pick
-  // stores the new grade.
+  // Recorded now so a save right after the pick stores the new grade.
   row.dataset.slug = slug || "";
   row.dataset.label = label || "";
   row.classList.add("gpa-class-row--flipping");
@@ -106,14 +96,11 @@ function flipGpaBadge(row, slug, label) {
   };
 }
 
-// Scroll-driven grade change: crossfades the single badge icon into the
-// next tier, sliding up or down depending on direction.
 function animateGpaBadgeChange(row, slug, label, direction) {
   const btn = row.querySelector(".gpa-grade-badge-btn");
 
-  // Fast scrolling can call this again before the previous transition's
-  // cleanup fires — cancel it and collapse down to just the still-mid-
-  // flight incoming icon, which becomes this call's starting point.
+  // Fast scrolling can call this before the last transition's cleanup; the
+  // incoming icon becomes the new starting point.
   if (btn._gpaBadgeCleanup) {
     clearTimeout(btn._gpaBadgeCleanup);
     btn._gpaBadgeCleanup = null;
@@ -126,8 +113,6 @@ function animateGpaBadgeChange(row, slug, label, direction) {
   row.dataset.slug = slug || "";
   row.dataset.label = label || "";
 
-  // direction: 1 = moved to a lower tier — the old icon exits upward
-  // while the new one enters from below. -1 is the mirror image.
   const exitY = direction > 0 ? "-10px" : "10px";
   const enterY = direction > 0 ? "10px" : "-10px";
 
@@ -138,14 +123,13 @@ function animateGpaBadgeChange(row, slug, label, direction) {
   newContent.style.transition = "none";
   btn.appendChild(newContent);
 
-  // Anchored to the exact same box as newContent — without inset:0 too,
-  // it drifts diagonally instead of exiting straight up/down.
+  // Without inset: 0 it drifts diagonally instead of straight up or down.
   if (oldContent) {
     oldContent.style.position = "absolute";
     oldContent.style.inset = "0";
   }
 
-  void btn.offsetWidth; // force reflow so the "none" transition above takes effect first
+  void btn.offsetWidth;  // so the "none" transition applies first
 
   const easing = `transform ${GPA_BADGE_TRANSITION_MS}ms ease, opacity ${GPA_BADGE_TRANSITION_MS}ms ease`;
   newContent.style.transition = easing;
@@ -171,8 +155,8 @@ function animateGpaBadgeChange(row, slug, label, direction) {
 
 function renderGpaDropdownOptions(dropdown, selectedSlug, onSelect) {
   dropdown.innerHTML = "";
-  // The grid scrolls inside the dropdown rather than being the dropdown, so it
-  // doesn't clip the pointer that sticks out of the dropdown's edge.
+  // The grid scrolls inside the dropdown so the pointer sticking out of its
+  // edge isn't clipped.
   const grid = document.createElement("ul");
   grid.className = "gpa-grade-grid";
 
@@ -200,7 +184,7 @@ function renderGpaDropdownOptions(dropdown, selectedSlug, onSelect) {
 
   dropdown.appendChild(grid);
 
-  // A grade below the fold would otherwise open with its ring out of sight.
+  // Otherwise a grade below the fold would open out of sight.
   const selected = grid.querySelector(".gpa-grade-option--selected");
   if (selected) {
     const item = selected.parentElement;
@@ -220,10 +204,8 @@ function persistGpaClasses() {
   pushDataToCloud();
 }
 
-// False until the class list's own first build finishes — see
-// renderGpaClassList. Kept "instant" (no animation at all) up to that
-// point, since it's a page-load restore, not a live change; "blur" after,
-// for a summary number turning from blank to real live.
+// Restoring on page load shouldn't animate; only live changes after the first
+// build do.
 let gpaSettled = false;
 
 function recalculateGpa() {
@@ -239,15 +221,14 @@ function recalculateGpa() {
     const name = row.querySelector(".gpa-class-name").textContent;
     const course = findCourseCatalogEntry(name);
     const isAp = course ? course.ap : false;
-    // Whether the student is taking an AP course decides the display mode,
-    // regardless of whether that course has a grade entered yet.
+    // Taking an AP course decides the display, graded or not.
     if (isAp) hasAp = true;
 
     const points = GPA_SCALE[row.dataset.slug];
     if (points === undefined) return;
 
-    // Most courses are full (1.0) credit; catalog weight can lower that
-    // (e.g. 0.5 for each half of a combo course) or zero it out (Lunch).
+    // Catalog weight can lower credit (half for each part of a combo course) or
+    // zero it (Lunch).
     const credit = course ? course.weight : 1;
     if (credit === 0) return;
 
@@ -259,7 +240,6 @@ function recalculateGpa() {
   const unweightedText = creditTotal > 0 ? roundToFourDecimals(unweightedSum / creditTotal) : "-";
   const weightedText = creditTotal > 0 ? roundToFourDecimals(weightedSum / creditTotal) : "-";
 
-  // At least one AP course -> show Unweighted and Weighted side by side.
   const splitItems = document.querySelectorAll(".gpa-summary-item:not(.gpa-summary-item--combined)");
   const combinedItem = document.querySelector(".gpa-summary-item--combined");
 
@@ -280,8 +260,6 @@ function recalculateGpa() {
   }
 }
 
-// Rebuilds the GPA class list from `classes` ([{ name, slug, label }]) —
-// each row's badge opens a row of grade icons to click-select.
 function renderGpaClassList(classes) {
   const list = document.querySelector(".gpa-class-list");
   if (!list) return;
@@ -302,8 +280,6 @@ function renderGpaClassList(classes) {
     const dropdown = document.createElement("div");
     dropdown.className = "gpa-grade-dropdown";
 
-    // Only shown (via CSS, hover + a non-empty data-slug on the row) while
-    // hovering a row that currently has a grade set.
     const clearBtn = document.createElement("button");
     clearBtn.type = "button";
     clearBtn.className = "gpa-clear-btn";
@@ -315,8 +291,8 @@ function renderGpaClassList(classes) {
       closeAllGpaDropdowns();
       persistGpaClasses();
       recalculateGpa();
-      // cleared: true — doesn't count toward hiding the "click or scroll"
-      // instructions (see initGpaPage), unlike actually setting a grade.
+      // Clearing doesn't count toward hiding the instructions; only picking a
+      // grade does.
       list.dispatchEvent(new CustomEvent("gpa-grade-changed", { bubbles: true, detail: { cleared: true } }));
     });
 
@@ -344,10 +320,8 @@ function renderGpaClassList(classes) {
       openGpaDropdown(dropdown);
     });
 
-    // Scroll on the badge to step through tiers one at a time. Trackpads
-    // fire many tiny wheel events per gesture — accumulate deltaY and only
-    // step once it crosses a threshold, then a short cooldown, so one
-    // flick moves one tier instead of several.
+    // Trackpads fire many tiny events per gesture; the threshold and cooldown
+    // make one flick move one tier.
     let wheelAccum = 0;
     let wheelCooldownUntil = 0;
     const WHEEL_STEP_THRESHOLD = 40;
@@ -367,7 +341,6 @@ function renderGpaClassList(classes) {
         wheelAccum = 0;
         wheelCooldownUntil = now + WHEEL_COOLDOWN_MS;
 
-        // No current grade: land on A+ regardless of direction.
         const currentIndex = row.dataset.slug ? GRADE_SCALE.findIndex((tier) => tier.slug === row.dataset.slug) : -1;
         const nextIndex =
           currentIndex === -1 ? 0 : Math.min(Math.max(currentIndex + direction, 0), GRADE_SCALE.length - 1);
@@ -387,8 +360,8 @@ function renderGpaClassList(classes) {
   gpaSettled = true;
 }
 
-// Same names/order as My Courses, except a combo course (e.g. "Korean")
-// expands into its parts (e.g. "Korean Lang", "Korean SS").
+// Combo courses are split into their parts here, since each part has its own
+// grade.
 function currentClassNames() {
   const names = loadPeriods()
     .map((name) => (name || "").trim())
@@ -396,9 +369,7 @@ function currentClassNames() {
   return expandCourseNames(names);
 }
 
-// Each class's grade comes from whatever's already saved for it (so a
-// manual override survives a reload), falling back to the Domain
-// snapshot, falling back to ungraded.
+// A saved grade wins so a manual override survives a reload.
 function buildGpaClasses() {
   const domainSnapshot = loadDomainSnapshot();
   const existing = loadGpaClasses();
@@ -412,12 +383,10 @@ function buildGpaClasses() {
   });
 }
 
-// Collapses the "Click or scroll..." instructions line down to nothing
-// before actually hiding it.
 function hideGpaClassesDescription(el) {
   const startHeight = el.getBoundingClientRect().height;
   el.style.height = `${startHeight}px`;
-  void el.offsetHeight; // force reflow so the height above takes effect before transitioning
+  void el.offsetHeight;  // so the height applies before transitioning
   el.style.transition = "height 0.25s ease, margin-bottom 0.25s ease, opacity 0.25s ease";
   el.style.height = "0px";
   el.style.marginBottom = "0px";
@@ -425,8 +394,7 @@ function hideGpaClassesDescription(el) {
   el.addEventListener("transitionend", () => { el.hidden = true; }, { once: true });
 }
 
-// GPA page: build the class list from appData and wire up the paste
-// button. A no-op on any other page (no .gpa-class-list there).
+// A no-op on other pages.
 function initGpaPage() {
   const gpaClassList = document.querySelector(".gpa-class-list");
   if (!gpaClassList) return;
@@ -436,9 +404,7 @@ function initGpaPage() {
 
   document.addEventListener("click", closeAllGpaDropdowns);
 
-  // "Click or scroll on the circle to set the letter grade" — hidden for
-  // good the first time a grade gets picked from the dropdown. Clearing or
-  // scrolling doesn't count. In-memory only, so it's back next page load.
+  // In memory only, so the instructions return on the next page load.
   const gpaDescription = document.querySelector(".gpa-classes-description");
   if (gpaDescription) {
     const onGpaGradeChanged = (event) => {
@@ -449,10 +415,8 @@ function initGpaPage() {
     document.addEventListener("gpa-grade-changed", onGpaGradeChanged);
   }
 
-  // "Paste from Domain Tab" re-syncs every class's grade to whatever
-  // Domain currently shows. appData.domainSnapshot could be stale (edited
-  // in another tab since), so this fetches Firestore directly at click
-  // time to guarantee the actual latest scores.
+  // appData.domainSnapshot could be stale (edited in another tab), so this
+  // fetches the latest from Firestore.
   const gpaPasteBtn = document.querySelector(".gpa-paste-btn");
   if (gpaPasteBtn) {
     const pasteBtnDefaultLabel = gpaPasteBtn.textContent;
@@ -468,8 +432,6 @@ function initGpaPage() {
       gpaPasteBtn.appendChild(document.createTextNode("Pasting letter grades..."));
     };
 
-    // "Successfully pasted" replaces the button label once a paste
-    // finishes, and stays until a grade actually changes.
     const resetPasteLabel = () => {
       gpaPasteBtn.textContent = pasteBtnDefaultLabel;
       gpaPasteBtn.disabled = false;
@@ -478,9 +440,8 @@ function initGpaPage() {
 
     const PASTE_FLIP_STAGGER_MS = 70;
 
-    // Rebuilt showing each class's old grade, then flipped to the pasted one
-    // row by row, top to bottom. The grades themselves (and the GPA) switch
-    // over at once; only the badges trail behind.
+    // The grades and GPA switch at once; only the badges trail behind, for
+    // effect.
     const applyDomainSnapshotPaste = (domainSnapshot) => {
       const previous = new Map(
         Array.from(document.querySelectorAll(".gpa-class-row")).map((row) => [
@@ -504,8 +465,8 @@ function initGpaPage() {
       recalculateGpa();
     };
 
-    // Whichever takes longer wins, so the spinner shows for at least
-    // MIN_PASTE_LOADING_MS but no longer once the real work is done.
+    // The spinner shows for at least MIN_PASTE_LOADING_MS so it doesn't just
+    // flicker.
     const finishPaste = (startedAt, domainSnapshot) => {
       const remaining = MIN_PASTE_LOADING_MS - (Date.now() - startedAt);
       setTimeout(
@@ -513,7 +474,8 @@ function initGpaPage() {
           applyDomainSnapshotPaste(domainSnapshot);
           setPasteLoading(false);
           gpaPasteBtn.textContent = "Successfully Pasted!";
-          // Stays disabled until a grade actually changes (resetPasteLabel).
+          // Re-enabled once a grade changes, since pasting again would do
+          // nothing.
           gpaPasteBtn.disabled = true;
         },
         Math.max(0, remaining)
@@ -533,22 +495,21 @@ function initGpaPage() {
         .firestore()
         .collection("users")
         .doc(currentUid)
-        // source: "server" — meant to guarantee the actual latest scores,
-        // so it can't settle for Firestore's local cache.
+        // Must be the latest, so the local cache won't do.
         .get({ source: "server" })
         .then((snapshot) => {
           const cloud = snapshot.exists ? snapshot.data() : {};
           const fetchedLastModified = cloud.lastModified || 0;
 
-          // This read can race a write already in flight from another
-          // tab — only adopt it if not older than what's already known.
+          // This read can race a write from another tab; only use it if it
+          // isn't older.
           if (fetchedLastModified < (appData.lastModified || 0)) {
             finishPaste(startedAt, appData.domainSnapshot);
             return;
           }
 
-          // cloud.domainSnapshot is ciphertext — this is a direct
-          // Firestore fetch, not the boot.js path that normally decrypts it.
+          // A direct fetch gets ciphertext, unlike the boot path, which
+          // decrypts.
           return getDeviceKey(currentUid)
             .then((key) => decryptValue(key, cloud.domainSnapshot, []))
             .then((domainSnapshot) => {

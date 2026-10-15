@@ -134,7 +134,7 @@
 
 /* In dark mode the page's background is darker than the card, so a fill in
    it reads as a hole; the card's lighter gray reads as a raised button. The
-   text is a near-white gray (the Show on Calendar filters' text color), not
+   text is a near-white gray (the calendar Filters' text color), not
    the tabs' color, which is pure white here and too loud. */
 :root[data-theme="dark"] .gpa-paste-btn {
   color: var(--color-filter-text);
@@ -235,7 +235,7 @@
   transform-origin: -16px 50%;
   opacity: 0;
   transform: translateY(-50%) scale(0.85);
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition: transform var(--popup-spring-ms) var(--ease-popup-spring), opacity 0.18s ease;
   /* Same outline-style shadow as the Calendar tab's color picker; drop-shadow
      so the pointer shares the panel's outline. */
   filter: drop-shadow(0 0 0.75px var(--color-popover-outline)) drop-shadow(0 0 2px var(--color-popover-outline));

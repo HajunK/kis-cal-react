@@ -1,7 +1,11 @@
 {
   "hosting": {
     "public": "public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "cleanUrls": true,
     "trailingSlash": false,
     "redirects": [
@@ -9,12 +13,52 @@
         "source": "/",
         "destination": "/domain",
         "type": 301
+      },
+      {
+        "source": "/my-courses",
+        "destination": "/calendar",
+        "type": 301
+      },
+      {
+        "source": "/my-courses.html",
+        "destination": "/calendar",
+        "type": 301
+      },
+      {
+        "source": "/suggestions",
+        "destination": "/assessments",
+        "type": 301
+      },
+      {
+        "source": "/suggestions.html",
+        "destination": "/assessments",
+        "type": 301
       }
     ],
     "rewrites": [
       {
         "source": "**",
         "destination": "/domain.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(png|jpg|jpeg|webp|svg|ico|woff2)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "max-age=86400"
+          }
+        ]
       }
     ]
   },

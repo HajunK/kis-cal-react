@@ -1,14 +1,7 @@
-// Settings & Login Keys popups — opened from the account-menu dropdown
-// (see auth.js), now that Settings is no longer its own tab/page (the old
-// standalone settings.html + settings.js have been deleted; this file is
-// that same preferences/segmented-control/toggle/danger-zone logic,
-// rebuilt to construct its markup fresh inside an overlay each time one
-// opens instead of assuming it's the whole page). Every helper here is
-// prefixed "sm" (Settings Modal) mostly out of habit from when this had
-// to stay visually distinct from settings.js's near-identical names.
+// The Settings and Login Keys popups, opened from the account menu (auth.js).
+// Their markup is built fresh each time one opens. The "sm" prefix keeps these
+// helpers' names apart from other pages' similar ones.
 
-// Swapped in on #copy-encryption-code-btn — the copy icon at rest, a
-// checkmark for 1.5s right after a successful copy.
 const SM_COPY_ICON = `
   <svg class="settings-copy-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2" />
@@ -34,8 +27,7 @@ function smInitSegmentedControl(container) {
     });
   });
 
-  // No animation on open — the thumb should just already be there, not
-  // slide in from the left edge.
+  // The thumb should already be in place on open, not slide in from the edge.
   smSyncSegmentedControl(container, false);
 }
 
@@ -55,7 +47,7 @@ function smSyncSegmentedControl(container, animate) {
   thumb.style.left = `${activeOption.offsetLeft}px`;
   thumb.style.width = `${activeOption.offsetWidth}px`;
   if (!animate) {
-    void thumb.offsetWidth; // force reflow so the "none" transition above takes effect first
+    void thumb.offsetWidth;  // so the "none" transition applies first
     thumb.style.transition = "";
   }
 }
@@ -72,14 +64,13 @@ function smSyncToggle(input, animate) {
   if (!animate && wrapper) wrapper.classList.add("toggle-switch--instant");
   input.checked = window.getPreferences()[input.dataset.pref] !== false;
   if (!animate && wrapper) {
-    void wrapper.offsetWidth; // force the instant state to commit before re-enabling the transition
+    void wrapper.offsetWidth;  // so the instant state applies before transitions return
     wrapper.classList.remove("toggle-switch--instant");
   }
 }
 
-// Keeps an open popup's own controls in sync if preferences change from
-// somewhere else (another tab/device) while it's open — a no-op the rest
-// of the time, since these selectors then match nothing.
+// Keeps an open popup's controls in step with changes made in another tab or
+// device.
 window.addEventListener("app:preferences-changed", () => {
   document
     .querySelectorAll(".settings-modal-overlay .segmented-control")
@@ -87,9 +78,7 @@ window.addEventListener("app:preferences-changed", () => {
   document.querySelectorAll(".settings-modal-overlay .settings-toggle").forEach((el) => smSyncToggle(el, true));
 });
 
-// Reuses shared.js's own showToast where it's already loaded (My Courses/
-// Domain/GPA); falls back to the same .signin-toast singleton pattern for
-// a page that doesn't load shared.js (Assessments, Suggestions).
+// Admin pages don't load shared.js, so its showToast isn't always there.
 let smToastEl = null;
 let smToastHideTimer = null;
 const SM_TOAST_VISIBLE_MS = 4000;
@@ -103,7 +92,7 @@ function smShowToast(message) {
     smToastEl = document.createElement("div");
     smToastEl.className = "signin-toast";
     document.body.appendChild(smToastEl);
-    void smToastEl.offsetWidth; // force reflow so the entrance below actually transitions
+    void smToastEl.offsetWidth;  // so the entrance transitions
   }
   smToastEl.textContent = message;
   smToastEl.classList.add("signin-toast--visible");
@@ -113,9 +102,8 @@ function smShowToast(message) {
   }, SM_TOAST_VISIBLE_MS);
 }
 
-// Rises from the bottom of the screen in place of window.confirm, for the
-// two destructive actions below. requireEmail additionally requires typing
-// the signed-in account's own email before the confirm button enables.
+// Replaces window.confirm for the two destructive actions. requireEmail makes
+// the user type their own email first.
 function smShowConfirmDialog({ title, message, confirmLabel, requireEmail }) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
@@ -144,7 +132,7 @@ function smShowConfirmDialog({ title, message, confirmLabel, requireEmail }) {
 
     document.body.appendChild(overlay);
     const dialog = overlay.querySelector(".confirm-dialog");
-    void dialog.offsetWidth; // force reflow so the entrance transition below actually plays
+    void dialog.offsetWidth;  // so the entrance transitions
     dialog.classList.add("confirm-dialog--visible");
     overlay.classList.add("confirm-dialog-overlay--visible");
 
@@ -193,9 +181,8 @@ function smCurrentUserOrWarn() {
   return user;
 }
 
-// Wipes everything except the doc's identity and email. A plain (non-merge)
-// .set() — merge:true would deep-merge nested map fields instead of
-// clearing them, leaving the old content untouched.
+// A plain (non-merge) set: merge would deep-merge nested maps and leave their
+// old contents behind.
 function smDeleteAllData() {
   const user = smCurrentUserOrWarn();
   if (!user) return;
@@ -217,9 +204,8 @@ function smDeleteAllData() {
     });
 }
 
-// Deletes the Firestore document first, then the Firebase Auth account
-// itself. Auth deletion needs a recent sign-in — if not, re-prompt via
-// Google sign-in and retry just that last step.
+// Deleting the Auth account needs a recent sign-in, so on failure it re-prompts
+// and retries just that step.
 function smDeleteAccount() {
   const user = smCurrentUserOrWarn();
   if (!user) return;
@@ -277,9 +263,6 @@ function smInitDangerActions() {
   });
 }
 
-// --- Shared overlay plumbing — one popup open at a time, same
-// entrance/exit animation convention as every other popup in the app. ---
-
 let settingsModalOverlay = null;
 
 function smBuildOverlay(cardHTML) {
@@ -299,7 +282,7 @@ function smRevealOverlay(overlay) {
     if (event.target === overlay) closeSettingsModal();
   });
 
-  void card.offsetWidth; // force reflow so the entrance transition below actually plays
+  void card.offsetWidth;  // so the entrance transitions
   card.classList.add("settings-modal-card--visible");
   overlay.classList.add("settings-modal-overlay--visible");
 }
@@ -309,7 +292,6 @@ function closeSettingsModal() {
   const closingOverlay = settingsModalOverlay;
   const card = closingOverlay.querySelector(".settings-modal-card");
   settingsModalOverlay = null;
-  // Reverses the entrance transition above.
   card.classList.remove("settings-modal-card--visible");
   closingOverlay.classList.remove("settings-modal-overlay--visible");
   setTimeout(() => closingOverlay.remove(), 250);
@@ -319,11 +301,15 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && settingsModalOverlay) closeSettingsModal();
 });
 
-// --- The two popups themselves ---
+// Only admins have tabs to hide.
+function smCurrentUserIsAdmin() {
+  const user = typeof auth !== "undefined" ? auth.currentUser : null;
+  return Boolean(user && typeof ADMIN_EMAILS !== "undefined" && ADMIN_EMAILS.includes(user.email));
+}
 
 function openSettingsModal() {
   closeSettingsModal();
-  // Only relevant on a page that also loaded my-courses.js (see auth.js).
+  // Only exists on pages that load my-courses.js.
   if (typeof closeMyCoursesModal === "function") closeMyCoursesModal();
 
   const overlay = smBuildOverlay(`
@@ -385,6 +371,20 @@ function openSettingsModal() {
         </label>
       </div>
 
+      ${
+        smCurrentUserIsAdmin()
+          ? `<div class="settings-divider"></div>
+
+      <div class="settings-row">
+        <span class="settings-label">Hide Admins Tabs</span>
+        <label class="toggle-switch">
+          <input type="checkbox" class="settings-toggle" data-pref="hideAdminTabs" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>`
+          : ""
+      }
+
       <div class="settings-divider"></div>
 
       <div class="settings-danger-row">
@@ -394,8 +394,7 @@ function openSettingsModal() {
     </div>
   `);
 
-  // The date-format options don't have fixed labels in the HTML — each
-  // button shows what *today's* date looks like in that format.
+  // Each option is labeled with today's date in that format.
   const today = new Date();
   overlay.querySelectorAll('.segmented-control[data-pref="dateFormat"] .segmented-option').forEach((btn) => {
     btn.textContent = window.formatPreferredDate(today, btn.dataset.value);
@@ -404,9 +403,8 @@ function openSettingsModal() {
   overlay.querySelectorAll(".segmented-control").forEach(smInitSegmentedControl);
   overlay.querySelectorAll(".settings-toggle").forEach(smInitToggle);
 
-  // The thumb's pixel position is measured against the fallback font
-  // (font-display: swap) — once Inter itself loads, character widths
-  // shift and the already-placed thumb no longer lines up.
+  // The thumb was measured with the fallback font; Inter's widths differ once
+  // it loads.
   if (document.fonts) {
     document.fonts.ready.then(() => {
       overlay.querySelectorAll(".segmented-control").forEach((el) => smSyncSegmentedControl(el, false));
@@ -474,9 +472,8 @@ function openLoginKeysModal() {
       .firestore()
       .collection("users")
       .doc(user.uid)
-      // source: "server" — a plain .get() right after sign-in can be
-      // satisfied from Firestore's local cache before the encrypted
-      // fields have synced down, wrongly skipping the decryption prompt.
+      // A plain .get() right after sign-in can come from the local cache before
+      // the encrypted fields sync, wrongly skipping the decryption prompt.
       .get({ source: "server" })
       .then((snapshot) => resolveDeviceKeyForBoot(user.uid, snapshot.exists ? snapshot.data() : {}))
       .then(() => {

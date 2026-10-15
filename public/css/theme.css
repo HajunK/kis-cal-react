@@ -9,6 +9,8 @@
   --color-gray-dark: #828282;
   --color-gray-light: #c3c9d6;
   --color-gray-lighter: #eeeeee;
+  /* Every grade circle's fill while Privacy Blur hides the grades. */
+  --blurred-circle-bg: #6b7280;
 
   /* The light theme's dark-blue; dark mode sets its own (below). */
   --color-accent: var(--color-dark-blue);
@@ -83,6 +85,9 @@
   --color-gray-dark: #bababa;
   --color-gray-light: #808080;
   --color-gray-lighter: #464646;
+  /* The same cool slate a step lighter, so the circles still stand off the
+     #363636 cards. */
+  --blurred-circle-bg: #6b7280;
 
   /* Its own blue here, a touch brighter than dark mode's --color-dark-blue,
      rather than following it as the light theme's does. */

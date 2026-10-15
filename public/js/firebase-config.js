@@ -1,6 +1,5 @@
-// Firebase project config. These values are public identifiers meant to
-// ship in client-side code (not secrets) — access is controlled by
-// Firebase Security Rules, not by hiding this file.
+// These values are public identifiers, not secrets: access is enforced by
+// Firebase Security Rules.
 const firebaseConfig = {
   apiKey: "AIzaSyC2SPEQKcCtKhHazv9YOOYWOXXNB33EmdI",
   authDomain: "kisj-grade-calculator.firebaseapp.com",

@@ -39,6 +39,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // When each school-wide collection last changed (see bumpCacheVersion in
+    // assessments-admin.js): read by every page load instead of the whole
+    // collections, which are fetched only when this says they've changed.
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Assessments students have added themselves via My Courses' "Add
     // Missing Assessment" (see addedAssessments under users/{userId} above)
     // but that aren't yet in the admin-scheduled assessments collection —
@@ -55,12 +63,12 @@ service cloud.firestore {
     match /suggested/{suggestionId} {
       allow read: if true;
       allow create: if request.auth != null
-        && request.resource.data.type in ['Summative', 'Formative']
+        && request.resource.data.type in ['Summative', 'Formative', 'Reassessment']
         && request.resource.data.date is string
         && request.resource.data.courseName is string
         && request.resource.data.emails.hasOnly([request.auth.token.email]);
       allow update: if request.auth != null
-        && request.resource.data.type in ['Summative', 'Formative']
+        && request.resource.data.type in ['Summative', 'Formative', 'Reassessment']
         && request.resource.data.date is string
         && request.resource.data.courseName is string
         && request.resource.data.emails.hasOnly(resource.data.emails.concat([request.auth.token.email]));

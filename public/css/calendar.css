@@ -17,12 +17,22 @@
   display: none;
 }
 
+/* The calendar runs edge to edge: flush against the tab bar above, the
+   window's left edge and its bottom. Only the side panel keeps a margin, on
+   the right. */
+/* 16px down from the tab bar, as Domain's cards are (.classes-container). */
+.page-content--calendar {
+  --cal-top-gap: 16px;
+  padding: var(--cal-top-gap) 48px 0 0;
+}
+
 .my-courses-calendar {
-  /* Cell height is what's left below the tab bar and page padding after the
-     weekday strip and 3 row gaps, split over 4 rows. Floored so a short window
-     scrolls instead of crushing rows; width follows from it. */
+  /* Cell height is what's left below the tab bar after the weekday strip and
+     4 row gaps, split over 4 rows. Floored so a short window
+     scrolls instead of crushing rows. The calendar takes all the width the
+     side panel leaves, its columns sharing it evenly. */
   --cal-label-h: 24px;
-  --cal-cell-h: max(90px, calc((100vh - 71px - 64px - var(--cal-label-h) - 3px) / 4));
+  --cal-cell-h: max(90px, calc((100vh - var(--tab-bar-h) - var(--cal-top-gap, 0px) - var(--cal-label-h) - 4px) / 4));
   flex: none;
   display: flex;
   gap: 36px;
@@ -32,12 +42,11 @@
   display: none;
 }
 
+/* Square: it meets the tab bar and the window's edges. */
 .my-courses-calendar-box {
-  flex: none;
-  width: fit-content;
+  flex: 1;
+  min-width: 0;
   background: var(--color-surface);
-  border-radius: calc(20px * var(--squircle-scale));
-  corner-shape: squircle;
   overflow: hidden;
   box-shadow: var(--shadow-card);
 }
@@ -154,11 +163,11 @@
   font-weight: 700;
 }
 
-/* Inverse of today's colors, so it stands apart on the selected day's solid
-   blue. */
+/* On the selected day's solid blue, today's circle turns the card's color
+   with the number in that same blue. */
 .assessment-calendar-day--selected .assessment-calendar-day-number--today {
   background: var(--color-surface);
-  color: var(--color-tab-accent);
+  color: var(--color-accent);
 }
 
 .assessment-calendar-day--selected {
@@ -242,38 +251,465 @@
 
 /* gap: 1px over this gray background reads as thin gridlines. */
 .assessment-calendar-weeks {
-  /* Height comes from --cal-cell-h and width is 3/4 of it, not the reverse. The
-     top row adds the weekday strip so labels never eat into a date cell. A busy
-     day scrolls inside its cell rather than stretching the row. */
+  /* Height comes from --cal-cell-h; the columns split the box's width. The
+     weekday strip sits above four weeks' rows; earlier weeks scroll in from
+     above, snapping so a week always lines up under the strip. A busy day
+     scrolls inside its cell rather than stretching the row. */
   display: grid;
-  grid-template-columns: repeat(7, calc(var(--cal-cell-h) * 0.75));
-  grid-template-rows: calc(var(--cal-cell-h) + var(--cal-label-h)) repeat(3, var(--cal-cell-h));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: var(--cal-label-h);
+  grid-auto-rows: var(--cal-cell-h);
   gap: 1px;
+  height: calc(var(--cal-label-h) + 4 * var(--cal-cell-h) + 4px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  /* Snaps a week to just under the weekday strip, not behind it. */
+  scroll-padding-top: calc(var(--cal-label-h) + 1px);
   background: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light));
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-scrollbar-thumb) transparent;
+  /* No scrollbar: it would take width from the columns on some systems. */
+  scrollbar-width: none;
 }
 
 .assessment-calendar-weeks::-webkit-scrollbar {
-  width: 4px;
-}
-
-.assessment-calendar-weeks::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.assessment-calendar-weeks::-webkit-scrollbar-thumb {
-  background: var(--color-scrollbar-thumb);
-  border-radius: 4px;
+  display: none;
 }
 
 .assessment-calendar-weeks[hidden] {
   display: none;
 }
 
+/* The By Class view (see renderClassGrid): a row per course, a column per
+   day, the same size as the month grid and drawn the same way, its 1px gaps
+   between rows over a gray background reading as gridlines. The columns are set in JS.
+   The course names stay at the left and the dates at the top while it
+   scrolls either way. */
+.class-grid {
+  --class-grid-course-w: 168px;
+  --class-grid-head-h: 52px;
+  display: grid;
+  /* Gaps between the rows only: the lines between days are fainter (see
+     .class-grid-cell). */
+  gap: 1px 0;
+  height: calc(var(--cal-label-h) + 4 * var(--cal-cell-h) + 4px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light));
+  scrollbar-width: none;
+}
+
+.class-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.class-grid[hidden] {
+  display: none;
+}
+
+.class-grid-corner,
+.class-grid-head,
+.class-grid-course,
+.class-grid-cell {
+  background: var(--color-surface);
+}
+
+/* The month of the leftmost day in view (see renderClassGrid), set like the
+   day numbers beside it and on their line (6px up from the bottom, where
+   the date row's 24px numbers sit), with Go to Today at the right. */
+.class-grid-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px 6px 14px;
+}
+
+.class-grid-corner-month {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--color-text-primary);
+}
+
+/* A pill outline, the same height as the day numbers, its text the same
+   gray as its edge. Fades in only while today is scrolled out of view (see
+   renderClassGrid). */
+.class-grid-today-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  /* GPA's Paste from Domain Tab button, smaller: filled with the page's
+     background color, not outlined, in the tabs' near-black. */
+  border: none;
+  border-radius: 999px;
+  background: var(--color-background);
+  color: var(--color-tab-accent);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s;
+}
+
+.class-grid-today-arrow {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.class-grid-today-btn--ahead .class-grid-today-arrow--left,
+.class-grid-today-btn:not(.class-grid-today-btn--ahead) .class-grid-today-arrow--right {
+  display: none;
+}
+
+.class-grid-today-btn--shown {
+  opacity: 1;
+  visibility: visible;
+}
+
+.class-grid-today-btn:hover {
+  background: linear-gradient(var(--color-hover-overlay), var(--color-hover-overlay)), var(--color-background);
+}
+
+:root[data-theme="dark"] .class-grid-today-btn {
+  --today-btn-fill: color-mix(in srgb, var(--color-gray-lighter) 75%, var(--color-gray-light));
+  color: var(--color-filter-text);
+  background: var(--today-btn-fill);
+}
+
+:root[data-theme="dark"] .class-grid-today-btn:hover {
+  background: linear-gradient(var(--color-hover-overlay), var(--color-hover-overlay)), var(--today-btn-fill);
+}
+
+.class-grid-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.class-grid-head-weekday {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-gray-dark);
+}
+
+/* Like a month grid day's head: the number in the middle column, the month
+   (on a 1st) in the left one. */
+.class-grid-head-row {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.class-grid-head-month {
+  grid-column: 1;
+  justify-self: start;
+  padding-left: 10px;
+  font-size: 13px;
+  color: var(--color-gray-dark);
+}
+
+/* On the date's right, centered between it and the day's edge, shown while
+   the pointer is anywhere in the column (as .assessment-week-day-type). */
+.class-grid-head-type {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 13px;
+  color: var(--color-gray-dark);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.class-grid-head--hover .class-grid-head-type {
+  opacity: 1;
+}
+
+/* Sized like the month grid's day numbers, so today's circle is round. */
+.class-grid-head-date {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* Today's date in the same dark circle as the month grid's. */
+/* A true circle even for a two-digit date: equal width and height, no side
+   padding (the plain dates' padding would stretch it into a pill). */
+.class-grid-head-date--today {
+  width: 28px;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--color-tab-accent);
+  color: var(--color-surface);
+}
+
+/* In dark mode today's circle is white with a black number, everywhere it
+   shows. Not on a selected admin day, which turns it the card's color on
+   the blue already. */
+:root[data-theme="dark"] .class-grid-head-date--today,
+:root[data-theme="dark"] .assessment-week-day-number--today,
+:root[data-theme="dark"] .assessment-calendar-day:not(.assessment-calendar-day--selected) .assessment-calendar-day-number--today {
+  background: #ffffff;
+  color: #000000;
+}
+
+/* The course-name column casts a soft shadow to the right, onto the days
+   that scroll under it: a gradient just past each of its cells (and the
+   corner), reaching 1px up over the gridline above so they join into one
+   unbroken edge. Up, not down: past the last row, that 1px would make the
+   grid scrollable by it. Not a box-shadow, which fades out at each cell's top and
+   bottom, nor one strip over the whole column, which Chrome drew stale
+   patches of the grid around. Black in both themes: a dark shadow still
+   reads on the dark theme's gray. */
+.class-grid-course::after,
+.class-grid-corner::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  bottom: 0;
+  left: 100%;
+  width: 8px;
+  background: linear-gradient(to right, rgba(0, 0, 0, var(--column-shadow, 0.12)), transparent);
+  pointer-events: none;
+}
+
+/* Dark mode's shadow is two layers, as a real one cast on a dark surface
+   reads: a short, darker contact shadow tight against the column, over a
+   wide, faint ambient one whose falloff is eased (several stops) rather
+   than linear, so it melts into the gray instead of ending in an edge. */
+:root[data-theme="dark"] .class-grid-course::after,
+:root[data-theme="dark"] .class-grid-corner::after {
+  width: 28px;
+  background:
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.24),
+      rgba(0, 0, 0, 0.1) 2px,
+      rgba(0, 0, 0, 0.025) 4px,
+      transparent 6px
+    ),
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.2),
+      rgba(0, 0, 0, 0.13) 15%,
+      rgba(0, 0, 0, 0.07) 35%,
+      rgba(0, 0, 0, 0.03) 58%,
+      rgba(0, 0, 0, 0.01) 80%,
+      transparent
+    );
+}
+
+/* The course names (and the corner above them) are clear glass, like the
+   hover tooltip: the days scroll on underneath, blurred a little and
+   brightened, so a pill visibly slides under the column rather than being
+   cut off by it. A bright hairline down the glass's right edge gives it its
+   edge; the names get a soft halo to stay legible over whatever passes. */
+.class-grid-course,
+.class-grid-corner {
+  --glass-tint: rgba(255, 255, 255, 0.65);
+  --glass-lift: 1.03;
+  --glass-edge: rgba(255, 255, 255, 0.95);
+  --glass-halo: rgba(255, 255, 255, 0.8);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(4px) saturate(180%) brightness(var(--glass-lift));
+  box-shadow: inset -1px 0 0 var(--glass-edge);
+  text-shadow: 0 0 4px var(--glass-halo);
+}
+
+.class-grid-today-btn {
+  text-shadow: none;
+}
+
+:root[data-theme="dark"] .class-grid-course,
+:root[data-theme="dark"] .class-grid-corner {
+  --glass-tint: color-mix(in srgb, var(--color-surface) 65%, transparent);
+  --glass-lift: 1.15;
+  --glass-edge: rgba(255, 255, 255, 0.05);
+  --glass-halo: rgba(0, 0, 0, 0.55);
+}
+
+.class-grid-course {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.class-grid-course-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--chip-color, var(--color-gray-dark));
+}
+
+.class-grid-course-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* Clickable, like a month grid day: opens the Add menu for that day. */
+/* min-height: 0 holds the row at its set height however many pills the
+   day has; they scroll in .class-grid-cell-pills instead. */
+.class-grid-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  cursor: pointer;
+}
+
+.class-grid-cell-pills {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px;
+  scrollbar-width: none;
+}
+
+.class-grid-cell-pills::-webkit-scrollbar {
+  display: none;
+}
+
+/* With a + to show, the last pill can scroll up clear of it. */
+.class-grid-cell:has(.class-grid-cell-add:not([hidden])) .class-grid-cell-pills {
+  padding-bottom: 30px;
+}
+
+/* While the + shows, the pills fade out just above it rather than at the
+   cell's bottom, where it now sits. */
+.class-grid-cell:hover:has(.class-grid-cell-add:not([hidden])) .class-grid-cell-pills {
+  --pills-fade-inset: 24px;
+}
+
+@media (hover: none) {
+  .class-grid-cell:has(.class-grid-cell-add:not([hidden])) .class-grid-cell-pills {
+    --pills-fade-inset: 24px;
+  }
+}
+
+/* A + along the bottom of a cell its pills fill (see updateClassCellAdd),
+   so there's still somewhere to click to add to that day. Laid over the
+   cell's bottom rather than taking room from the pills, so while it's
+   hidden they fade out right at the gridline. */
+.class-grid-cell-add {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  margin: 0 4px 4px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-gray-dark);
+  cursor: pointer;
+  /* Shown only while the cell is hovered. */
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.class-grid-cell:hover .class-grid-cell-add,
+.class-grid-cell-add:focus-visible {
+  opacity: 1;
+}
+
+/* No hover on a touchscreen, so it stays visible there. */
+@media (hover: none) {
+  .class-grid-cell-add {
+    opacity: 1;
+  }
+}
+
+.class-grid-cell-add[hidden] {
+  display: none;
+}
+
+.class-grid-cell-add svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* Lines between the days in the course rows (not the date row), in the
+   same color as the gridlines between rows (the grid's background, showing
+   through its row gaps). Drawn on each day's right edge, so a line only
+   ever sits between two days: none against the course-name column, where
+   the leftmost day in view would otherwise have one. */
+.class-grid-cell {
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light));
+}
+
+.class-grid-head--weekend,
+.class-grid-cell--weekend {
+  background: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-surface));
+}
+
+/* The cell an Add menu or popup was opened from, grayed the same as a
+   selected month grid day (see syncSelectedDay). */
+.class-grid-cell.class-grid-cell--selected {
+  background: var(--color-gray-lighter);
+}
+
 /* min-width/min-height: 0 override the grid item's min-*: auto, which would let
    a stubborn pill widen the column or a long list stretch the row. */
+/* Clickable: opens the Add to calendar menu for that day (see
+   initAddToCalendarPopup). */
 .assessment-week-day {
+  scroll-snap-align: start;
+  cursor: pointer;
   position: relative;
   background: var(--color-surface);
   min-width: 0;
@@ -281,7 +717,9 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 4px;
+  /* No bottom padding: a busy day's pills scroll right to the gridline
+     instead of being cut off short of it. */
+  padding: 6px 4px 0;
 }
 
 /* Halfway to the surface color, so no extra palette color is needed. */
@@ -289,19 +727,49 @@
   background: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-surface));
 }
 
-.assessment-week-day--first-row {
-  padding-top: calc(var(--cal-label-h) + 6px);
+/* The day an Add menu or popup was opened from (see syncSelectedDay). */
+.assessment-week-day--selected {
+  background: var(--color-gray-lighter);
+}
+
+/* Stuck to the top over the scrolling weeks, reaching 1px down over the
+   gridline beneath so the strip reads as part of the top week's cells.
+   While the weeks scroll (see initAssessmentCalendar), it turns see-through
+   and blurs what passes under it, frosted-glass style, then goes solid again
+   once they stop. That last 1px always stays solid, so the gridline it
+   covers doesn't show through. Its top edge eases in from solid too: there
+   the blur has nothing above to draw from (the scroll box ends), and some
+   browsers leave a thin unblurred band. */
+@property --weekday-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
 }
 
 .assessment-week-day-weekday {
-  position: absolute;
+  --weekday-fill: var(--color-surface);
+  --weekday-alpha: 100%;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  /* The height gives the margin back so the label still ends where the
-     --cal-label-h strip does. */
-  margin-top: 3px;
-  height: calc(var(--cal-label-h) - 3px);
+  z-index: 2;
+  margin-bottom: -1px;
+  /* The top padding gives the label its old 3px drop within the strip. */
+  padding-top: 3px;
+  background: linear-gradient(
+    to bottom,
+    var(--weekday-fill),
+    color-mix(in srgb, var(--weekday-fill) var(--weekday-alpha), transparent) 6px,
+    color-mix(in srgb, var(--weekday-fill) var(--weekday-alpha), transparent) calc(100% - 1px),
+    var(--weekday-fill) calc(100% - 1px)
+  );
+  /* The blur only exists while scrolling (below): left on, the seven
+     backdrop-filtered cells inside the scroll box kept Chrome from redrawing
+     the calendar when pinch-zoomed in, leaving gray blocks. Dropped only
+     once the fill has eased back to solid. */
+  transition:
+    --weekday-alpha 0.25s ease,
+    -webkit-backdrop-filter 0s linear 0.25s,
+    backdrop-filter 0s linear 0.25s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -309,6 +777,22 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--color-gray-dark);
+}
+
+.assessment-calendar-weeks--scrolling .assessment-week-day-weekday {
+  --weekday-alpha: 70%;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: --weekday-alpha 0.25s ease;
+}
+
+.assessment-week-day-weekday--weekend {
+  --weekday-fill: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-surface));
+}
+
+/* A Sunday names its month only while its week is at the top. */
+.assessment-week-day:not(.assessment-week-day--top-week) .assessment-week-day-month--top-only {
+  visibility: hidden;
 }
 
 .assessment-week-day-head {
@@ -377,6 +861,54 @@
   width: 3px;
 }
 
+/* A day with more pills than fit fades out at whichever edge has more to
+   scroll to: the bottom at first, the top once scrolled to the end, both in
+   between. Driven by the list's own scroll position, so a day that fits
+   has no scroll timeline, no animation, and so no fade. */
+@property --pills-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --pills-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes pills-fade-top {
+  from { --pills-fade-top: 0px; }
+  10%, to { --pills-fade-top: 16px; }
+}
+
+@keyframes pills-fade-bottom {
+  from, 90% { --pills-fade-bottom: 16px; }
+  to { --pills-fade-bottom: 0px; }
+}
+
+@supports (animation-timeline: scroll()) {
+  .assessment-week-day-pills,
+  .class-grid-cell-pills {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      #000 var(--pills-fade-top),
+      #000 calc(100% - var(--pills-fade-bottom) - var(--pills-fade-inset, 0px)),
+      transparent calc(100% - var(--pills-fade-inset, 0px))
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      #000 var(--pills-fade-top),
+      #000 calc(100% - var(--pills-fade-bottom) - var(--pills-fade-inset, 0px)),
+      transparent calc(100% - var(--pills-fade-inset, 0px))
+    );
+    animation: pills-fade-top linear both, pills-fade-bottom linear both;
+    animation-timeline: scroll(self), scroll(self);
+  }
+}
+
 .assessment-week-day-pills::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -386,15 +918,14 @@
   border-radius: 3px;
 }
 
-/* Above the pills, since it sits over the bottom of the list, and ignoring
-   the pointer so it never gets in the way of one. */
+/* The month label's mirror image, on the date's right (see
+   .assessment-week-day-month). */
 .assessment-week-day-type {
-  position: absolute;
-  right: 6px;
-  bottom: 4px;
-  z-index: 1;
-  font-size: 11px;
-  font-weight: 600;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  padding-right: 7.5px;
+  font-size: 13px;
   color: var(--color-gray-dark);
   opacity: 0;
   pointer-events: none;
@@ -449,6 +980,9 @@
   /* Keeps the name inside the rounded ends now that it reaches the border. */
   overflow: hidden;
   cursor: default;
+  /* Clicked and right-clicked, not read like text. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .assessment-chip--summative {
@@ -467,6 +1001,9 @@
    the dot, and what's due under the course name. */
 .assessment-chip--assignment {
   align-items: flex-start;
+  /* No fill or border to round off, and a rounded corner would only clip a
+     long subtitle's last letters (the pill hides its overflow). */
+  border-radius: 0;
 }
 
 .assessment-chip--assignment .assessment-chip-dot {
@@ -494,7 +1031,53 @@
   mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--color-gray-dark);
+  /* The course name's color above it, just not bold. */
+  color: color-mix(in srgb, var(--chip-color) 35%, var(--color-text-primary));
+}
+
+/* Folds by its grid row (1fr to 0fr), which animates to the text's real
+   height rather than to a guessed max-height. */
+.assessment-chip--assignment .assessment-chip-subtitle {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.25s ease, opacity 0.25s ease;
+}
+
+.assessment-chip-subtitle > span {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* An assignment checked off in Upcoming: struck through, its subtitle folded
+   away. */
+.assessment-chip--done .assessment-pill-text {
+  text-decoration: line-through;
+}
+
+/* The ring becomes a check, the same one Upcoming uses, on a light circle of
+   the course color (the summative pill's tint). Bigger than the ring, with
+   negative margins so the name doesn't move. */
+.assessment-chip--done .assessment-chip-dot {
+  position: relative;
+  flex-basis: 15px;
+  height: 15px;
+  margin: 0.5px -3.5px 0;
+  box-shadow: none;
+  background: oklch(from color-mix(in oklch, var(--chip-color) 22%, var(--color-surface)) l calc(c * 1.8) h);
+}
+
+.assessment-chip--done .assessment-chip-dot::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: var(--chip-color);
+  -webkit-mask: url("../icons/light/check.png") center / contain no-repeat;
+  mask: url("../icons/light/check.png") center / contain no-repeat;
+}
+
+.assessment-chip--done .assessment-chip-subtitle {
+  grid-template-rows: 0fr;
+  opacity: 0;
 }
 
 .assessment-chip-dot {
@@ -518,7 +1101,8 @@
   color: color-mix(in srgb, var(--chip-color) 35%, var(--color-text-primary));
 }
 
-/* A fixed-width clipping window; the marquee below reveals overflow on hover. */
+/* A fixed-width clipping window; the hover marquee (see startMarqueeText in
+   my-courses.js) reveals overflow. */
 .assessment-pill-name,
 .assessment-pill-testing-label {
   display: block;
@@ -526,45 +1110,29 @@
   white-space: nowrap;
 }
 
+/* A Testing Block summative's second line, in the name's color but not bold. */
 .assessment-pill-testing-label {
-  opacity: 0.7;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--chip-color) 35%, var(--color-text-primary));
+}
+
+/* With two lines the dot stays beside the first, as on an assignment. */
+.assessment-chip--stacked {
+  align-items: flex-start;
+  /* A one-line pill's rounding (half its 23px height), rather than 999px,
+     which would round the taller pill into a capsule. */
+  border-radius: 11.5px;
+}
+
+.assessment-chip--stacked .assessment-chip-dot {
+  margin-top: 4px;
 }
 
 /* inline-block, not the window's block, lets the text size to its full width,
-   which the marquee scrolls. */
+   which the marquee scrolls (moved frame by frame in JS). */
 .assessment-pill-text {
   display: inline-block;
-}
-
-/* Two phases, handed off in buildDayCell's animationend listener: the first
-   pass starts from the text's resting position so hovering never looks like the
-   pill went blank, then the ordinary loop takes over. */
-.assessment-pill-text--marquee-in {
-  animation: assessment-pill-marquee-in 3s linear 1;
-}
-
-.assessment-pill-text--marquee-loop {
-  animation: assessment-pill-marquee-loop 3s linear infinite;
-}
-
-@keyframes assessment-pill-marquee-in {
-  from {
-    transform: translateX(0%);
-  }
-  to {
-    transform: translateX(-100%);
-  }
-}
-
-@keyframes assessment-pill-marquee-loop {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(-100%);
-  }
 }
 
 .assessment-calendar-loading {
@@ -572,6 +1140,15 @@
   flex: 1;
   align-items: center;
   justify-content: center;
+}
+
+/* The Calendar tab's own: pinned to the middle of the window rather than
+   the calendar's box, so it stays put and centered while it loads. */
+#assessment-cal-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .assessment-calendar-loading[hidden] {
@@ -595,25 +1172,39 @@
 
 /* Stretches to the calendar's height, so both cards line up with its top and
    bottom edges. */
+/* No card of its own: Upcoming on top and the calendar's key below sit
+   straight on the page background, split by a divider. */
 .calendar-side {
-  flex: 1;
-  min-width: 300px;
+  flex: none;
+  width: 340px;
+  /* Flush against the tab bar like the calendar; the page's usual margin
+     below. */
+  padding: 0 0 32px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 36px;
 }
 
-.calendar-side-card {
-  background: var(--color-surface);
-  border-radius: calc(20px * var(--squircle-scale));
-  corner-shape: squircle;
-  box-shadow: var(--shadow-card);
+/* Reaches 10px past the panel's content on each side. */
+.calendar-side-divider {
+  flex: none;
+  height: 1.5px;
+  margin: 0 -10px;
+  background: var(--color-gray-lighter);
+}
+
+/* On the light page background the light gray reads as a white line, so the
+   side panel's dividers use the darker divider gray there. Dark mode keeps
+   its own. */
+:root:not([data-theme="dark"]) .calendar-side-divider,
+:root:not([data-theme="dark"]) .upcoming-divider {
+  background: var(--color-divider-on-background);
 }
 
 /* A column, so the Upcoming list takes the height left under the header and
    scrolls inside it. */
 .todo-card {
-  --todo-pad-top: 28px;
+  --todo-pad-top: 0px;
   --todo-header-h: 32px;
   --todo-header-gap: 16px;
   position: relative;
@@ -621,28 +1212,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* No bottom padding: the list runs to the card's edge and fades out there
-     instead (see ::after). */
-  padding: var(--todo-pad-top) 32px 0;
-}
-
-/* A fade into the card's surface over the last stretch of the list, as on
-   Domain's score lists: an overlay rather than a mask on the list, which would
-   put the list in a layer of its own. */
-.todo-card::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  /* Stops short of the list's scrollbar, which shouldn't fade: the card's
-     20px beside the list, plus the scrollbar. */
-  right: calc(20px + var(--upcoming-scrollbar-w, 0px));
-  bottom: 0;
-  z-index: 1;
-  height: 36px;
-  border-radius: 0 0 calc(20px * var(--squircle-scale)) calc(20px * var(--squircle-scale));
-  corner-shape: squircle;
-  background: linear-gradient(to bottom, transparent, var(--color-surface));
-  pointer-events: none;
+  /* No bottom padding: the list runs to the divider and fades out there
+     instead (see .upcoming-list's mask). */
+  padding: var(--todo-pad-top) 0 0;
 }
 
 /* Where the list scrolls up under the header it blurs and dims, more the
@@ -656,15 +1228,13 @@
 .upcoming-blur {
   position: absolute;
   top: 0;
-  /* The full width of the card, not just the list's, so the blur spreading
-     out past the rows isn't cut off in a hard line; clipped to the card's
-     rounded top corners. The copy sits inside at the list's own position. */
-  left: 0;
-  right: 0;
+  /* Wider than the list, so the blur spreading out past the rows isn't cut
+     off in a hard line. The copy sits inside at the list's own position (see
+     placeUpcomingBlur). */
+  left: -24px;
+  right: -34px;
   z-index: 1;
   height: calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap));
-  border-radius: calc(20px * var(--squircle-scale)) calc(20px * var(--squircle-scale)) 0 0;
-  corner-shape: squircle;
   overflow: hidden;
   pointer-events: none;
   /* Never fully opaque, and fainter the higher it goes: rows fade as they
@@ -720,17 +1290,31 @@
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: var(--color-gray-lighter);
+  background: var(--color-surface);
   color: var(--color-gray-dark);
   cursor: pointer;
+  /* The ring is always there at full width, just invisible, so it fades in
+     (see --covered) instead of growing out from nothing. */
+  box-shadow: 0 0 0 1px transparent;
+  transition: box-shadow 0.15s ease;
+}
+
+/* Set in JS while a row's date passes under or touches the button (see
+   outlineAddButtonIfCovered): a 1px ring at 15% of the text color, dark in
+   light mode and light in dark mode. */
+.todo-add-btn--covered {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 15%, transparent);
 }
 
 .todo-add-btn[hidden] {
   display: none;
 }
 
+/* The same very light tint as Domain's card arrows (.domain-card-nav-btn). */
 .todo-add-btn:hover {
-  background: linear-gradient(var(--color-hover-overlay), var(--color-hover-overlay)), var(--color-gray-lighter);
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-gray-light) 20%, transparent), color-mix(in srgb, var(--color-gray-light) 20%, transparent)),
+    var(--color-surface);
 }
 
 /* Laid out like Google Tasks: a ring to check off, the title, a line under
@@ -740,10 +1324,14 @@
    would stretch the whole row past the calendar; it just fills what's left
    under the header and scrolls. */
 .upcoming-list {
+  /* For the ghosts of rows on their way out (see moveUpcomingItem). */
+  position: relative;
   flex: 1;
   min-height: 0;
   contain: size;
-  overflow-y: auto;
+  /* Never sideways: anything poking out (a row mid-animation) would bring up
+     a horizontal scrollbar along the bottom. */
+  overflow: hidden auto;
   /* Pulled up to the card's top edge, under the header, and padded back down
      so the first item still starts below it: scrolled, items pass up behind
      the heading, blurring and fading as they go (see .upcoming-blur). */
@@ -755,21 +1343,28 @@
   /* Room at the bottom for the last item to scroll up clear of the fade. */
   padding: calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap)) 2px 36px 0;
   /* Fades out across the strip under the header, handing over to the
-     blurred copy there (see .upcoming-blur). A second, solid layer over the
-     scrollbar's own strip keeps the scrollbar itself from fading with it;
-     --upcoming-scrollbar-w is measured in JS (see placeUpcomingBlur). */
+     blurred copy there (see .upcoming-blur), and over its last 36px, into
+     the divider below. Done in the mask rather than with a gradient laid over
+     the list: during the Upcoming animations Chrome drew such an overlay as a
+     dark band. A second, solid layer over the scrollbar's own strip keeps
+     the scrollbar itself from fading with it; --upcoming-scrollbar-w is
+     measured in JS (see placeUpcomingBlur). */
   -webkit-mask-image:
     linear-gradient(
       to bottom,
       transparent calc(var(--todo-pad-top) + var(--todo-header-h) - 8px),
-      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap))
+      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap)),
+      #000 calc(100% - 36px),
+      transparent
     ),
     linear-gradient(#000, #000);
   mask-image:
     linear-gradient(
       to bottom,
       transparent calc(var(--todo-pad-top) + var(--todo-header-h) - 8px),
-      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap))
+      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap)),
+      #000 calc(100% - 36px),
+      transparent
     ),
     linear-gradient(#000, #000);
   -webkit-mask-size: 100% 100%, var(--upcoming-scrollbar-w, 0px) 100%;
@@ -821,8 +1416,14 @@
   cursor: pointer;
 }
 
-.upcoming-item:hover {
+/* Between what's due by tomorrow and what's later: the same bar as the My
+   Courses popup's .settings-divider, inset to the items' text. */
+.upcoming-divider {
+  flex: none;
+  height: 1.5px;
+  margin: 6px 12px;
   background: var(--color-gray-lighter);
+  list-style: none;
 }
 
 .upcoming-check {
@@ -842,9 +1443,9 @@
   transition: background-color 0.15s ease;
 }
 
-/* check.png, the same check as the Show on Calendar filters, used as a mask
-   so it can take the course's color. Shows on hover, as in Google Tasks, and
-   stays once the item is done, over the filled ring. */
+/* check.png, the same check as the calendar Filters, used as a mask
+   so it can take any color. Shows on hover, as in Google Tasks, and stays
+   once the item is done, over the filled ring. */
 .upcoming-check-icon {
   width: 12px;
   height: 12px;
@@ -852,10 +1453,18 @@
   -webkit-mask: url("../icons/light/check.png") center / contain no-repeat;
   mask: url("../icons/light/check.png") center / contain no-repeat;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
-.upcoming-check:hover .upcoming-check-icon {
+/* Hovering anywhere on the item, since clicking anywhere on it checks it off,
+   fills the ring with the course color and shows the check over it, black or
+   white by the color's lightness like a checked-off item's. */
+.upcoming-item:hover .upcoming-check {
+  background: var(--chip-color, var(--color-gray-dark));
+}
+
+.upcoming-item:hover .upcoming-check-icon {
+  background: oklch(from var(--chip-color, var(--color-gray-dark)) clamp(0, (0.78 - l) * 1000, 1) 0 0);
   opacity: 1;
 }
 
@@ -879,6 +1488,12 @@
   line-height: 22px;
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
+}
+
+/* With no course line under it, the title centers beside the ring. */
+.upcoming-item--single-line .upcoming-title {
+  grid-row: 1 / 3;
+  align-self: center;
 }
 
 .upcoming-item--done .upcoming-title {
@@ -907,13 +1522,12 @@
   gap: 4px;
 }
 
-/* Filled with the card's own surface, so its gray text stays on white even
-   over a hovered item's gray. */
+/* Filled with the page background it sits on. */
 .upcoming-date-chip {
   padding: 2px 10px;
   border: 1px solid var(--color-gray-light);
   border-radius: 999px;
-  background: var(--color-surface);
+  background: var(--color-background);
   font-size: 12px;
   line-height: 18px;
   color: var(--color-gray-dark);
@@ -926,23 +1540,39 @@
   color: var(--color-red);
 }
 
-/* Time left, when it's under 12 hours: H:MM:SS, or MM:SS in the last hour. */
-.upcoming-countdown {
-  display: flex;
-  align-items: flex-end;
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-primary);
+/* Dark mode's red reads dim on the dark card, so it takes the brighter
+   F-grade red and a stronger edge. */
+:root[data-theme="dark"] .upcoming-date-chip--overdue {
+  border-color: color-mix(in srgb, var(--color-f-red) 75%, transparent);
+  color: var(--color-f-red);
 }
 
-.upcoming-countdown-hours-part {
+/* Time left, when it's under 12 hours: H:MM:SS, or MM:SS in the last hour,
+   in the date chip in place of its label. Tabular digits, all one width, so
+   the chip holds its size as the seconds tick. */
+.upcoming-countdown {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.3em;
+  /* The height animateNumberChange gives each rolling digit's slot (the
+     font size, 12px, times 1.2, rounded up), so the digits sit at the same
+     height mid-roll as they do at rest instead of jumping each tick. The
+     color and weight are the chip's own, like its other labels. */
+  line-height: 15px;
+}
+
+.upcoming-date-chip-label[hidden] {
+  display: none;
+}
+
+/* A number and its unit ("2h", "05m", "45s"). */
+.upcoming-countdown-part {
   display: flex;
   align-items: flex-end;
 }
 
 .upcoming-countdown[hidden],
-.upcoming-countdown--under-hour .upcoming-countdown-hours-part {
+.upcoming-countdown-part[hidden] {
   display: none;
 }
 
@@ -966,9 +1596,23 @@
   color: var(--color-gray-dark);
   font: inherit;
   font-size: 14px;
+  /* The height animateNumberChange gives each rolling digit (14px * 1.2,
+     rounded up), so the count's digits sit at the same height mid-roll as
+     the text around them (see .upcoming-completed-count). */
+  line-height: 17px;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+}
+
+/* While it rolls, its digits sit in clipped boxes whose baseline is their
+   bottom edge, which lifted them above "(" and ")". A box exactly one line
+   (17px) tall, pinned to the line's top, puts the digits where the text
+   around them is, rolling or not. */
+.upcoming-completed-count {
+  display: inline-block;
+  height: 17px;
+  vertical-align: top;
 }
 
 .upcoming-completed-toggle:hover {
@@ -983,12 +1627,12 @@
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transform: rotate(-90deg);
   transition: transform 0.2s ease;
 }
 
+/* Flips to point up when open, as the Add popup's Time dropdown does. */
 .upcoming-completed-toggle[aria-expanded="true"] svg {
-  transform: none;
+  transform: rotate(180deg);
 }
 
 /* Done items read as done: faded, all but the ring, which stays full so it's
@@ -1009,8 +1653,8 @@
 .calendar-legend-card {
   flex: none;
   display: flex;
-  gap: 24px;
-  padding: 28px 32px;
+  gap: 29px;
+  padding: 24px 0 0;
 }
 
 .calendar-legend-column {
@@ -1021,15 +1665,62 @@
   gap: 14px;
 }
 
-.calendar-legend-divider {
-  flex: none;
-  width: 1.5px;
-  background: var(--color-gray-lighter);
+/* One max-content track, so the View switch is exactly as wide as the
+   widest filter and the column ends on one edge. */
+.calendar-legend-column:has(.calendar-view-toggle) {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  align-content: start;
 }
 
 .calendar-legend-label {
   font-size: 14px;
   color: var(--color-gray-dark);
+}
+
+/* First in the Filters column: pick the view, then what's on it.
+   The filters' width (see above), its two halves splitting it, so it never
+   runs over the course list beside it; smaller than Settings' controls.
+   White, since the control's own gray would vanish into the page background
+   the key sits on. */
+.calendar-view-toggle {
+  display: flex;
+  /* Closer to its View heading than the column's usual 14px gap. */
+  margin-top: -6px;
+  margin-bottom: 4px;
+  /* A thinner white rim around the thumb than Settings' 4px; each option is
+     2px taller to keep the same overall height. */
+  padding: 2px;
+  background: var(--color-surface);
+}
+
+.calendar-view-toggle .segmented-option {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 2px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* A gray thumb rather than Settings' blue, quieter beside the gray filters:
+   the same gray as an option's hover, so hovering previews the thumb. The
+   active label stays the theme's text color on it. */
+.calendar-view-toggle .segmented-thumb {
+  top: 2px;
+  bottom: 2px;
+  background: var(--color-hover-overlay);
+  /* Jumps to the picked option rather than sliding over. */
+  transition: none;
+}
+
+/* With no slide to cover, a clicked option's hover gray goes at once instead
+   of lingering under the thumb (which would double it darker). */
+.calendar-view-toggle .segmented-option--active::before {
+  transition: none;
+}
+
+.calendar-view-toggle .segmented-option--active {
+  color: var(--color-text-primary);
 }
 
 /* max-content, so every filter is as wide as the widest one. */
@@ -1046,21 +1737,25 @@
 .calendar-filter {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 14px 3px 4px;
+  gap: 6px;
+  padding: 3px 15px 3px 3px;
   border: 1.5px solid transparent;
   border-radius: 999px;
   background: none;
   color: var(--color-filter-text);
   font: inherit;
-  font-size: 16px;
+  /* The same height and text size as the calendar's pills (.assessment-chip):
+     the same padding and border, and a check circle no taller than the text. */
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
 
+/* The card surface: the filter fill's own gray would vanish into the page
+   background the key now sits on. */
 .calendar-filter--filled {
-  background: var(--color-filter-fill);
+  background: var(--color-surface);
 }
 
 .calendar-filter--dashed {
@@ -1071,10 +1766,10 @@
 .calendar-filter::before {
   content: "";
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: var(--color-filter-check) url("../icons/light/check.png") center / 13px no-repeat;
+  background: var(--color-filter-check) url("../icons/light/check.png") center / 10px no-repeat;
 }
 
 /* A black check on the light gray circle, since white would wash out on it. */
@@ -1127,7 +1822,8 @@
   border: none;
   background: none;
   font: inherit;
-  font-size: 17px;
+  /* The same size as an Upcoming item's title. */
+  font-size: 15px;
   color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
@@ -1161,7 +1857,7 @@
   filter: drop-shadow(0 0 0.75px var(--color-popover-outline)) drop-shadow(0 0 2px var(--color-popover-outline));
   opacity: 0;
   transform: scale(0.85);
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition: transform var(--popup-spring-ms) var(--ease-popup-spring), opacity 0.18s ease;
 }
 
 /* Points at the course's dot: a square turned 45° and half-sunk into the right
@@ -1225,9 +1921,89 @@
   /* Same edge as .popup-menu: a faint 1px edge over the cards' soft shadow. */
   box-shadow: 0 0 0 1px var(--color-popup-outline), var(--shadow-card);
   opacity: 0;
-  transform: translateY(-4px) scale(0.98);
+  transform: translateY(var(--popup-shift, -4px)) scale(0.92);
   transform-origin: top right;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.15s ease, transform var(--popup-spring-ms) var(--ease-popup-spring);
+}
+
+/* The type menu and add popup, opened from a click on the calendar (not the
+   + button), are glass like .hover-tooltip, so the calendar shows through.
+   The tint is much heavier and the blur stronger than a tooltip's, since the
+   popup holds a form that must stay readable over pills.
+   The rim is drawn with inset shadows rather than the tooltip's ::before,
+   which would scroll away with a tall popup's content. Doubled classes so
+   this wins over .popup-menu in floating.css. */
+.add-popup.calendar-glass,
+.popup-menu.calendar-glass {
+  --glass-tint: rgba(255, 255, 255, 0.6);
+  --glass-lift: 1.03;
+  --glass-edge-glow: rgba(255, 255, 255, 0.6);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  --glass-outline: rgba(0, 0, 0, 0.08);
+  --glass-shadow: rgba(0, 0, 0, 0.14);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    inset 0 0 6px var(--glass-edge-glow),
+    0 0 0 1px var(--glass-outline),
+    0 12px 32px var(--glass-shadow);
+}
+
+:root[data-theme="dark"] .add-popup.calendar-glass,
+:root[data-theme="dark"] .popup-menu.calendar-glass {
+  --glass-tint: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  --glass-lift: 1.2;
+  --glass-edge-glow: rgba(255, 255, 255, 0.08);
+  --glass-rim: rgba(255, 255, 255, 0.12);
+  --glass-outline: transparent;
+  --glass-shadow: rgba(0, 0, 0, 0.4);
+}
+
+/* The glass menu's hover is see-through too: a light darkening (lightening in
+   dark mode) of the glass rather than a solid gray patch on it. */
+.popup-menu.calendar-glass .popup-menu-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] .popup-menu.calendar-glass .popup-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Its course choices are a see-through gray on the glass rather than solid
+   gray, so the calendar shows through them too. Hovered (or picked) they
+   fill with the solid course tint they have everywhere else.
+   The tint is a layer faded in over the gray (an inset shadow filling the
+   pill) rather than a change of background: fading the see-through gray
+   straight to an opaque color passes through a half-transparent tint over
+   the white glass, paler than either, which flashed on every hover. */
+.add-popup.calendar-glass .add-popup-course {
+  --course-tint: oklch(from color-mix(in oklch, var(--chip-color) 22%, var(--color-surface)) l calc(c * 1.8) h);
+  background-color: rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--course-tint) 0%, transparent);
+  transition: box-shadow 0.1s ease, color 0.1s ease;
+}
+
+.add-popup.calendar-glass .add-popup-course:hover,
+.add-popup.calendar-glass .add-popup-course--active {
+  box-shadow: inset 0 0 0 100px var(--course-tint);
+}
+
+:root[data-theme="dark"] .add-popup.calendar-glass .add-popup-course {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* The base rule's hover background would swap the gray out from under the
+   fading tint. */
+.add-popup.calendar-glass .add-popup-course:hover,
+.add-popup.calendar-glass .add-popup-course--active {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] .add-popup.calendar-glass .add-popup-course:hover,
+:root[data-theme="dark"] .add-popup.calendar-glass .add-popup-course--active {
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .add-popup::-webkit-scrollbar {
@@ -1289,7 +2065,8 @@
   margin-left: -8px;
 }
 
-.add-popup-icon-btn:hover {
+/* The back arrow darkens on hover; the X stays gray. */
+.add-popup-icon-btn:hover:not(:has(.close-icon)) {
   color: var(--color-text-primary);
 }
 
@@ -1307,9 +2084,10 @@
   height: 18px;
 }
 
+/* A fifth bigger than its old 14px. */
 .add-popup-icon-btn .close-icon {
-  width: 14px;
-  height: 14px;
+  width: 16.8px;
+  height: 16.8px;
 }
 
 .add-popup-prompt {
@@ -1478,7 +2256,7 @@
      with the list's. */
   padding: 9.5px 11.5px 9.5px 15.5px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--color-gray-lighter);
   color: var(--color-text-primary);
   font: inherit;
@@ -1542,7 +2320,7 @@
   margin: 6px 0 0 auto;
   padding: 4px;
   border: 1.5px solid var(--color-gray-lighter);
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .add-popup-time-options[hidden] {
@@ -1677,6 +2455,21 @@
   z-index: 80;
 }
 
+/* While a date is picked, the Add popup fades out of the calendar's way,
+   the same way it closes, and comes back once the pick ends (see
+   startDatePick). Hidden, it lets clicks through to the dimmed area behind,
+   which ends the pick. */
+/* Above the dim layer (and the raised calendar) while it fades away. */
+.add-popup--lifted {
+  z-index: 85;
+}
+
+.add-popup--picking {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
+}
+
 .my-courses-calendar-box .assessment-chip {
   transition: opacity 0.2s ease;
 }
@@ -1685,8 +2478,39 @@
   opacity: 0.5;
 }
 
-.my-courses-calendar-box--picking .assessment-week-day {
+.my-courses-calendar-box--picking .assessment-week-day,
+.my-courses-calendar-box--picking .class-grid-head {
   cursor: pointer;
+}
+
+/* The Courses view while picking: the hovered day's whole column gets the
+   same border, built from a piece on its date and on each cell under it (see
+   startDatePick). Each cell's piece reaches 1px up over the row gap above,
+   so the sides run unbroken; at z-index 0, the sticky course column (1)
+   still covers it when it scrolls under. The + is hidden, as a click now
+   picks the day. */
+.class-grid-pick-col::after {
+  --pick-border: 2px solid color-mix(in srgb, var(--chip-color) 35%, var(--color-text-primary));
+  content: "";
+  position: absolute;
+  inset: -1px 0 0;
+  z-index: 0;
+  border-left: var(--pick-border);
+  border-right: var(--pick-border);
+  pointer-events: none;
+}
+
+.class-grid-head.class-grid-pick-col::after {
+  top: 0;
+  border-top: var(--pick-border);
+}
+
+.class-grid-pick-col--last::after {
+  border-bottom: var(--pick-border);
+}
+
+.my-courses-calendar-box--picking .class-grid-cell-add {
+  display: none;
 }
 
 /* The hovered day while picking gets a border in the course's darker shade,
@@ -1698,14 +2522,11 @@
   content: "";
   position: absolute;
   inset: -1px;
-  z-index: 1;
+  /* Above the sticky weekday strip (z-index 2), which reaches 1px down over
+     the top row's gridline and would otherwise cut into the border there. */
+  z-index: 3;
   border: 2px solid color-mix(in srgb, var(--chip-color) 35%, var(--color-text-primary));
   pointer-events: none;
-}
-
-.my-courses-calendar-box--picking .assessment-week-day--first-row:hover::after {
-  top: 0;
-  border-top: none;
 }
 
 .my-courses-calendar-box--picking .assessment-week-day:nth-child(7n + 1):hover::after {
@@ -1721,4 +2542,50 @@
 .my-courses-calendar-box--picking .assessment-week-day:nth-last-child(-n + 7):hover::after {
   bottom: 0;
   border-bottom: none;
+}
+
+/* Narrow screens (a portrait monitor, a small window): side by side, the
+   calendar would get only what the 340px side panel leaves, too little for
+   seven columns. Instead the panel moves below the calendar, which takes the
+   full width and still fills the screen under the tab bar; the page scrolls
+   down to Upcoming and the key. */
+@media (max-width: 900px) {
+  .page-content--calendar {
+    height: auto;
+    padding: var(--cal-top-gap) 0 32px;
+  }
+
+  .my-courses-calendar {
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  /* The weeks normally keep a scroll to themselves (overscroll-behavior:
+     contain); here, once they've gone as far as they go, the page carries on
+     scrolling down to Upcoming instead of the wheel doing nothing. */
+  .assessment-calendar-weeks {
+    overscroll-behavior: auto;
+  }
+
+  /* The page's usual side margins, which also leave room for the list's
+     scrollbar and the blur under its header, both reaching past its edge. */
+  .calendar-side {
+    width: auto;
+    padding: 0 48px;
+  }
+
+  /* No longer sized by the screen's height, so the list gets a height of its
+     own to scroll within (it's contained, so it can't size to its rows). */
+  .calendar-side .todo-card {
+    flex: none;
+    height: min(480px, 70vh);
+  }
+}
+
+/* Dates, weekdays and A/B labels are headers, not text to copy. */
+.assessment-week-day-head,
+.assessment-week-day-weekday,
+.class-grid-head {
+  -webkit-user-select: none;
+  user-select: none;
 }

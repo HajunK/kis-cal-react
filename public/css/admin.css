@@ -16,13 +16,30 @@
 }
 
 .admin-calendar-layout .assessment-calendar-card {
+  position: relative;
   height: 600px;
+}
+
+/* In the middle of the card while its dates load, over the empty grid. */
+#admin-cal-loading {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 /* Only here: the Add Missing Assessment calendar shares this class at 26px. */
 .admin-calendar-layout .assessment-calendar-day-number--today {
   width: 30px;
   height: 30px;
+}
+
+/* Today in the accent blue here, in both themes, rather than the tabs'
+   near-black (or white). A selected day keeps the card-colored circle it
+   gets on the blue (see calendar.css). */
+.admin-calendar-layout .assessment-calendar-day:not(.assessment-calendar-day--selected) .assessment-calendar-day-number--today,
+:root[data-theme="dark"] .admin-calendar-layout .assessment-calendar-day:not(.assessment-calendar-day--selected) .assessment-calendar-day-number--today {
+  background: var(--color-accent);
+  color: #ffffff;
 }
 
 /* Height matches .assessment-calendar-card explicitly, not just via
@@ -73,6 +90,10 @@
   background: none;
   color: var(--color-gray-dark);
   cursor: pointer;
+}
+
+.admin-schedule-open-btn[hidden] {
+  display: none;
 }
 
 .admin-schedule-open-btn:hover {
@@ -315,15 +336,174 @@
 }
 
 .admin-schedule-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+/* This date's event in the slot: dragged on its own, leaving the slot's times
+   behind. */
+.admin-schedule-event {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+/* Lifted over the events it passes while dragged. */
+.admin-schedule-event--dragging {
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 0 6px var(--color-surface), 0 6px 18px 6px var(--color-shadow-popover);
 }
 
 .admin-schedule-row-label {
   flex: 1;
+  min-width: 0;
   font-size: 14px;
   color: var(--color-text-primary);
+  transition: color 0.15s ease;
+}
+
+/* The grip a row is dragged by. touch-action: none, or a touch drag would
+   scroll the dialog instead. */
+.admin-schedule-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 32px;
+  margin-left: -6px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-gray-dark);
+  cursor: grab;
+  touch-action: none;
+}
+
+.admin-schedule-drag:hover {
+  background: var(--color-hover-overlay);
+}
+
+.admin-schedule-event--dragging .admin-schedule-drag {
+  cursor: grabbing;
+}
+
+.admin-schedule-drag svg {
+  width: 10px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* Skipped on this date (dragged below the line): kept with its slot, since
+   the slot's times are shared with other days, just faded. */
+.admin-schedule-row--off .admin-schedule-row-label {
+  color: var(--color-gray-dark);
+  text-decoration: line-through;
+}
+
+.admin-schedule-row--off .admin-schedule-time-input,
+.admin-schedule-row--off .admin-schedule-row-sep {
+  opacity: 0.45;
+}
+
+.admin-schedule-time-input,
+.admin-schedule-row-sep {
+  transition: opacity 0.15s ease;
+}
+
+/* Above the events the day skips: the Calendar's .upcoming-divider bar. */
+.admin-schedule-divider {
+  flex: none;
+  height: 1.5px;
+  margin: 2px 0;
+  background: var(--color-gray-lighter);
+}
+
+/* Fills the space below the line while nothing's there, as tall as a row. */
+.admin-schedule-empty {
+  margin: 0;
+  line-height: 36px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-gray-dark);
+}
+
+.admin-schedule-empty[hidden] {
+  display: none;
+}
+
+/* Where a dragged event is about to be skipped or brought back. */
+.admin-schedule-divider {
+  transition: background-color 0.15s ease;
+}
+
+.admin-schedule-divider--target {
+  background: var(--color-accent);
+}
+
+.admin-schedule-rows--dragging {
+  cursor: grabbing;
+}
+
+/* The slot a period dragged up from below the line would take. */
+.admin-schedule-row--swap-target .admin-schedule-event {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  box-shadow: 0 0 0 1.5px var(--color-accent);
+}
+
+/* No slot, so no times: just the event, its row as tall as the others. */
+.admin-schedule-row--unplaced {
+  min-height: 36px;
+}
+
+.admin-schedule-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-schedule-date {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-gray-dark);
+}
+
+.admin-schedule-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 -8px;
+  min-height: 0;
+}
+
+.admin-schedule-reset-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-schedule-reset-btn:hover {
+  background: var(--color-hover-overlay);
+}
+
+.admin-schedule-reset-btn[hidden] {
+  display: none;
 }
 
 .admin-schedule-row-sep {
@@ -375,8 +555,8 @@
 .admin-schedule-dialog {
   position: relative;
   width: 100%;
-  max-width: 480px;
-  max-height: 75vh;
+  max-width: 540px;
+  max-height: 80vh;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -402,22 +582,25 @@
   transform: translateY(0);
 }
 
+/* The X a fifth bigger than its old 22px, and the same gray hovered or not.
+   Tucked into the corner, 16px in from the top and right. */
 .admin-schedule-close-btn {
   position: absolute;
-  top: 24px;
-  right: 24px;
+  top: 16px;
+  right: 16px;
+  /* The X centered in the button, not sat on a text baseline in it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   width: 28px;
   height: 28px;
   border: none;
   background: none;
   color: var(--color-gray-dark);
-  font-size: 22px;
+  font-size: 26.4px;
   line-height: 1;
   cursor: pointer;
-}
-
-.admin-schedule-close-btn:hover {
-  color: var(--color-text-primary);
 }
 
 .admin-schedule-title {
@@ -448,30 +631,40 @@
 
 /* The light fill of a filled Calendar pill, on the days testing blocks fall,
    joined down each Monday and Friday column into one strip: square corners
-   between days, and a shadow the height of the grid's row gap filling the gap
-   below each day but the last. */
+   between days, reaching the height of the grid's row gap below each day
+   but the last. Drawn behind each day (a ::before) rather than as its own
+   background, so a day keeps its usual rounded shape when it's selected or
+   hovered, on top of the strip. */
 #admin-cal-grid.admin-cal-grid--testing-block {
   --block-day-fill: oklch(from color-mix(in oklch, var(--color-dark-blue) 22%, var(--color-surface)) l calc(c * 1.8) h);
+  /* Keeps the strips' z-index: -1 above the card's background. */
+  isolation: isolate;
 }
 
-#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day {
-  border-radius: 0;
+/* Hovered inside the strip, a day darkens the strip's own blue rather than
+   turning the usual gray, which looked out of place on it. */
+#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day:hover:not(.assessment-calendar-day--selected) {
+  background: color-mix(in oklch, var(--block-day-fill), var(--color-dark-blue) 12%);
 }
 
-#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day:not(.assessment-calendar-day--selected) {
+#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -6px;
+  z-index: -1;
   background: var(--block-day-fill);
+  pointer-events: none;
 }
 
-#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day:not(.assessment-calendar-day--block-day-last) {
-  box-shadow: 0 6px 0 0 var(--block-day-fill);
-}
-
-#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day-first {
+#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day-first::before {
   border-top-left-radius: calc(10px * var(--squircle-scale));
   border-top-right-radius: calc(10px * var(--squircle-scale));
+  corner-shape: squircle;
 }
 
-#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day-last {
+#admin-cal-grid.admin-cal-grid--testing-block .assessment-calendar-day--block-day-last::before {
+  bottom: 0;
   border-bottom-left-radius: calc(10px * var(--squircle-scale));
   border-bottom-right-radius: calc(10px * var(--squircle-scale));
+  corner-shape: squircle;
 }

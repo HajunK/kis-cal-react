@@ -135,9 +135,9 @@
 
 /* The blurred copy of the list, lined up with it in JS (see
    attachScoreScrollBlur). Never fully opaque, and fainter the higher it goes:
-   rows fade as they blur, from 60% where they hand over from the real ones
-   at the label's bottom edge, through 55% at its middle, to 35% at the
-   box's top. The full width of the box, not just the list's, so the blur
+   rows fade as they blur, from 40% where they hand over from the real ones
+   at the label's bottom edge, through 25% at its middle, to 12% at the
+   box's top, so they stay faint behind the label's text. The full width of the box, not just the list's, so the blur
    spreading out past the rows isn't cut off in a hard line; clipped to the
    box's rounded top corners. */
 .score-blur {
@@ -152,16 +152,16 @@
   pointer-events: none;
   -webkit-mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.35),
-    rgba(0, 0, 0, 0.55) calc(var(--score-pad-top) + var(--score-label-h) / 2),
-    rgba(0, 0, 0, 0.6) calc(var(--score-pad-top) + var(--score-label-h)),
+    rgba(0, 0, 0, 0.12),
+    rgba(0, 0, 0, 0.25) calc(var(--score-pad-top) + var(--score-label-h) / 2),
+    rgba(0, 0, 0, 0.4) calc(var(--score-pad-top) + var(--score-label-h)),
     transparent
   );
   mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.35),
-    rgba(0, 0, 0, 0.55) calc(var(--score-pad-top) + var(--score-label-h) / 2),
-    rgba(0, 0, 0, 0.6) calc(var(--score-pad-top) + var(--score-label-h)),
+    rgba(0, 0, 0, 0.12),
+    rgba(0, 0, 0, 0.25) calc(var(--score-pad-top) + var(--score-label-h) / 2),
+    rgba(0, 0, 0, 0.4) calc(var(--score-pad-top) + var(--score-label-h)),
     transparent
   );
 }
@@ -172,6 +172,14 @@
   margin: 0;
   overflow: visible;
   filter: blur(6px);
+}
+
+/* The copy's pills switch on at once rather than fading with the real ones:
+   animating them meant re-blurring this masked layer on every frame of the
+   fade, which Chrome sometimes drew a frame late, so the pills blinked on
+   the first hover. */
+.score-blur .score-list li label {
+  transition: none;
 }
 
 .assessment-box--wide .score-blur {
@@ -205,7 +213,6 @@
   padding: var(--score-under-label-h) 0 36px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -251,10 +258,24 @@
   margin-top: 4px;
 }
 
+/* The 4px between rows is each row's own padding (2px above and below)
+   rather than a gap in the list, so the rows meet edge to edge: the pointer
+   always has a row under it as it moves down the list, instead of crossing
+   gaps that belonged to no row, which switched every row-hover effect off
+   and back on at each one, and with it a blink as Chrome redrew the pills.
+   The first and last rows give their outer 2px back, so the list's own
+   spacing is as before. */
 .score-list li {
   position: relative;
-  /* The row gap wasn't reliably inheriting from .assessment-groups several
-     levels up. */
+  padding: 2px 0;
+}
+
+.score-list li:first-child {
+  margin-top: -2px;
+}
+
+.score-list li:last-child {
+  margin-bottom: -2px;
 }
 
 .score-list li label {
@@ -321,11 +342,95 @@
   color: transparent;
   white-space: nowrap;
   pointer-events: none;
-  transition: color 0.15s ease;
 }
 
 .assessment-box:hover .score-type-hint {
   color: var(--color-gray-light);
+}
+
+/* The score the next cell needs for an A (see updateTargetHints), over the
+   empty cell like a placeholder, from the cell's left edge where "Type here"
+   sits. Hidden while that cell is typed in. */
+.score-target {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  /* "Type here"'s size, 70% of a score's 24px. */
+  font-size: 16.8px;
+  color: var(--color-gray-light);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: color 0.15s ease;
+}
+
+.score-target:empty,
+.score-list label:has(.score-value:focus) .score-target {
+  visibility: hidden;
+}
+
+/* Only while the card is hovered, or always on the card for the class going
+   on right now (see markCardInClassNow). */
+.score-target {
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.class-card:hover .score-target,
+.class-card--in-class .score-target {
+  opacity: 1;
+}
+
+/* On the gray pill an empty row gets while its box is hovered (the rule
+   above .score-list li label > *), a touch darker, so it doesn't wash out. */
+.assessment-box:hover:not(:has(.score-value:focus)) .score-list li:has(.letter-grade--empty) .score-target {
+  color: color-mix(in srgb, var(--color-gray-light), var(--color-gray-dark) 25%);
+}
+
+/* The A grade icon, grayed and faded like a preview icon
+   (img.letter-grade--preview), sized down to sit with the text. Not a
+   .letter-grade itself: rows with one of those count as scored (the date
+   button shows on them, for one), and this row is still empty. */
+.score-target-grade {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  /* Faded like a preview icon's circle, but through its color rather than
+     the element's opacity, which would fade the letter too. */
+  background: color-mix(in srgb, var(--color-gray-dark) calc(var(--preview-opacity) * 100%), transparent);
+}
+
+/* In dark mode a light gray circle stood out more than the gray text beside
+   it, so it's a gray darker than the card instead. */
+:root[data-theme="dark"] .score-target-grade {
+  background: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--color-surface), #000000 60%) calc(var(--preview-opacity) * 100%),
+    transparent
+  );
+}
+
+/* In dark mode, the letter in the text's own gray (currentColor), so it
+   matches "92 for" and picks up the same darker tint on a hovered row's
+   pill: the grade icon's letter-shaped image is used as a mask over that
+   color. */
+.score-target-letter {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  -webkit-mask: var(--letter) center / cover no-repeat;
+  mask: var(--letter) center / cover no-repeat;
+}
+
+/* Light mode keeps the letter white on its gray circle, as the grade icons
+   are everywhere else. */
+:root:not([data-theme="dark"]) .score-target-letter {
+  background: #ffffff;
 }
 
 /* Higher specificity than the hover rule above, so it wins regardless of hover. */
@@ -440,7 +545,7 @@
      button that opened it. */
   opacity: 0;
   transform: scale(0.85);
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition: transform var(--popup-spring-ms) var(--ease-popup-spring), opacity 0.18s ease;
 }
 
 .score-date-calendar--visible {
@@ -474,9 +579,12 @@
   cursor: pointer;
 }
 
+/* The same very light tint as the white circle buttons' hover (see
+   .domain-card-nav-btn), here over the button's own gray. */
 .score-date-calendar-clear-btn:hover {
-  background: var(--color-gray-light);
-  color: var(--color-text-primary);
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-gray-light) 20%, transparent), color-mix(in srgb, var(--color-gray-light) 20%, transparent)),
+    var(--color-gray-lighter);
 }
 
 .score-date-calendar-header {
@@ -493,15 +601,29 @@
 }
 
 .score-date-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
   height: 24px;
+  padding: 0;
   border: none;
   border-radius: 50%;
   background: none;
   color: var(--color-text-primary);
-  font-size: 16px;
-  line-height: 1;
   cursor: pointer;
+}
+
+/* The same chevrons as the Domain card arrows (.domain-card-nav-btn), sized
+   for the smaller button. */
+.score-date-nav-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .score-date-nav-btn:hover:not(:disabled) {
@@ -559,43 +681,50 @@
   justify-content: center;
 }
 
-.score-date-day--outside {
-  visibility: hidden;
-  cursor: default;
+/* Days from the months either side, filling out the first and last weeks. */
+.score-date-day--other-month {
+  color: var(--color-gray-light);
 }
 
 .score-date-day:hover {
   background: var(--color-gray-lighter);
 }
 
-/* Near-black in light mode, white in dark (the tabs' own accent), with the
-   card's color for the number. */
-.score-date-day--today {
-  background: var(--color-tab-accent);
-  color: var(--color-surface);
+/* Today: a solid circle in the theme's blue, with a white number. */
+.score-date-day--today,
+.score-date-day--today:hover {
+  background: var(--color-accent);
+  color: #ffffff;
   font-weight: 700;
 }
 
-/* Today keeps its colors on hover, over the plain days' hover circle. */
-.score-date-day--today:hover {
-  background: var(--color-tab-accent);
-  color: var(--color-surface);
-}
-
+/* The date already set: a ring in the same blue. */
 .score-date-day--selected {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 
-/* Inverse of today's colors, so it stands apart on the selected day's solid
-   blue. */
+/* On a gray day from a neighboring month, the ring is that same gray
+   rather than blue, matching its number, and thinner, as light as the
+   faded number it circles. */
+.score-date-day--other-month.score-date-day--selected:not(.score-date-day--today) {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* Both at once: today's solid blue, with a white ring just inside the edge
+   so the selection still shows. */
 .score-date-day--today.score-date-day--selected {
-  background: var(--color-surface);
-  color: var(--color-tab-accent);
+  box-shadow:
+    inset 0 0 0 2px var(--color-accent),
+    inset 0 0 0 4px var(--color-surface);
 }
 
 /* Light mode offsets this shadow 2px down; against the near-black page that
    reads as lopsided, so dark spreads it evenly. */
 :root[data-theme="dark"] .formative-link-btn {
   box-shadow: 0 0 6px var(--color-shadow-popover);
+}
+
+/* The "/" of a fraction being typed (see updateFractionOverlay). */
+.score-fraction-slash {
+  color: var(--color-gray-dark);
 }

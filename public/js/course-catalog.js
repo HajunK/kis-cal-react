@@ -1,5 +1,4 @@
-// The school's course list — whether a class has a final exam (20/60/20 vs
-// 20/80 grading split), AP status, GPA weight, and an optional message.
+// Whether a course has a final decides its grading split (20/60/20 vs 20/80).
 const COURSE_CATALOG = [
   { name: "Algebra II", ap: false, final: false, weight: 1},
   { name: "AP Art", ap: true, final: false, weight: 1, divisions: ["2D", "3D"] },
@@ -10,8 +9,7 @@ const COURSE_CATALOG = [
   { name: "Chamber Choir", ap: false, final: false, weight: 1 },
   { name: "Chemistry", ap: false, final: false, weight: 1 },
   { name: "AP Chemistry", ap: true, final: false, weight: 1 },
-  // divisions: sections that test on different days (e.g. Chinese I-IV);
-  // everything else about the course is shared across them.
+  // Sections that test on different days; everything else is shared.
   { name: "Chinese", ap: false, final: false, weight: 1, divisions: ["I", "II", "III", "IV"] },
   { name: "AP Chinese", ap: true, final: false, weight: 1 },
   { name: "Heritage Chinese", short: "Chinese", ap: false, final: false, weight: 1 },
@@ -33,7 +31,7 @@ const COURSE_CATALOG = [
   { name: "English", ap: false, final: false, weight: 1, divisions: ["9", "10", "11", "12"] },
   { name: "AP Language", ap: true, final: false, weight: 1 },
   { name: "AP Literature", short: "AP Lit", ap: true, final: false, weight: 1 },
-  { name: "AP Environmental Science", short: "ES", ap: true, final: false, weight: 1 },
+  { name: "AP Environmental Science", short: "AP ES", ap: true, final: false, weight: 1 },
   { name: "Ethics", ap: false, final: false, weight: 1 },
   { name: "Film as Literature", ap: false, final: false, weight: 1 },
   { name: "Geometry", ap: false, final: false, weight: 1 },
@@ -97,8 +95,7 @@ const COURSE_CATALOG = [
   { name: "Yearbook", ap: false, final: false, weight: 1 },
 ];
 
-// Looks up a course by name anywhere in the catalog, including inside a
-// "combo" course's own sub-entries (e.g. "Korean Lang" inside "Korean").
+// Combo courses' sub-entries live inside their parent, so they're searched too.
 function findCourseCatalogEntry(name) {
   for (const course of COURSE_CATALOG) {
     if (course.name === name) return course;
@@ -110,17 +107,14 @@ function findCourseCatalogEntry(name) {
   return null;
 }
 
-// A course's short name, for where its full one doesn't fit, keeping any
-// " (division)" suffix. null for a course with none.
 function shortCourseName(name) {
   const [, base, division = ""] = name.match(/^(.*?)( \([^)]*\))?$/);
   const course = findCourseCatalogEntry(base);
   return course && course.short ? course.short + division : null;
 }
 
-// A "combo" course is one schedule slot that's really two separate classes
-// (e.g. "Korean" -> "Korean Lang" + "Korean SS"). Expands any such names
-// into a flat list of the actual classes.
+// One schedule slot can be two separate classes ("Korean" is Korean Lang +
+// Korean SS).
 function expandCourseNames(names) {
   return names.flatMap((name) => {
     const course = COURSE_CATALOG.find((c) => c.name === name);
@@ -128,9 +122,8 @@ function expandCourseNames(names) {
   });
 }
 
-// The key used to match a period to its assessment dates — a course name
-// plus its picked division (e.g. "English (10)") if it has one, otherwise
-// just the plain name. Never shown as a display name.
+// Assessments are scheduled per division, so the match key includes it
+// ("English (10)"). Never displayed.
 function effectiveCourseName(courseName, division) {
   return division ? `${courseName} (${division})` : courseName;
 }

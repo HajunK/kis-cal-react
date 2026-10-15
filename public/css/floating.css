@@ -42,30 +42,83 @@
 
 /* Bottom-left so it never competes with .signin-toast; low z-index since it's
    ambient and must never sit above a real modal. */
+/* In the tab bar's top right, left of the profile picture: pushed there by
+   its auto left margin, which the profile picture's own then gives up (see
+   below). Flat, with no shadow. */
 .class-countdown-pill {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  background: var(--color-surface);
+  border: none;
+  box-sizing: border-box;
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  /* The profile picture's own edge and hover ring (see .auth-avatar): a 1px
+     gray edge at rest, and a soft ring, there all along at 0% opacity so
+     only its opacity animates. */
+  --pill-ring-opacity: 75%;
+  --pill-hover-border: transparent;
+  box-shadow:
+    0 0 0 1px var(--color-gray-lighter),
+    0 0 0 5px color-mix(in srgb, var(--color-gray-light) 0%, transparent);
+  transition: box-shadow 0.125s ease;
+}
+
+:root[data-theme="dark"] .class-countdown-pill {
+  --pill-ring-opacity: 55%;
+  --pill-hover-border: transparent;
+}
+
+/* No 1px edge in dark mode, at rest or hovered: on the dark bar the gray
+   line read as an outline (and hovered, a second one inside the ring). The
+   hover ring still shows. */
+:root[data-theme="dark"] .class-countdown-pill:not(:hover),
+:root[data-theme="dark"] .class-countdown-pill--settled:hover {
+  box-shadow:
+    0 0 0 1px transparent,
+    0 0 0 5px color-mix(in srgb, var(--color-gray-light) 0%, transparent);
+}
+
+.class-countdown-pill:hover,
+.class-countdown-pill--open {
+  box-shadow:
+    0 0 0 1px var(--pill-hover-border),
+    0 0 0 5px color-mix(in srgb, var(--color-gray-light) var(--pill-ring-opacity), transparent);
+}
+
+/* Just shrunk back from the schedule (see closeTodaySchedule): no hover
+   ring until the pointer has left it once. */
+.class-countdown-pill--settled:hover {
+  box-shadow:
+    0 0 0 1px var(--color-gray-lighter),
+    0 0 0 5px color-mix(in srgb, var(--color-gray-light) 0%, transparent);
+}
+
+/* 12px in all from the profile picture: the tab bar's 4px gap plus 8px,
+   standing in for the picture's own 16px margin. */
+.class-countdown-pill:not([hidden]) + .auth-container {
+  margin-left: 0;
+}
+
+.class-countdown-pill:not([hidden]) + .auth-container .auth-avatar-btn {
+  margin-left: 8px;
+}
+
+/* A page with no tab bar: floating at the bottom-left, as it used to. */
+body > .class-countdown-pill {
   position: fixed;
   /* Lines up with a class card's left edge. */
   left: 48px;
   bottom: 32px;
   z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 8px;
   max-width: calc(100% - 64px);
-  padding: 10px 18px;
-  background: var(--color-surface);
-  /* Transparent at rest, same width either way, so toggling it never shifts
-     layout. class-countdown.js turns it on only when the backdrop matches the
-     pill's own color. */
-  border: 1px solid transparent;
-  box-sizing: border-box;
-  border-radius: 999px;
-  box-shadow: var(--shadow-card);
-  font-size: 14px;
-}
-
-.class-countdown-pill--needs-outline {
-  border-color: var(--color-gray-lighter);
 }
 
 .class-countdown-pill[hidden] {
@@ -116,7 +169,7 @@
   position: fixed;
   z-index: 300;
   box-sizing: border-box;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 6px;
   background: var(--glass-tint);
   -webkit-backdrop-filter: blur(2.5px) saturate(180%) brightness(var(--glass-lift));
@@ -169,7 +222,7 @@
   --glass-tint: rgba(255, 255, 255, 0.06);
   --glass-lift: 1.25;
   --glass-edge-glow: rgba(255, 255, 255, 0.12);
-  --glass-rim-bright: rgba(255, 255, 255, 0.6);
+  --glass-rim-bright: rgba(255, 255, 255, 0.48);
   --glass-rim-dim: rgba(255, 255, 255, 0.14);
   --glass-outline: transparent;
   --glass-shadow: rgba(0, 0, 0, 0.35);
@@ -179,6 +232,107 @@
 
 .hover-tooltip--visible {
   opacity: 1;
+}
+
+/* On the Domain tab every tooltip, the tour's included, takes a heavier tint,
+   so it stays readable over the busy score lists. Other tabs keep the clear
+   glass. */
+.page-domain .hover-tooltip {
+  --glass-tint: rgba(255, 255, 255, 0.65);
+}
+
+/* Dark glass in dark mode: a white tint (and the usual brightness lift) read
+   as a light-mode tooltip on the dark cards. */
+:root[data-theme="dark"] .page-domain .hover-tooltip {
+  --glass-tint: rgba(0, 0, 0, 0.35);
+  --glass-lift: 1;
+}
+
+/* A one-time tip pointing at a Formative a Summative just replaced (see
+   showFormativeLinkTipOnce). The hover tooltip's glass (it carries
+   .hover-tooltip too).
+   The box and its pointer are one shape: the element runs down over the
+   pointer's area and is cut to the outline with a clip-path set in JS, so
+   there's one sheet of glass rather than two overlapping. The rim and outline
+   are an SVG stroke of that same path (.formative-link-tip-edge), since
+   box-shadow and ::before can only follow a rectangle. */
+.formative-link-tip {
+  --tip-outline: rgba(0, 0, 0, 0.14);
+  /* Matches FORMATIVE_LINK_TIP_POINTER_PX in domain.js. */
+  --tip-pointer: 6px;
+  padding: 4px 8px calc(4px + var(--tip-pointer));
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 13px;
+  line-height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  translate: 0 4px;
+  transition: opacity 0.2s ease, translate 0.2s ease;
+}
+
+.formative-link-tip::before {
+  display: none;
+}
+
+:root[data-theme="dark"] .formative-link-tip {
+  --tip-outline: rgba(255, 255, 255, 0.16);
+}
+
+/* Stroked twice as wide as it shows, since the clip-path cuts the outer half:
+   a faint outline at the very edge, then the specular rim just inside. */
+.formative-link-tip-edge {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.formative-link-tip-edge .rim {
+  fill: none;
+  stroke-width: 4px;
+}
+
+/* On the dark glass the rim reads as a second outline, so dark mode keeps
+   only the outer one. */
+:root[data-theme="dark"] .formative-link-tip-edge .rim {
+  display: none;
+}
+
+.formative-link-tip-edge .outline {
+  fill: none;
+  stroke: var(--tip-outline);
+  stroke-width: 2px;
+}
+
+.formative-link-tip-ok {
+  padding: 1px 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.formative-link-tip-ok:hover {
+  background: color-mix(in srgb, var(--color-accent) 85%, #000);
+}
+
+.formative-link-tip--visible {
+  opacity: 1;
+  translate: 0 0;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .formative-link-tip {
+    translate: none;
+  }
 }
 
 /* A small dropdown of actions (the account menu, the Upcoming card's + menu).
@@ -196,9 +350,9 @@
   /* A faint 1px edge over the cards' own soft shadow. */
   box-shadow: 0 0 0 1px var(--color-popup-outline), var(--shadow-card);
   opacity: 0;
-  transform: translateY(-4px) scale(0.98);
+  transform: translateY(var(--popup-shift, -4px)) scale(0.92);
   transform-origin: top right;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.15s ease, transform var(--popup-spring-ms) var(--ease-popup-spring);
 }
 
 .popup-menu--visible {
@@ -228,4 +382,290 @@
   height: 1px;
   margin: 6px 4px;
   background: var(--color-gray-lighter);
+}
+
+/* Today's schedule, opened from the time-left pill (see renderTodaySchedule):
+   the day and its A/B type, a strip of the day's events, each event marked
+   done, on now or to come, and a link to the next school day. */
+/* The pill, grown (see openTodaySchedule): over the pill, held at its top
+   and right edge, with the card's popover edge and shadow. While it changes
+   size its contents sit at full size in the top right corner, so they're
+   uncovered from there rather than squeezed. */
+.today-schedule-panel {
+  /* A close shadow to sit it on the page and a wide, soft one to lift it,
+     in place of an outline. */
+  --schedule-shadow-near: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --schedule-shadow-far: 0 12px 32px rgba(0, 0, 0, 0.12);
+  position: fixed;
+  z-index: 50;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--color-surface);
+  /* Starts as the pill (its 1px edge, no shadow) and eases into the
+     shadows as it opens, and back as it closes (see openTodaySchedule). The
+     same three layers either way, so each one fades rather than snapping. */
+  box-shadow:
+    0 0 0 1px var(--color-gray-lighter),
+    0 1px 3px rgba(0, 0, 0, 0),
+    0 12px 32px rgba(0, 0, 0, 0);
+  transition: box-shadow 0.38s ease;
+}
+
+:root[data-theme="dark"] .today-schedule-panel:not(.today-schedule-panel--lifted) {
+  box-shadow:
+    0 0 0 1px transparent,
+    0 1px 3px rgba(0, 0, 0, 0),
+    0 12px 32px rgba(0, 0, 0, 0);
+}
+
+.today-schedule-panel--lifted {
+  box-shadow:
+    0 0 0 1px transparent,
+    var(--schedule-shadow-near),
+    var(--schedule-shadow-far);
+}
+
+:root[data-theme="dark"] .today-schedule-panel {
+  --schedule-shadow-near: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --schedule-shadow-far: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+
+.today-schedule-panel--morphing .today-schedule {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform-origin: top right;
+}
+
+.today-schedule-pill-ghost {
+  transform-origin: right center;
+}
+
+.today-schedule {
+  /* The event on now takes its course's color, as its pills do on the
+     Calendar (see buildTodaySchedule), with every shade made the same way;
+     the accent blue for one with no course. */
+  --event-color: var(--color-accent);
+  --schedule-accent-soft: color-mix(in srgb, var(--event-color) 22%, var(--color-surface));
+  --schedule-accent-wash: oklch(from color-mix(in oklch, var(--event-color) 22%, var(--color-surface)) l calc(c * 1.8) h);
+  --schedule-event-text: color-mix(in srgb, var(--event-color) 35%, var(--color-text-primary));
+  width: 340px;
+  padding: 0 8px 6px;
+  box-sizing: border-box;
+}
+
+/* Clicking it closes the schedule. It reaches the panel's top and sides (the
+   top padding is its own), so the band where the pill was all counts. */
+.today-schedule-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -8px 12px;
+  padding: 16px 18px 0;
+}
+
+.today-schedule-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+/* The pill's contents where the pill was, blurring away as it opens (see
+   openTodaySchedule), laid out as in the pill. */
+.today-schedule-pill-ghost {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.today-schedule-day {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+/* About the day, not a course: plain gray beside the day's name. */
+.today-schedule-type {
+  color: var(--color-gray-dark);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+/* Each event's length of the day, side by side: done ones gray, the one on
+   now filled as far as it's got, the rest faint. */
+.today-schedule-strip {
+  display: flex;
+  gap: 3px;
+  margin: 0 10px 8px;
+}
+
+.today-schedule-segment {
+  flex-basis: 0;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+}
+
+.today-schedule-segment--past {
+  background: color-mix(in srgb, var(--color-gray-light) 70%, var(--color-gray-dark));
+}
+
+.today-schedule-segment--now {
+  background: linear-gradient(
+    to right,
+    var(--event-color) var(--done),
+    var(--schedule-accent-soft) var(--done)
+  );
+}
+
+.today-schedule-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.today-schedule-row {
+  display: flex;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.today-schedule-row--past {
+  color: var(--color-gray-dark);
+}
+
+/* The event on now, filled and colored like its pills on the Calendar. */
+.today-schedule-row--now {
+  margin: 4px 0;
+  padding: 10px;
+  background: var(--schedule-accent-wash);
+  color: var(--schedule-event-text);
+  font-weight: 700;
+}
+
+/* A dot for now, a small hollow circle for what's to come, nothing
+   for what's done (its gray text says so). */
+.today-schedule-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 20px;
+  color: var(--color-gray-dark);
+}
+
+.today-schedule-row--now .today-schedule-mark::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--event-color);
+}
+
+.today-schedule-row--future .today-schedule-mark::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border: 1.5px solid var(--color-gray-light);
+  border-radius: 50%;
+}
+
+.today-schedule-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.today-schedule-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.today-schedule-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.today-schedule-time {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--color-gray-dark);
+}
+
+.today-schedule-row--now .today-schedule-time {
+  color: inherit;
+}
+
+/* The time left in the event on now, under its name, to the second. Tabular
+   figures here only, so the digits hold still as they roll; the list's
+   times keep the font's own. */
+.today-schedule-remaining {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The next school day, or back to today, under a line. */
+.today-schedule-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: calc(100% - 4px);
+  margin: 8px 2px 0;
+  padding: 12px 8px 10px;
+  border: none;
+  border-top: 1px solid var(--color-gray-lighter);
+  border-radius: 0 0 8px 8px;
+  background: none;
+  color: var(--color-gray-dark);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.today-schedule-footer b {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.today-schedule-footer:hover {
+  color: var(--color-text-primary);
+}
+
+.today-schedule-footer[hidden] {
+  display: none;
+}
+
+.today-schedule-footer svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* Back to today points the other way, ahead of its text. */
+.today-schedule-footer--back {
+  justify-content: flex-start;
+}
+
+.today-schedule-footer--back svg {
+  transform: scaleX(-1);
 }
