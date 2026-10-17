@@ -1,25 +1,11 @@
 // Grades are encrypted on the device so Firestore only ever holds ciphertext.
 // The AES-GCM key is generated per device and account and never leaves this
 // browser's localStorage; another device needs the code from Settings, and a
-// lost code means the data can't be read.
-
-const ENCRYPTED_FIELDS = ["domainScores", "gpaClasses", "domainSnapshot"];
+// lost code means the data can't be read. The format itself (and
+// ENCRYPTED_FIELDS, encryptValue, decryptValue...) is src/core/crypto.js.
 
 function encKeyStorageKey(uid) {
   return `encKey_${uid}`;
-}
-
-function bytesToBase64(bytes) {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-function base64ToBytes(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 // Cached as a Promise so concurrent callers share one import instead of racing.
@@ -31,61 +17,13 @@ function getDeviceKey(uid) {
   const storageKey = encKeyStorageKey(uid);
   let rawBase64 = localStorage.getItem(storageKey);
   if (!rawBase64) {
-    rawBase64 = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+    rawBase64 = generateRawKeyBase64();
     localStorage.setItem(storageKey, rawBase64);
   }
 
-  const promise = crypto.subtle.importKey("raw", base64ToBytes(rawBase64), { name: "AES-GCM" }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
+  const promise = importRawKey(rawBase64);
   deviceKeyCache[uid] = promise;
   return promise;
-}
-
-// IV and ciphertext are combined so each value fits in one Firestore string
-// field.
-function encryptValue(key, value) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = new TextEncoder().encode(JSON.stringify(value));
-  return crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext).then((ciphertext) => {
-    const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-    combined.set(iv, 0);
-    combined.set(new Uint8Array(ciphertext), iv.length);
-    return bytesToBase64(combined);
-  });
-}
-
-// Null and plain objects (data saved before encryption) pass through rather
-// than erroring; the next save rewrites them encrypted. Failures fall back to
-// fallbackValue so a bad field can't break the page.
-function decryptValue(key, stored, fallbackValue) {
-  if (stored === undefined || stored === null) return Promise.resolve(fallbackValue);
-  if (typeof stored !== "string") return Promise.resolve(stored);
-
-  let combined;
-  try {
-    combined = base64ToBytes(stored);
-  } catch {
-    return Promise.resolve(fallbackValue);
-  }
-
-  const iv = combined.slice(0, 12);
-  const ciphertext = combined.slice(12);
-  return crypto.subtle
-    .decrypt({ name: "AES-GCM", iv }, key, ciphertext)
-    .then((plaintext) => JSON.parse(new TextDecoder().decode(plaintext)))
-    .catch(() => fallbackValue);
-}
-
-function encryptAppDataForCloud(data, key) {
-  return Promise.all(ENCRYPTED_FIELDS.map((field) => encryptValue(key, data[field]))).then((encryptedValues) => {
-    const encrypted = { ...data };
-    ENCRYPTED_FIELDS.forEach((field, i) => {
-      encrypted[field] = encryptedValues[i];
-    });
-    return encrypted;
-  });
 }
 
 function hasStoredDeviceKey(uid) {
@@ -106,35 +44,6 @@ function ensureJsQrLoaded() {
     document.head.appendChild(script);
   });
   return jsQrLoadPromise;
-}
-
-// Rejects rather than falling back, so a wrong code can be reported.
-function decryptValueOrThrow(key, stored) {
-  const combined = base64ToBytes(stored);
-  const iv = combined.slice(0, 12);
-  const ciphertext = combined.slice(12);
-  return crypto.subtle
-    .decrypt({ name: "AES-GCM", iv }, key, ciphertext)
-    .then((plaintext) => JSON.parse(new TextDecoder().decode(plaintext)));
-}
-
-// Stores nothing: the caller persists the key once it's confirmed to work.
-function importKeyFromCode(code) {
-  const trimmed = (code || "").replace(/\s+/g, "");
-  let bytes;
-  try {
-    bytes = base64ToBytes(trimmed);
-  } catch {
-    bytes = null;
-  }
-  if (!bytes || bytes.length !== 32) {
-    return Promise.reject(new Error("That doesn't look like a valid decryption code."));
-  }
-
-  const normalizedBase64 = bytesToBase64(bytes);
-  return crypto.subtle
-    .importKey("raw", bytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"])
-    .then((key) => ({ key, rawBase64: normalizedBase64 }));
 }
 
 function storeDeviceKey(uid, key, rawBase64) {

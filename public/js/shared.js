@@ -1,22 +1,5 @@
-// Shared by every data page: the grading scale, icons, the number roll, and
-// appData with its cloud sync.
-
-// Lowest score (inclusive) for each tier.
-const GRADE_SCALE = [
-  { min: 98, slug: "a-plus", label: "A+" },
-  { min: 93, slug: "a", label: "A" },
-  { min: 90, slug: "a-minus", label: "A-" },
-  { min: 87, slug: "b-plus", label: "B+" },
-  { min: 83, slug: "b", label: "B" },
-  { min: 80, slug: "b-minus", label: "B-" },
-  { min: 77, slug: "c-plus", label: "C+" },
-  { min: 73, slug: "c", label: "C" },
-  { min: 70, slug: "c-minus", label: "C-" },
-  { min: 67, slug: "d-plus", label: "D+" },
-  { min: 63, slug: "d", label: "D" },
-  { min: 60, slug: "d-minus", label: "D-" },
-  { min: 0, slug: "f", label: "F" },
-];
+// Shared by every data page: icons, the number roll, and appData with its
+// cloud sync. The grading scale and appData's shape are in src/core.
 
 function themeFolder() {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -422,46 +405,10 @@ function animateNumberChange(element, newText, revealStyle) {
   numberAnimations.set(element, timer);
 }
 
-// The epsilon stops float error from truncating down a step.
-function truncateToDecimals(value, decimals) {
-  const factor = 10 ** decimals;
-  const truncated = Math.floor(value * factor + 1e-9) / factor;
-  return truncated.toFixed(decimals);
-}
-
-function truncateToTwoDecimals(value) {
-  return truncateToDecimals(value, 2);
-}
-
-function truncateToFourDecimals(value) {
-  return truncateToDecimals(value, 4);
-}
-
-function roundToFourDecimals(value) {
-  return value.toFixed(4);
-}
-
 // Everything about the user lives here and in Firestore; localStorage only
 // caches it per user for faster page loads. Signed out, edits stay in memory
 // and are lost on navigation.
-let appData = {
-  periods: [],
-  // Parallel to periods.
-  periodDivisions: [],
-  // Plain names, not scores, so unencrypted.
-  hiddenCourses: [],
-  // Course names and dates, not scores, so unencrypted.
-  addedAssessments: [],
-  completedTasks: [],
-  domainSnapshot: [],
-  gpaClasses: [],
-  domainScores: {},
-  preferences: {},
-  // Round-tripped so pushDataToCloud's plain .set() doesn't wipe the email
-  // auth.js saves.
-  email: "",
-  lastModified: 0,
-};
+let appData = emptyAppData();
 
 function loadPeriods() {
   return appData.periods;
@@ -503,22 +450,6 @@ function saveCompletedTasks(ids) {
 // a network round trip.
 
 let currentUid = null;
-
-// Map key order isn't preserved by Firestore, but array order matters
-// (periods[0] is Period 1).
-function deepEqual(a, b) {
-  if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-
-  if (Array.isArray(a)) {
-    return a.length === b.length && a.every((item, i) => deepEqual(item, b[i]));
-  }
-
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  return aKeys.length === bKeys.length && aKeys.every((key) => deepEqual(a[key], b[key]));
-}
 
 function cacheKeyFor(uid) {
   return `cachedAppData_${uid}`;
@@ -731,19 +662,7 @@ function pushDataToCloud() {
 
 
 function resetAppData() {
-  appData = {
-    periods: [],
-    periodDivisions: [],
-    hiddenCourses: [],
-    addedAssessments: [],
-    completedTasks: [],
-    domainSnapshot: [],
-    gpaClasses: [],
-    domainScores: {},
-    preferences: {},
-    email: "",
-    lastModified: 0,
-  };
+  appData = emptyAppData();
 }
 
 // Only the current page's init function exists as a global.

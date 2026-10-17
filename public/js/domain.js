@@ -8,43 +8,9 @@ const TRANSPARENT_ICON = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAA
 // otherwise be read and saved twice.
 const SCORE_INPUT = ".score-value:not(.score-blur *)";
 
-function letterGradeForScore(score) {
-  return GRADE_SCALE.find((tier) => score >= tier.min);
-}
-
-function sanitizeScoreDigits(value) {
-  const firstDot = value.indexOf(".");
-  if (firstDot !== -1) {
-    value = value.slice(0, firstDot + 1) + value.slice(firstDot + 1).replace(/\./g, "");
-    value = value.slice(0, firstDot + 2);
-  }
-  return value;
-}
-
-// The 0-100 range is checked separately (and skipped mid-fraction) so an
-// over-100 keystroke can be rejected rather than clamped.
-function sanitizeScoreInput(raw) {
-  const value = raw.replace(/[^0-9./]/g, "");
-  const slashIndex = value.indexOf("/");
-  if (slashIndex === -1) return sanitizeScoreDigits(value);
-
-  const numerator = sanitizeScoreDigits(value.slice(0, slashIndex));
-  const denominator = sanitizeScoreDigits(value.slice(slashIndex + 1).replace(/\//g, ""));
-  return `${numerator}/${denominator}`;
-}
-
-// "" when the fraction is incomplete or invalid.
-function commitFractionInput(value) {
-  const slashIndex = value.indexOf("/");
-  if (slashIndex === -1) return value;
-
-  const numerator = parseFloat(value.slice(0, slashIndex));
-  const denominator = parseFloat(value.slice(slashIndex + 1));
-  if (isNaN(numerator) || !denominator) return "";
-
-  const score = Math.round((numerator / denominator) * 100);
-  return String(Math.max(0, Math.min(100, score)));
-}
+// The grade math itself (letterGradeForScore, sanitizeScoreInput,
+// weightedGrade, scoreNeeded...) is src/core/grades.js; this file reads the
+// cards' scores off the page and draws the results.
 
 // Only on blur or Enter, so the icon and FA/SA/D don't change mid-typing.
 function updateScoreIcon(input) {
@@ -115,11 +81,6 @@ function getBoxScores(box) {
     if (!isNaN(value)) scores.push(value);
   });
   return scores;
-}
-
-function average(numbers) {
-  if (numbers.length === 0) return null;
-  return numbers.reduce((sum, n) => sum + n, 0) / numbers.length;
 }
 
 function findAssessmentBox(card, label) {
@@ -201,15 +162,11 @@ function updateEmptyBoxPlaceholder(box) {
   hint.textContent = allEmpty ? "Type here" : "";
 }
 
-// Not A+: an A is the goal.
-const TARGET_TIERS = GRADE_SCALE.slice(GRADE_SCALE.findIndex((tier) => tier.slug === "a"));
-
 // Mirrors recalculateCard, including a higher Summative replacing its
 // Formative, so the hint matches what typing that score would really do.
 function cardGradeWith(card, targetInput, score) {
   const formativesBox = findAssessmentBox(card, "Formatives");
   const summativesBox = findAssessmentBox(card, "Summatives");
-  const formativeInputs = formativesBox ? [...formativesBox.querySelectorAll(SCORE_INPUT)] : [];
   const summativeInputs = summativesBox ? [...summativesBox.querySelectorAll(SCORE_INPUT)] : [];
   const raw = (input) => (input ? input.dataset.rawValue ?? input.value : "");
   const replaces = (formativeInput) =>
@@ -217,28 +174,20 @@ function cardGradeWith(card, targetInput, score) {
       ? Boolean(window.getPreferences().replaceFormativesByDefault)
       : formativeInput.dataset.unlinked !== "true";
 
-  let weightedSum = 0;
-  let weightTotal = 0;
-  card.querySelectorAll(".assessment-box").forEach((box) => {
-    const weight = parseFloat(box.dataset.baseWeight);
-    if (isNaN(weight)) return;
-    const scores = [...box.querySelectorAll(SCORE_INPUT)].map((input, row) => {
+  const boxes = [...card.querySelectorAll(".assessment-box")].map((box) => ({
+    weight: parseFloat(box.dataset.baseWeight),
+    scores: [...box.querySelectorAll(SCORE_INPUT)].map((input, row) => {
       if (box === formativesBox) {
         const formative = input === targetInput ? String(score) : raw(input);
         const summative = summativeInputs[row] === targetInput ? String(score) : raw(summativeInputs[row]);
         if (formative === "") return null;
-        const replaced = summative !== "" && parseFloat(summative) > parseFloat(formative) && replaces(input);
-        return parseFloat(replaced ? summative : formative);
+        return parseFloat(formativeIsReplaced(formative, summative, replaces(input)) ? summative : formative);
       }
       const value = input === targetInput ? String(score) : input.value;
       return value === "" ? null : parseFloat(value);
-    });
-    const avg = average(scores.filter((value) => value !== null && !isNaN(value)));
-    if (avg === null) return;
-    weightedSum += avg * weight;
-    weightTotal += weight;
-  });
-  return weightTotal > 0 ? weightedSum / weightTotal : null;
+    }),
+  }));
+  return weightedGrade(boxes);
 }
 
 function cardUsesDecimals(card) {
@@ -247,22 +196,9 @@ function cardUsesDecimals(card) {
   );
 }
 
-// A tier counts from its minimum less 0.5, since the badge shows the rounded
-// grade. Always rounded up so the number shown is enough. The grade only rises
-// with the score, so a binary search works.
+// Always rounded up (see scoreNeeded), so the number shown is enough.
 function scoreNeededForTarget(card, input) {
-  const tier = TARGET_TIERS.find((candidate) => cardGradeWith(card, input, 100) >= candidate.min - 0.5);
-  if (!tier) return null;
-  const reaches = (score) => cardGradeWith(card, input, score) >= tier.min - 0.5;
-  const steps = cardUsesDecimals(card) ? 10 : 1;
-  let low = 0;
-  let high = 100 * steps;
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2);
-    if (reaches(mid / steps)) high = mid;
-    else low = mid + 1;
-  }
-  return { tier, score: low / steps };
+  return scoreNeeded((score) => cardGradeWith(card, input, score), TARGET_TIERS, cardUsesDecimals(card));
 }
 
 // Each empty cell's number is for that cell alone. Because a Summative can
@@ -909,29 +845,21 @@ function updateDomainBadge(card, domain) {
 
 // Boxes with no scores are left out of the weighted average.
 function recalculateCard(card) {
-  let weightedSum = 0;
-  let weightTotal = 0;
   let faAverage = null;
   let saAverage = null;
   let scoredBoxes = 0;
 
-  card.querySelectorAll(".assessment-box").forEach((box) => {
+  const boxes = [...card.querySelectorAll(".assessment-box")].map((box) => {
     const label = box.querySelector(".assessment-label").textContent.trim();
-    const avg = average(getBoxScores(box));
-
+    const scores = getBoxScores(box);
+    const avg = average(scores);
     if (label === "Formatives") faAverage = avg;
     if (label === "Summatives") saAverage = avg;
-    if (avg === null) return;
-    scoredBoxes++;
-
-    const weight = parseFloat(box.dataset.baseWeight);
-    if (isNaN(weight)) return;
-
-    weightedSum += avg * weight;
-    weightTotal += weight;
+    if (avg !== null) scoredBoxes++;
+    return { weight: parseFloat(box.dataset.baseWeight), scores };
   });
 
-  const domain = weightTotal > 0 ? weightedSum / weightTotal : null;
+  const domain = weightedGrade(boxes);
 
   // With nothing scored, the numbers stay hidden behind "No grades yet";
   // rolling them to "-" would only flash. With one box scored, D would just
@@ -1548,20 +1476,8 @@ function formatAssessmentDate(date) {
   return window.formatPreferredDate(date);
 }
 
-// Dates are saved as YYYY-MM-DD and formatted at render time, so they follow
-// the date format setting. Not toISOString, which is UTC and can land on the
-// wrong day.
-function toISODate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function fromISODate(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
+// Dates are saved as YYYY-MM-DD (toISODate) and formatted at render time, so
+// they follow the date format setting.
 
 function schoolYearBounds(today = new Date()) {
   const year = today.getFullYear();

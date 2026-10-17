@@ -3,22 +3,6 @@ function loadDomainSnapshot() {
   return appData.domainSnapshot;
 }
 
-const GPA_SCALE = {
-  "a-plus": 4.0,
-  a: 4.0,
-  "a-minus": 3.667,
-  "b-plus": 3.333,
-  b: 3.0,
-  "b-minus": 2.667,
-  "c-plus": 2.333,
-  c: 2.0,
-  "c-minus": 1.667,
-  "d-plus": 1.333,
-  d: 1.0,
-  "d-minus": 0.667,
-  f: 0.0,
-};
-
 function loadGpaClasses() {
   return appData.gpaClasses;
 }
@@ -212,33 +196,13 @@ function recalculateGpa() {
   const list = document.querySelector(".gpa-class-list");
   if (!list) return;
 
-  let unweightedSum = 0;
-  let weightedSum = 0;
-  let creditTotal = 0;
-  let hasAp = false;
-
-  list.querySelectorAll(".gpa-class-row").forEach((row) => {
-    const name = row.querySelector(".gpa-class-name").textContent;
-    const course = findCourseCatalogEntry(name);
-    const isAp = course ? course.ap : false;
-    // Taking an AP course decides the display, graded or not.
-    if (isAp) hasAp = true;
-
-    const points = GPA_SCALE[row.dataset.slug];
-    if (points === undefined) return;
-
-    // Catalog weight can lower credit (half for each part of a combo course) or
-    // zero it (Lunch).
-    const credit = course ? course.weight : 1;
-    if (credit === 0) return;
-
-    unweightedSum += points * credit;
-    weightedSum += (points + (isAp ? 1.0 : 0)) * credit;
-    creditTotal += credit;
-  });
-
-  const unweightedText = creditTotal > 0 ? roundToFourDecimals(unweightedSum / creditTotal) : "-";
-  const weightedText = creditTotal > 0 ? roundToFourDecimals(weightedSum / creditTotal) : "-";
+  const classes = Array.from(list.querySelectorAll(".gpa-class-row")).map((row) => ({
+    name: row.querySelector(".gpa-class-name").textContent,
+    slug: row.dataset.slug,
+  }));
+  const { unweighted, weighted, hasAp } = computeGpa(classes);
+  const unweightedText = unweighted === null ? "-" : roundToFourDecimals(unweighted);
+  const weightedText = weighted === null ? "-" : roundToFourDecimals(weighted);
 
   const splitItems = document.querySelectorAll(".gpa-summary-item:not(.gpa-summary-item--combined)");
   const combinedItem = document.querySelector(".gpa-summary-item--combined");

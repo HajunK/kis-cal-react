@@ -69,7 +69,7 @@ function serverCacheVersions() {
 function fetchUnlessCached(key, hasCache, useCache, fetchFresh) {
   serverCacheVersions().then(({ versions, failed }) => {
     const version = versions ? versions[key] : null;
-    if (hasCache && (failed || (version != null && version === readLocalCacheVersions()[key]))) {
+    if (cachedCopyIsCurrent({ hasCache, failed, serverVersion: version, localVersion: readLocalCacheVersions()[key] })) {
       useCache();
     } else {
       fetchFresh(version);
@@ -274,125 +274,45 @@ function loadAssessmentData(callback) {
   });
 }
 
-// Not toISOString, which is UTC and can land on the wrong day.
-function toISODate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+// The schedule math lives in src/core/schedule.js and takes the school data
+// as arguments; these hand it what this page has loaded, under the names the
+// other scripts use.
+const {
+  SCHEDULE_BLOCKS,
+  TESTING_BLOCK_FALLBACK_TIMES,
+  ACADEMIC_SUPPORT_FALLBACK_TIMES,
+  isReassessment,
+  defaultScheduleEvent,
+} = KisCore.schedule;
 
-function fromISODate(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function todayISODate() {
-  return toISODate(new Date());
-}
-
-// Periods 1-4 meet on A days and 5-8 on B days. Unset days, Testing Blocks
-// (school-wide) and reassessments (in Academic Support) are visible to every
-// period.
 function isAssessmentVisibleForPeriod(entry, periodIndex) {
-  if (periodIndex == null || entry.type === "Testing Block" || isReassessment(entry)) return true;
-  const dayType = allDayTypes[entry.date];
-  if (dayType === "A") return periodIndex < 4;
-  if (dayType === "B") return periodIndex >= 4;
-  return true;
+  return KisCore.schedule.isAssessmentVisibleForPeriod(entry, periodIndex, allDayTypes);
 }
 
-// Every A and B day has the same shape; slot maps a block to periodIndex slot
-// (A) or slot + 4 (B).
-const SCHEDULE_BLOCKS = [
-  { type: "class", slot: 0, label: "Period 1/5" },
-  { type: "class", slot: 1, label: "Period 2/6" },
-  { type: "lunch", label: "Lunch" },
-  { type: "class", slot: 2, label: "Period 3/7" },
-  { type: "class", slot: 3, label: "Period 4/8" },
-];
-
-// The Bell Schedule's slots, whose times are the same every day. blockN is
-// SCHEDULE_BLOCKS[N] (and times[N]); the others are their own fields.
-const SCHEDULE_EVENT_KEYS = ["testingBlock", "advisory", "block0", "block1", "block2", "block3", "block4", "academicSupport"];
-
-// What a slot normally holds on a date: itself, except a class slot, which
-// holds that day's period (period1-4 on an A day, period5-8 on a B day), or
-// both ("Period 1/5", its own key) on a day not yet set A or B.
-function defaultScheduleEvent(slot, dayType) {
-  if (!slot.startsWith("block")) return slot;
-  const block = SCHEDULE_BLOCKS[Number(slot.slice(5))];
-  if (block.type !== "class" || (dayType !== "A" && dayType !== "B")) return slot;
-  return `period${block.slot + (dayType === "A" ? 1 : 5)}`;
-}
-
-// An event's normal times, which are also the times of its slot.
-function scheduleEventTimes(key) {
-  if (!defaultPeriodTimes) return null;
-  if (key === "testingBlock") return defaultPeriodTimes.testingBlock || TESTING_BLOCK_FALLBACK_TIMES;
-  if (key === "advisory") return defaultPeriodTimes.advisory || null;
-  if (key === "academicSupport") return academicSupportTimes();
-  return (defaultPeriodTimes.times || [])[Number(key.slice(5))] || null;
-}
-
-// A date's schedule: [{ key, start, end }] in time order. Slots and their times
-// are the same every day; normally each holds its own event (the day's period
-// in a class slot), the Testing Block on Mondays and Fridays and Advisory on
-// other weekdays. An admin can rearrange a single date (daySchedules[iso]):
-// which event sits in which slot, any period included, and which slots are
-// used at all.
 function scheduleForDate(iso) {
-  const weekday = fromISODate(iso).getDay();
-  if (weekday === 0 || weekday === 6 || !defaultPeriodTimes) return [];
-  const dayType = allDayTypes[iso];
-  const custom = defaultPeriodTimes.daySchedules && defaultPeriodTimes.daySchedules[iso];
-  const included = (key) => {
-    if (custom && Array.isArray(custom.included)) return custom.included.includes(key);
-    if (key === "testingBlock") return weekday === 1 || weekday === 5;
-    if (key === "advisory") return weekday !== 1 && weekday !== 5;
-    return true;
-  };
-  return SCHEDULE_EVENT_KEYS.map((slot) => ({ slot, time: scheduleEventTimes(slot) }))
-    .filter(({ time }) => time && time.start && time.end)
-    .sort((a, b) => (a.time.start < b.time.start ? -1 : a.time.start > b.time.start ? 1 : 0))
-    .map(({ slot, time }) => ({
-      key: (custom && custom.slots && custom.slots[slot]) || defaultScheduleEvent(slot, dayType),
-      start: time.start,
-      end: time.end,
-    }))
-    .filter(({ key }) => included(key));
+  return KisCore.schedule.scheduleForDate(iso, allDayTypes, defaultPeriodTimes);
 }
 
-// When an event happens on a date, or null if it doesn't that day.
 function scheduledTimeOn(iso, key) {
-  return scheduleForDate(iso).find((event) => event.key === key) || null;
+  return KisCore.schedule.scheduledTimeOn(iso, key, allDayTypes, defaultPeriodTimes);
 }
 
-// Any weekday counts, A/B set or not, since the bell rings the same either way.
+function academicSupportTimes() {
+  return KisCore.schedule.academicSupportTimes(defaultPeriodTimes);
+}
+
+// For Privacy Blur's During School mode (see evaluatePrivacyBlur in
+// preferences.js).
 function isDuringSchoolNow() {
-  const now = new Date();
-  if (now.getDay() === 0 || now.getDay() === 6) return false;
-  if (!defaultPeriodTimes) return false;
+  return KisCore.schedule.isDuringSchool(new Date(), allDayTypes, defaultPeriodTimes);
+}
 
-  const events = scheduleForDate(toISODate(now));
+function assessmentEndsAt(entry, periodIndex) {
+  return KisCore.schedule.assessmentEndsAt(entry, periodIndex, allDayTypes, defaultPeriodTimes);
+}
 
-  const toMinutes = (hhmm) => {
-    const [hours, minutes] = hhmm.split(":").map(Number);
-    return hours * 60 + minutes;
-  };
-  let first = null;
-  let last = null;
-  events.forEach((time) => {
-    if (!time || !time.start || !time.end) return;
-    const start = toMinutes(time.start);
-    const end = toMinutes(time.end);
-    if (first === null || start < first) first = start;
-    if (last === null || end > last) last = end;
-  });
-  if (first === null) return false;
-
-  const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-  return nowMinutes >= first && nowMinutes < last;
+function assessmentStillUpcoming(entry, periodIndex, now = new Date()) {
+  return KisCore.schedule.assessmentStillUpcoming(entry, periodIndex, now, allDayTypes, defaultPeriodTimes);
 }
 
 function assessmentsForCourse(courseName, periodIndex) {
@@ -411,50 +331,6 @@ function assessmentsForCourses(courseEntries) {
     )
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-}
-
-// Until an admin saves one in the Bell Schedule.
-const TESTING_BLOCK_FALLBACK_TIMES = { start: "08:00", end: "08:50" };
-// Until an admin saves one in the Bell Schedule.
-const ACADEMIC_SUPPORT_FALLBACK_TIMES = { start: "15:25", end: "16:00" };
-
-function academicSupportTimes() {
-  return (defaultPeriodTimes && defaultPeriodTimes.academicSupport) || ACADEMIC_SUPPORT_FALLBACK_TIMES;
-}
-
-function isReassessment(entry) {
-  return /reassess/i.test(entry.type);
-}
-
-// null when it can't be told (no schedule, or the class doesn't meet that day);
-// it then counts until the day is over.
-function assessmentEndsAt(entry, periodIndex) {
-  if (!defaultPeriodTimes && !isReassessment(entry)) return null;
-  let end = null;
-  // Wherever that date's schedule puts the event, falling back to its normal
-  // times for the Testing Block and Academic Support.
-  if (isReassessment(entry)) {
-    end = (scheduledTimeOn(entry.date, "academicSupport") || academicSupportTimes()).end;
-  } else if (entry.type === "Testing Block") {
-    end = (scheduledTimeOn(entry.date, "testingBlock") || defaultPeriodTimes.testingBlock || TESTING_BLOCK_FALLBACK_TIMES).end;
-  } else {
-    if (periodIndex === undefined || periodIndex === null) return null;
-    // Only on a date the period meets.
-    const time = scheduledTimeOn(entry.date, `period${periodIndex + 1}`);
-    end = time && time.end;
-  }
-  if (!end) return null;
-  const [hours, minutes] = end.split(":").map(Number);
-  const date = fromISODate(entry.date);
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-}
-
-function assessmentStillUpcoming(entry, periodIndex, now = new Date()) {
-  const today = toISODate(now);
-  if (entry.date !== today) return entry.date > today;
-  const endsAt = assessmentEndsAt(entry, periodIndex);
-  return !endsAt || now < endsAt;
 }
 
 function nearestUpcomingAssessment(courseName, type, periodIndex) {

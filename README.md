@@ -1,55 +1,51 @@
-# Grade Calculator
+# KIS Cal
 
-The KISJ grade calculator with per-user classes and assignments, stored in Firebase.
+A grade calculator, assessment calendar and GPA tool for KIS students. Grades are
+encrypted on each student's device; courses, assessments and the bell schedule
+are stored in Firebase.
+
+## Run it
+
+```
+npm install
+npm run dev        # http://localhost:5173, with the same clean URLs and redirects as Firebase Hosting
+npm test           # the core logic's tests (Vitest)
+npm run build      # into dist/
+firebase deploy    # builds first (see predeploy in firebase.json), then deploys dist/ and the Firestore rules
+```
 
 ## Structure
 
 ```
-public/
-	index.html          Single-page app shell
-	css/style.css        Styling
-	js/firebase-config.js  Your Firebase project config (fill in your own keys)
-	js/auth.js            Sign in / sign out with Google
-	js/calculator.js       Pure grade math (weighted + simple average, letter grades)
-	js/app.js              DOM <-> Firestore wiring
-firebase.json           Hosting + Firestore config
-firestore.rules         Security rules (users can only access their own data)
-firestore.indexes.json  Firestore index config (empty for now)
-.firebaserc              Firebase project alias
+domain.html, calendar.html, gpa.html      The student tabs, one page each (Vite builds every page listed in vite.config.js)
+assessments.html, posts.html              Admin-only tabs
+calendar-demo.html                        The Calendar with made-up data and no Firebase
+src/core/                                 Logic with no page access, each with *.test.js beside it:
+  catalog.js                                the course list (AP, finals, divisions, short names, combo courses)
+  grades.js                                 letter grades, score entry, a Domain card's weighted grade, target scores, GPA
+  schedule.js                               the bell schedule and when assessments happen
+  crypto.js                                 the encryption format for the grade fields
+  sync.js                                   appData's shape and the sync decisions
+  dates.js                                  local YYYY-MM-DD dates
+src/legacy/core-globals.js                Hands src/core to the scripts in public/js as globals
+public/                                   Copied into the build unchanged
+  js/                                       The page scripts (plain scripts sharing globals; boot.js starts each page)
+  css/, fonts/, icons/, grade-icons/
+firebase.json, firestore.rules            Hosting config and the security rules (the real admin gate)
 ```
 
-## Data model (Firestore)
+Each page loads `core-globals.js` as a module ahead of its plain scripts, so they
+can use the core functions (`letterGradeForScore`, `toISODate`, ...) as before.
+The schedule functions take the school data as arguments; `assessments-shared.js`
+wraps them with the data it has loaded.
 
-```
-users/{uid}/classes/{classId}
-	name: string
-	createdAt: timestamp
+## Data (Firestore)
 
-users/{uid}/classes/{classId}/assignments/{assignmentId}
-	name: string
-	score: number
-	total: number
-	weight: number | null   (percent weight, e.g. "Exams" = 40)
-	createdAt: timestamp
-```
-
-## Setup
-
-1. Create a project at https://console.firebase.google.com
-2. Enable **Authentication** > Sign-in method > Google
-3. Enable **Firestore Database** (start in production mode; rules are already provided)
-4. In Project Settings > General > Your apps, add a Web app and copy the config
-   into [public/js/firebase-config.js](public/js/firebase-config.js)
-5. Replace `YOUR_PROJECT_ID` in [.firebaserc](.firebaserc)
-6. Install the Firebase CLI if you don't have it: `npm install -g firebase-tools`
-7. Log in: `firebase login`
-8. Deploy rules: `firebase deploy --only firestore:rules`
-9. Run locally: `firebase emulators:start --only hosting` (or just open `public/index.html`
-   directly in a browser, though auth popups work best served over http/https)
-10. Deploy: `firebase deploy`
-
-
-## Run Commands
-
-- npx serve -l 8000: run server on http://localhost:8000
-- firebase deploy: deploy server to Firebase
+- `users/{uid}`: one doc per student: periods, divisions, hidden courses, their own
+  assessments and completed tasks, preferences, and the encrypted `domainScores`,
+  `gpaClasses` and `domainSnapshot`.
+- `assessments`, `dayTypes`, `periodTimes/default`, `posts`: school-wide, readable
+  by anyone, written by admins.
+- `suggested`: assessments students added that the school calendar is missing.
+- `meta/cacheVersions`: when each school-wide collection last changed, so pages
+  only refetch what changed.

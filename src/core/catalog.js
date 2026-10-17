@@ -1,5 +1,5 @@
 // Whether a course has a final decides its grading split (20/60/20 vs 20/80).
-const COURSE_CATALOG = [
+export const COURSE_CATALOG = [
   { name: "Algebra II", ap: false, final: false, weight: 1},
   { name: "AP Art", ap: true, final: false, weight: 1, divisions: ["2D", "3D"] },
   { name: "Biology", ap: false, final: false, weight: 1 },
@@ -96,7 +96,7 @@ const COURSE_CATALOG = [
 ];
 
 // Combo courses' sub-entries live inside their parent, so they're searched too.
-function findCourseCatalogEntry(name) {
+export function findCourseCatalogEntry(name) {
   for (const course of COURSE_CATALOG) {
     if (course.name === name) return course;
     if (course.combo) {
@@ -107,7 +107,7 @@ function findCourseCatalogEntry(name) {
   return null;
 }
 
-function shortCourseName(name) {
+export function shortCourseName(name) {
   const [, base, division = ""] = name.match(/^(.*?)( \([^)]*\))?$/);
   const course = findCourseCatalogEntry(base);
   return course && course.short ? course.short + division : null;
@@ -115,7 +115,7 @@ function shortCourseName(name) {
 
 // One schedule slot can be two separate classes ("Korean" is Korean Lang +
 // Korean SS).
-function expandCourseNames(names) {
+export function expandCourseNames(names) {
   return names.flatMap((name) => {
     const course = COURSE_CATALOG.find((c) => c.name === name);
     return course && course.combo ? course.combo.map((c) => c.name) : [name];
@@ -124,6 +124,6 @@ function expandCourseNames(names) {
 
 // Assessments are scheduled per division, so the match key includes it
 // ("English (10)"). Never displayed.
-function effectiveCourseName(courseName, division) {
+export function effectiveCourseName(courseName, division) {
   return division ? `${courseName} (${division})` : courseName;
 }

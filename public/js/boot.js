@@ -96,43 +96,9 @@ function watchUserDocForChanges(uid) {
     );
 }
 
-// Every field defaulted, so the rest of the app can assume the full shape.
-// Async because the grade fields need decrypting.
-function normalizeCloudData(cloud, key) {
-  return Promise.all([
-    decryptValue(key, cloud.domainSnapshot, []),
-    decryptValue(key, cloud.gpaClasses, []),
-    decryptValue(key, cloud.domainScores, {}),
-  ]).then(([domainSnapshot, gpaClasses, domainScores]) => ({
-    periods: cloud.periods || [],
-    periodDivisions: cloud.periodDivisions || [],
-    hiddenCourses: cloud.hiddenCourses || [],
-    addedAssessments: cloud.addedAssessments || [],
-    completedTasks: cloud.completedTasks || [],
-    domainSnapshot,
-    gpaClasses,
-    domainScores,
-    // Round-tripped so pushDataToCloud's plain .set() doesn't wipe them.
-    preferences: cloud.preferences || {},
-    email: cloud.email || "",
-    lastModified: cloud.lastModified || 0,
-  }));
-}
-
 // Signing in reloads the page, so work typed while signed out is stashed here
 // to carry over to a brand-new account. Read back once and cleared.
 const PENDING_ANONYMOUS_DATA_KEY = "pendingAnonymousData";
-
-function appDataIsEmpty(data) {
-  return (
-    (data.periods || []).every((name) => !name || name.trim() === "") &&
-    (data.domainSnapshot || []).length === 0 &&
-    (data.gpaClasses || []).length === 0 &&
-    Object.keys(data.domainScores || {}).length === 0 &&
-    (data.hiddenCourses || []).length === 0 &&
-    (data.addedAssessments || []).length === 0
-  );
-}
 
 function writePendingAnonymousData(data) {
   try {
