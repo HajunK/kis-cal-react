@@ -70,6 +70,13 @@ body {
   cursor: pointer;
 }
 
+/* A step darker in dark mode (the next gray down), so the footer sits back
+   on the dark page. */
+:root[data-theme="dark"] .page-footer,
+:root[data-theme="dark"] .page-footer-link {
+  color: var(--color-gray-light);
+}
+
 .placeholder-card {
   max-width: 480px;
   background: var(--color-surface);

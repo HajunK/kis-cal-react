@@ -150,9 +150,9 @@ function promptForDecryptionCode(uid, cloud) {
     overlay.className = "decryption-prompt-overlay";
     overlay.innerHTML = `
       <div class="decryption-prompt">
-        <h2 class="decryption-prompt-title">Enter your decryption code</h2>
+        <h2 class="decryption-prompt-title">Enter your login key</h2>
         <p class="decryption-prompt-text">
-          Your grades can only be accessed on a device with the decryption code. Find it under Login Keys in Settings on the device you first signed in on.
+          Find it in Profile → Login Key on the device you first signed in on.
         </p>
 
         <div class="decryption-prompt-camera">
@@ -167,10 +167,9 @@ function promptForDecryptionCode(uid, cloud) {
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
-            placeholder="Decryption code"
+            placeholder="Login Key"
           />
           <p class="decryption-prompt-error" hidden></p>
-          <button type="button" class="decryption-prompt-submit">Continue</button>
           <button type="button" class="decryption-prompt-scan-btn">Scan QR code instead</button>
         </div>
 
@@ -184,10 +183,10 @@ function promptForDecryptionCode(uid, cloud) {
              without the code, so this is the only way forward besides
              finding it. -->
         <div class="decryption-prompt-reset-confirm" hidden>
+          <h2 class="decryption-prompt-title">Are you sure?</h2>
           <p class="decryption-prompt-text">
-            This clears your encrypted grade data, which can't be read without the code — your courses, periods,
-            and other settings are untouched. You'll start entering fresh grades on this device. This can't be
-            undone.
+            Your grades can't be opened without your login key, so this deletes them and you start over. Your
+            courses and settings stay. This can't be undone.
           </p>
           <div class="decryption-prompt-reset-actions">
             <button type="button" class="decryption-prompt-reset-cancel-btn">Cancel</button>
@@ -210,9 +209,10 @@ function promptForDecryptionCode(uid, cloud) {
     const manualBox = overlay.querySelector(".decryption-prompt-manual");
     const input = overlay.querySelector(".decryption-prompt-input");
     const errorEl = overlay.querySelector(".decryption-prompt-error");
-    const submitBtn = overlay.querySelector(".decryption-prompt-submit");
     const scanBtn = overlay.querySelector(".decryption-prompt-scan-btn");
 
+    const mainTitle = overlay.querySelector(".decryption-prompt > .decryption-prompt-title");
+    const introText = overlay.querySelector(".decryption-prompt > .decryption-prompt-text");
     const resetPrompt = overlay.querySelector(".decryption-prompt-reset-prompt");
     const resetLink = overlay.querySelector(".decryption-prompt-reset-link");
     const resetConfirmBox = overlay.querySelector(".decryption-prompt-reset-confirm");
@@ -221,9 +221,20 @@ function promptForDecryptionCode(uid, cloud) {
 
     const encryptedFieldsPresent = ENCRYPTED_FIELDS.filter((field) => typeof cloud[field] === "string");
 
+    // Checked as it's typed (or pasted, or scanned), so there's no button to
+    // press: a key that works opens the grades at once. Only a key that's
+    // all there (a whole 32-byte key is 44 characters) and still doesn't
+    // work says so; one that's still being typed just waits. Each check
+    // carries its own number, so a slow earlier one can't land after a
+    // newer one.
+    const FULL_KEY_LENGTH = 44;
+    let attemptNumber = 0;
+    let unlocked = false;
+
     function attempt() {
-      errorEl.hidden = true;
-      submitBtn.disabled = true;
+      if (unlocked) return;
+      const number = ++attemptNumber;
+      const typed = input.value.replace(/\s+/g, "");
 
       importKeyFromCode(input.value)
         .then(({ key, rawBase64 }) =>
@@ -233,21 +244,22 @@ function promptForDecryptionCode(uid, cloud) {
           }))
         )
         .then(({ key, rawBase64 }) => {
+          if (number !== attemptNumber || unlocked) return;
+          unlocked = true;
           stopScanning();
           storeDeviceKey(uid, key, rawBase64);
           overlay.remove();
           resolve(key);
         })
         .catch(() => {
-          errorEl.textContent = "That code doesn't match this account. Check it and try again.";
-          errorEl.hidden = false;
-          submitBtn.disabled = false;
-          input.focus();
-          input.select();
+          if (number !== attemptNumber) return;
+          const complete = typed.length >= FULL_KEY_LENGTH;
+          errorEl.textContent = "That key doesn't match this account. Check it and try again.";
+          errorEl.hidden = !complete;
         });
     }
 
-    submitBtn.addEventListener("click", attempt);
+    input.addEventListener("input", attempt);
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter") attempt();
     });
@@ -259,12 +271,61 @@ function promptForDecryptionCode(uid, cloud) {
     const scanCanvas = document.createElement("canvas");
     const scanCtx = scanCanvas.getContext("2d");
 
+    // Leaves hiding the camera view to the caller, which may fade it out.
     function stopScanning() {
       if (scanFrameHandle) cancelAnimationFrame(scanFrameHandle);
       scanFrameHandle = null;
       if (scanStream) scanStream.getTracks().forEach((track) => track.stop());
       scanStream = null;
-      cameraBox.hidden = true;
+    }
+
+    // From one view of the prompt to another (the QR scanner, the typed key,
+    // the reset warning): what's leaving fades out, then the dialog eases to
+    // the new view's height as it fades and rises in. Straight to the new
+    // view when nothing that's leaving is showing.
+    let viewSwap = null;
+    function swapViews(hideEls, showEls, then) {
+      if (viewSwap) viewSwap.cancel();
+      const leaving = hideEls.filter((el) => !el.hidden);
+      const coming = showEls.filter((el) => el.hidden);
+      const finish = () => {
+        hideEls.forEach((el) => (el.hidden = true));
+        showEls.forEach((el) => (el.hidden = false));
+      };
+      if (leaving.length === 0 || coming.length === 0) {
+        finish();
+        if (then) then();
+        return;
+      }
+      const style = getComputedStyle(dialog);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const startHeight = dialog.offsetHeight - padding;
+      const fades = leaving.map((el) =>
+        el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-in", fill: "forwards" })
+      );
+      viewSwap = fades[0];
+      Promise.all(fades.map((fade) => fade.finished))
+        .then(() => {
+          viewSwap = null;
+          fades.forEach((fade) => fade.cancel());
+          finish();
+          const endHeight = dialog.offsetHeight - padding;
+          dialog.animate([{ height: `${startHeight}px` }, { height: `${endHeight}px` }], {
+            duration: 260,
+            easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+          });
+          coming.forEach((el) =>
+            el.animate(
+              [
+                { opacity: 0, transform: "translateY(6px)" },
+                { opacity: 1, transform: "none" },
+              ],
+              { duration: 260, easing: "ease-out" }
+            )
+          );
+          if (then) then();
+        })
+        .catch(() => {});
     }
 
     function scanFrame() {
@@ -277,6 +338,8 @@ function promptForDecryptionCode(uid, cloud) {
         if (code && code.data) {
           input.value = code.data;
           stopScanning();
+          // Into the typed view, so a misread code can be fixed by hand.
+          swapViews([cameraBox], [manualBox]);
           attempt();
           return;
         }
@@ -286,20 +349,20 @@ function promptForDecryptionCode(uid, cloud) {
 
     function showManualEntry() {
       stopScanning();
-      manualBox.hidden = false;
-      input.focus();
+      swapViews([cameraBox], [manualBox], () => input.focus());
     }
 
     function showCameraScanning() {
       errorEl.hidden = true;
-      manualBox.hidden = true;
-      cameraBox.hidden = false;
-
       if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
         showManualEntry();
         return;
       }
+      swapViews([manualBox], [cameraBox]);
+      startCamera();
+    }
 
+    function startCamera() {
       ensureJsQrLoaded()
         .then(() => navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }))
         .then((stream) => {
@@ -319,20 +382,20 @@ function promptForDecryptionCode(uid, cloud) {
     // only other way forward.
     let resetReturnToCamera = false;
 
+    // The warning stands alone, with its own heading in place of the key
+    // prompt's.
     function showResetConfirm() {
       resetReturnToCamera = !cameraBox.hidden;
       stopScanning();
-      cameraBox.hidden = true;
-      manualBox.hidden = true;
-      resetPrompt.hidden = true;
-      resetConfirmBox.hidden = false;
+      swapViews([mainTitle, introText, cameraBox, manualBox, resetPrompt], [resetConfirmBox]);
     }
 
     function hideResetConfirm() {
-      resetConfirmBox.hidden = true;
-      resetPrompt.hidden = false;
-      if (resetReturnToCamera) showCameraScanning();
-      else showManualEntry();
+      const view = resetReturnToCamera ? cameraBox : manualBox;
+      swapViews([resetConfirmBox], [mainTitle, introText, view, resetPrompt], () => {
+        if (resetReturnToCamera) startCamera();
+        else input.focus();
+      });
     }
 
     resetLink.addEventListener("click", showResetConfirm);

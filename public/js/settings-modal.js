@@ -1,18 +1,13 @@
-// The Settings and Login Keys popups, opened from the account menu (auth.js).
+// The Settings and Login Key popups, opened from the account menu (auth.js).
 // Their markup is built fresh each time one opens. The "sm" prefix keeps these
 // helpers' names apart from other pages' similar ones.
 
-const SM_COPY_ICON = `
-  <svg class="settings-copy-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <rect x="9" y="9" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2" />
-    <path d="M6 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-  </svg>
-`;
-const SM_CHECK_ICON = `
-  <svg class="settings-copy-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-  </svg>
-`;
+// icons/copy.svg, drawn in the button's color through a mask (like
+// .close-icon).
+const SM_COPY_ICON = `<span class="settings-copy-icon settings-copy-glyph" aria-hidden="true"></span>`;
+// The app's own check (check.png, as on the Calendar's Filters), drawn in
+// the button's color through a mask.
+const SM_CHECK_ICON = `<span class="settings-copy-icon settings-copy-check" aria-hidden="true"></span>`;
 
 function smInitSegmentedControl(container) {
   const thumb = document.createElement("span");
@@ -435,12 +430,14 @@ function openLoginKeysModal() {
   const overlay = smBuildOverlay(`
     <div class="settings-card login-keys-card settings-modal-card">
       <button type="button" class="settings-modal-close-btn" aria-label="Close"><span class="close-icon" aria-hidden="true"></span></button>
-      <h2 class="settings-title">Login Keys</h2>
+      <h2 class="settings-title">Login Key</h2>
       <!-- An easier way to get the code onto another device than typing
            it: scan this with that device's camera. -->
       <div class="settings-encryption-qr" id="encryption-code-qr"></div>
       <div class="settings-encryption-code-row">
-        <input type="text" class="settings-encryption-code" id="encryption-code" readonly />
+        <div class="settings-encryption-code-pill">
+          <div class="settings-encryption-code" id="encryption-code" tabindex="0" role="textbox" aria-readonly="true" aria-label="Login key"></div>
+        </div>
         <button type="button" class="settings-copy-btn" id="copy-encryption-code-btn" aria-label="Copy">
           ${SM_COPY_ICON}
         </button>
@@ -455,14 +452,12 @@ function openLoginKeysModal() {
   const copyBtn = overlay.querySelector("#copy-encryption-code-btn");
 
   copyBtn.addEventListener("click", () => {
-    if (!codeInput.value) return;
-    navigator.clipboard.writeText(codeInput.value).then(() => {
+    if (!codeInput.textContent) return;
+    // Stays a check while the popup is open; it's built fresh, as a copy
+    // button again, the next time it opens.
+    navigator.clipboard.writeText(codeInput.textContent).then(() => {
       copyBtn.innerHTML = SM_CHECK_ICON;
       copyBtn.setAttribute("aria-label", "Copied");
-      setTimeout(() => {
-        copyBtn.innerHTML = SM_COPY_ICON;
-        copyBtn.setAttribute("aria-label", "Copy");
-      }, 1500);
     });
   });
 
@@ -477,8 +472,8 @@ function openLoginKeysModal() {
       .get({ source: "server" })
       .then((snapshot) => resolveDeviceKeyForBoot(user.uid, snapshot.exists ? snapshot.data() : {}))
       .then(() => {
-        codeInput.value = localStorage.getItem(encKeyStorageKey(user.uid)) || "";
-        smRenderEncryptionQr(overlay, codeInput.value);
+        codeInput.textContent = localStorage.getItem(encKeyStorageKey(user.uid)) || "";
+        smRenderEncryptionQr(overlay, codeInput.textContent);
       })
       .catch((error) => console.error("Failed to load decryption code:", error));
   }

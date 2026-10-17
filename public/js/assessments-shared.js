@@ -231,6 +231,10 @@ if (cachedPeriodTimes) {
   periodTimesLoaded = true;
 }
 
+// For Privacy Blur's During School mode (see evaluatePrivacyBlur in
+// preferences.js): whether it can be told yet.
+window.isScheduleReadyForBlur = () => periodTimesLoaded;
+
 function loadScheduleData(callback) {
   let assessmentsReady = false;
   let dayTypesReady = false;

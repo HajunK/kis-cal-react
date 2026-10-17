@@ -260,6 +260,23 @@ function recalculateGpa() {
   }
 }
 
+// Under Privacy Blur, changing a course's grade shows the GPA for a moment,
+// long enough to see its numbers roll to the new value, then blurs it again.
+const GPA_REVEAL_LINGER_MS = 600;
+let gpaRevealTimer = null;
+
+function revealGpaBriefly() {
+  if (document.documentElement.dataset.privacyBlur !== "true") return;
+  const card = document.querySelector(".gpa-summary-card");
+  if (!card) return;
+  clearTimeout(gpaRevealTimer);
+  card.dataset.revealGpa = "true";
+  const digits = Math.max(...[...card.querySelectorAll(".gpa-summary-item strong")].map((el) => (el.dataset.rollValue || el.textContent).length));
+  gpaRevealTimer = setTimeout(() => {
+    delete card.dataset.revealGpa;
+  }, ROLL_DURATION_MS + ROLL_STAGGER_MS * digits + GPA_REVEAL_LINGER_MS);
+}
+
 function renderGpaClassList(classes) {
   const list = document.querySelector(".gpa-class-list");
   if (!list) return;
@@ -291,6 +308,7 @@ function renderGpaClassList(classes) {
       closeAllGpaDropdowns();
       persistGpaClasses();
       recalculateGpa();
+      revealGpaBriefly();
       // Clearing doesn't count toward hiding the instructions; only picking a
       // grade does.
       list.dispatchEvent(new CustomEvent("gpa-grade-changed", { bubbles: true, detail: { cleared: true } }));
@@ -315,6 +333,7 @@ function renderGpaClassList(classes) {
         closeAllGpaDropdowns();
         persistGpaClasses();
         recalculateGpa();
+        revealGpaBriefly();
         list.dispatchEvent(new CustomEvent("gpa-grade-changed", { bubbles: true }));
       });
       openGpaDropdown(dropdown);
@@ -350,6 +369,7 @@ function renderGpaClassList(classes) {
         animateGpaBadgeChange(row, tier.slug, tier.label, direction);
         persistGpaClasses();
         recalculateGpa();
+        revealGpaBriefly();
         list.dispatchEvent(new CustomEvent("gpa-grade-changed", { bubbles: true, detail: { fromScroll: true } }));
       },
       { passive: false }

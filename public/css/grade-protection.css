@@ -82,6 +82,12 @@
   text-decoration: underline;
 }
 
+/* In dark mode, the light blue of the Settings popup's selected options and
+   switches: the plain accent is too deep to read easily on the dark card. */
+:root[data-theme="dark"] .grade-protection-intro a {
+  color: var(--color-segment-active);
+}
+
 .grade-protection-section-title {
   margin: 0 0 6px;
   font-size: 15px;

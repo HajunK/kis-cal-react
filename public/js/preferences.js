@@ -90,9 +90,26 @@ function evaluatePrivacyBlur() {
       typeof window.isDuringSchoolNow === "function" &&
       window.isDuringSchoolNow());
   const root = document.documentElement;
+  // In During School mode the answer isn't known until the bell schedule has
+  // loaded (a moment after the page, from the network), so until then each
+  // evaluation still counts as the first: turning on then is the page's
+  // starting state, not a change to animate. Pages without the schedule
+  // never blur in that mode.
+  const decided =
+    privacyBlurMode !== "school" ||
+    (typeof window.isScheduleReadyForBlur === "function"
+      ? window.isScheduleReadyForBlur()
+      : document.readyState === "complete");
   const first = !privacyBlurEvaluated;
-  if (on === (root.dataset.privacyBlur === "true")) {
+  const settle = () => {
+    if (!decided || privacyBlurEvaluated) return;
     privacyBlurEvaluated = true;
+    // The blur's own eases (hover reveals, school starting or ending) only
+    // from here on, once the starting state is on screen.
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add("privacy-blur-settled")));
+  };
+  if (on === (root.dataset.privacyBlur === "true")) {
+    settle();
     return;
   }
   // Lets domain.css ease the toggle itself without those transitions catching
@@ -105,7 +122,7 @@ function evaluatePrivacyBlur() {
   }
   if (on) root.dataset.privacyBlur = "true";
   else delete root.dataset.privacyBlur;
-  if (first) privacyBlurEvaluated = true;
+  if (first) settle();
 }
 window.refreshPrivacyBlur = evaluatePrivacyBlur;
 

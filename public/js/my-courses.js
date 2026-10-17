@@ -1544,7 +1544,9 @@ const ICON_CHEVRON_DOWN = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="
 const ICON_CHEVRON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5" /></svg>';
 
 // Unlike a calendar pill's, scrolls as soon as it's hovered. shortText stands
-// in when the full text is cut off.
+// in when the full text is cut off. Judged by the room it has at rest: a name
+// that fits then doesn't scroll just because a course row's chevron slides in
+// on hover and narrows it.
 function attachHoverMarquee(hoverEl, windowEl, text, shortText = null) {
   const textEl = windowEl.appendChild(document.createElement("span"));
   textEl.className = "assessment-pill-text";

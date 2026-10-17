@@ -212,6 +212,27 @@
   justify-content: center;
 }
 
+/* Privacy Blur eases on and off (and in and out on hover) only once the page
+   has settled (privacy-blur-settled, set by evaluatePrivacyBlur), so it
+   doesn't animate in as the tab opens. */
+html.privacy-blur-settled .gpa-summary-item strong {
+  transition: filter 0.2s ease, color 0.2s ease;
+}
+
+/* Privacy Blur hides the GPA like the Domain tab's grades: blurred and gray.
+   Each value shows while it's hovered (just that one), and both for a moment
+   after a course's grade changes (see revealGpaBriefly). */
+html[data-privacy-blur] .gpa-summary-item strong {
+  filter: blur(7px);
+  color: var(--color-gray-dark);
+}
+
+html[data-privacy-blur] .gpa-summary-item:hover strong,
+html[data-privacy-blur] .gpa-summary-card[data-reveal-gpa] .gpa-summary-item strong {
+  filter: none;
+  color: var(--color-text-primary);
+}
+
 /* Direct-child on purpose: a descendant selector would also hit every
    digit-slot span the roll animation builds inside <strong>, forcing each into
    a 160px box. */

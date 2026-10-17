@@ -504,12 +504,19 @@ img.letter-grade--preview[data-slug] {
 html[data-privacy-blur] .class-card .score-value,
 html[data-privacy-blur] .class-card .score-original {
   filter: blur(4px);
-  transition: filter 0.2s ease, color 0.2s ease;
 }
 
 /* :not([data-empty]): a "--" placeholder has nothing to hide. */
 html[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
   filter: blur(6px);
+}
+
+/* Hover reveals ease in and out, but only once the page has settled
+   (privacy-blur-settled, set by evaluatePrivacyBlur): before that, the blur
+   coming on as the page loads would play as an animation. */
+html.privacy-blur-settled[data-privacy-blur] .class-card .score-value,
+html.privacy-blur-settled[data-privacy-blur] .class-card .score-original,
+html.privacy-blur-settled[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
   transition: filter 0.2s ease, color 0.2s ease;
 }
 

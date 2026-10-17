@@ -84,24 +84,47 @@
   gap: 12px;
 }
 
+/* The pill the key sits in. The key runs right out to its rounded ends and is
+   cut off by them as it scrolls, rather than at a straight edge inside: the
+   field fills the pill with no side padding, and the pill clips it. */
+.settings-encryption-code-pill {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  /* Stretched to the copy button's 40px, it centers the key's line in that
+     height rather than leaving it at the top. */
+  align-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+}
+
+/* A scrolling line rather than an input, as it's read-only: a scroller keeps
+   its end padding as room to scroll into, so the key can be scrolled until
+   its last character is clear of the right-hand fade, while an input would
+   cut it off straight at its padding instead. 14px in at each end, so it
+   rests inside the pill's curve, and fading out over those 14px as it
+   scrolls under them. No focus ring; it's there to select and copy. */
 .settings-encryption-code {
   flex: 1;
   min-width: 0;
-  font: inherit;
+  padding: 10px 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  outline: none;
+  color: var(--color-text-primary);
   font-size: 14px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--color-text-primary);
-  background: var(--color-gray-lighter);
-  border: none;
-  /* Fully round rather than a fixed radius; padding is left as is since the key
-     is long enough that extra side padding would clip it. */
-  border-radius: 999px;
-  padding: 10px 14px;
+  line-height: normal;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
 }
 
-.settings-encryption-code:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
+.settings-encryption-code::-webkit-scrollbar {
+  display: none;
 }
 
 .settings-copy-btn {
@@ -119,8 +142,11 @@
   cursor: pointer;
 }
 
+/* A light tint (the Domain card arrows' 20% rather than the usual 50%
+   hover overlay). */
 .settings-copy-btn:hover {
-  background: linear-gradient(var(--color-hover-overlay), var(--color-hover-overlay)), var(--color-gray-lighter);
+  --copy-hover-tint: color-mix(in srgb, var(--color-gray-light) 20%, transparent);
+  background: linear-gradient(var(--copy-hover-tint), var(--copy-hover-tint)), var(--color-gray-lighter);
 }
 
 .settings-copy-icon {
@@ -128,25 +154,92 @@
   height: 18px;
 }
 
-/* A QR code needs real light-on-dark contrast, so this stays white in both
-   themes. */
-.settings-encryption-qr:empty {
-  display: none;
+.settings-copy-glyph {
+  display: block;
+  background-color: currentColor;
+  -webkit-mask: url("../icons/copy.svg") center / contain no-repeat;
+  mask: url("../icons/copy.svg") center / contain no-repeat;
 }
 
-/* As wide as the card, the code square inside it. */
+.settings-copy-check {
+  display: block;
+  background-color: currentColor;
+  -webkit-mask: url("../icons/light/check.png") center / contain no-repeat;
+  mask: url("../icons/light/check.png") center / contain no-repeat;
+}
+
+/* White, for the code's contrast (dark mode inverts it, below). A fixed
+   square in the middle of the card, big enough to scan from another
+   device's camera. Square from the start (aspect-ratio on its content box,
+   inside the padding), so the card is already its full height while the key
+   loads and nothing shifts when the code draws in. */
 .settings-encryption-qr {
-  align-self: stretch;
+  position: relative;
+  align-self: center;
+  width: 240px;
+  aspect-ratio: 1;
   background: #ffffff;
-  padding: 12px;
+  /* Room between the code and the corner marks around it. */
+  padding: 30px;
   border-radius: 12px;
+  /* Pulled up toward the heading: on the white card its white border is
+     invisible, so the card's usual 16px gap plus the 8px above the corner
+     marks read as a wide gap. */
+  margin-top: -10px;
 }
 
+/* In dark mode the code is white on the card's own dark color instead of a
+   bright white square. Still scannable: the contrast is the same, just
+   inverted, which the app's own scanner tries (jsQR's default
+   inversionAttempts: "attemptBoth"), as do phone cameras. The SVG's own
+   white backing is cleared and its black modules turned white. */
+:root[data-theme="dark"] .settings-encryption-qr {
+  background: var(--color-surface);
+}
+
+:root[data-theme="dark"] .settings-encryption-qr svg rect {
+  fill: transparent;
+}
+
+:root[data-theme="dark"] .settings-encryption-qr svg path {
+  fill: #ffffff;
+}
+
+/* A scanner's corner marks in the theme blue, framing the code: an L at each
+   corner, drawn as two bars apiece (eight gradients on one layer). */
+.settings-encryption-qr::before {
+  --mark: var(--color-accent);
+  --mark-length: 18px;
+  --mark-width: 2.5px;
+  content: "";
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--mark), var(--mark)) top left / var(--mark-length) var(--mark-width),
+    linear-gradient(var(--mark), var(--mark)) top left / var(--mark-width) var(--mark-length),
+    linear-gradient(var(--mark), var(--mark)) top right / var(--mark-length) var(--mark-width),
+    linear-gradient(var(--mark), var(--mark)) top right / var(--mark-width) var(--mark-length),
+    linear-gradient(var(--mark), var(--mark)) bottom left / var(--mark-length) var(--mark-width),
+    linear-gradient(var(--mark), var(--mark)) bottom left / var(--mark-width) var(--mark-length),
+    linear-gradient(var(--mark), var(--mark)) bottom right / var(--mark-length) var(--mark-width),
+    linear-gradient(var(--mark), var(--mark)) bottom right / var(--mark-width) var(--mark-length);
+  background-repeat: no-repeat;
+}
+
+/* Fades in once the key has loaded and the code is drawn into its box. */
 .settings-encryption-qr svg {
   display: block;
   width: 100%;
   height: auto;
   aspect-ratio: 1;
+  animation: settings-qr-fade-in 0.3s ease-out;
+}
+
+@keyframes settings-qr-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Layered on .settings-card's own box styling instead of wrapping it in a
@@ -212,4 +305,11 @@
   font-size: 26.4px;
   line-height: 1;
   cursor: pointer;
+}
+
+/* The Login Key popup's heading and note centered, over the centered QR
+   code. */
+.login-keys-card .settings-title,
+.login-keys-card .settings-encryption-hint {
+  text-align: center;
 }

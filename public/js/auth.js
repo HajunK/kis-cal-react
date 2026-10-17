@@ -186,7 +186,7 @@ function openAuthMenu(avatarBtn) {
     menu.appendChild(buildAuthMenuItem("Settings", openSettingsModal));
   }
   if (typeof openLoginKeysModal === "function") {
-    menu.appendChild(buildAuthMenuItem("Login Keys", openLoginKeysModal));
+    menu.appendChild(buildAuthMenuItem("Login Key", openLoginKeysModal));
   }
   if (menu.children.length > 0) {
     const divider = document.createElement("div");

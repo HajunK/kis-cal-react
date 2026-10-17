@@ -59,47 +59,41 @@
   color: var(--color-gray-dark);
 }
 
+/* An underline rather than a box, like the Add popup's "Describe the task"
+   field (.add-popup-input): a thin gray line at rest, and on focus a thicker
+   one in the accent that grows out from the middle. The key itself is set
+   in monospace, so its look-alike characters are easier to tell apart. */
 .decryption-prompt-input {
-  font: inherit;
-  font-size: 15px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--color-text-primary);
-  background: var(--color-gray-lighter);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 2px 8px;
   border: none;
-  border-radius: 10px;
-  padding: 12px 14px;
+  border-radius: 0;
+  outline: none;
+  background:
+    linear-gradient(var(--color-accent), var(--color-accent)) bottom center / 0% 2px no-repeat,
+    linear-gradient(var(--color-gray-light), var(--color-gray-light)) bottom / 100% 1px no-repeat;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 17px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  transition: background-size 0.2s ease;
+}
+
+/* The placeholder in the app's own font, as it's a label, not a key. */
+.decryption-prompt-input::placeholder {
+  color: var(--color-gray-dark);
+  font-family: Inter, system-ui, sans-serif;
 }
 
 .decryption-prompt-input:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
+  background-size: 100% 2px, 100% 1px;
 }
 
 .decryption-prompt-error {
   margin: 0;
   font-size: 14px;
   color: #e5484d;
-}
-
-.decryption-prompt-submit {
-  padding: 12px 20px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-accent);
-  color: #ffffff;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.decryption-prompt-submit:hover {
-  opacity: 0.9;
-}
-
-.decryption-prompt-submit:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .decryption-prompt-scan-btn {

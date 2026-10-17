@@ -1749,7 +1749,7 @@
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 /* The card surface: the filter fill's own gray would vanish into the page
@@ -1785,8 +1785,10 @@
   background-color: color-mix(in srgb, var(--color-filter-check) 55%, #ffffff);
 }
 
+/* Off, only the label fades; its empty ring (and a dashed outline) stay at
+   full strength. */
 .calendar-filter--off {
-  opacity: 0.45;
+  color: color-mix(in srgb, var(--color-filter-text) 45%, transparent);
 }
 
 .calendar-filter--off::before {
@@ -2182,22 +2184,30 @@
   mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
 }
 
-/* Only on hover. Hidden with opacity, not display, so its room stays put and
-   the name doesn't reflow as it appears. */
+/* Only on hover, when it slides open (its width and the row's gap before it)
+   and fades in. At rest it takes no room, so a long name runs the full width
+   before it's cut off. */
 .add-popup-course-chevron {
   flex: none;
   display: flex;
+  justify-content: flex-end;
+  width: 0;
+  margin-left: -10px;
+  overflow: hidden;
   color: var(--color-gray-dark);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, width 0.15s ease, margin-left 0.15s ease;
 }
 
 .add-popup-course:hover .add-popup-course-chevron,
 .add-popup-course--active .add-popup-course-chevron {
+  width: 16px;
+  margin-left: 0;
   opacity: 1;
 }
 
 .add-popup-course-chevron svg {
+  flex: none;
   width: 16px;
   height: 16px;
 }
