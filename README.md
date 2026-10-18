@@ -32,6 +32,9 @@ src/legacy/core-globals.js                Hands src/core to the scripts in publi
 src/ui/                                   Shared React components: Modal, ConfirmDialog, Toast, SegmentedControl, ToggleSwitch, form fields
 src/posts/                                The Posts admin tab, in React (main.jsx mounts it into posts.html)
 src/admin/                                The Assessments admin tab (calendar, A/B days, Bell Schedule, Suggestions), in React; bellSchedule.js keeps the old drag code
+src/calendar/                             The Calendar tab: React page and side panel (CalendarPage.jsx), its logic (model.js, tested),
+                                            and the grids, Upcoming list and Add popup (calendar.js, classGrid.js, addPopup.js, pills.js),
+                                            carried over from my-courses.js with their motion unchanged; globals.js serves Domain and GPA
 src/gpa/                                  The GPA tab, in React: hydrates gpa.html's own markup; badgeMotion.js keeps the old animations
 src/popups/                               The account menu's popups (Settings, Login Key, My Courses) and Learn More, in React, on every page
 src/legacy/page.js                        React's handle on the plain scripts' data (appData, pushDataToCloud...)
