@@ -23,6 +23,12 @@ export const GRADE_SCALE = [
 // What the target hints aim for. Not A+: an A is the goal.
 export const TARGET_TIERS = GRADE_SCALE.slice(GRADE_SCALE.findIndex((tier) => tier.slug === "a"));
 
+// The colored circle is drawn in CSS from data-slug, so one set of letters
+// serves both themes.
+export function gradeIconPath(slug) {
+  return `grade-icons/${slug}.png`;
+}
+
 export function letterGradeForScore(score) {
   return GRADE_SCALE.find((tier) => score >= tier.min);
 }

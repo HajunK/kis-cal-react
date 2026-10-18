@@ -27,7 +27,16 @@ src/core/                                 Logic with no page access, each with *
   crypto.js                                 the encryption format for the grade fields
   sync.js                                   appData's shape and the sync decisions
   dates.js                                  local YYYY-MM-DD dates
+  admins.js                                 the admin email list (cosmetic; firestore.rules is the gate)
 src/legacy/core-globals.js                Hands src/core to the scripts in public/js as globals
+src/ui/                                   Shared React components: Modal, ConfirmDialog, Toast, SegmentedControl, ToggleSwitch, form fields
+src/posts/                                The Posts admin tab, in React (main.jsx mounts it into posts.html)
+src/admin/                                The Assessments admin tab (calendar, A/B days, Bell Schedule, Suggestions), in React; bellSchedule.js keeps the old drag code
+src/gpa/                                  The GPA tab, in React: hydrates gpa.html's own markup; badgeMotion.js keeps the old animations
+src/popups/                               The account menu's popups (Settings, Login Key, My Courses) and Learn More, in React, on every page
+src/legacy/page.js                        React's handle on the plain scripts' data (appData, pushDataToCloud...)
+src/firebase/legacy.js                    React's handle on the page's Firebase app (the compat scripts)
+src/test/fakeFirebase.js                  In-memory Firestore and Auth for tests; records every write
 public/                                   Copied into the build unchanged
   js/                                       The page scripts (plain scripts sharing globals; boot.js starts each page)
   css/, fonts/, icons/, grade-icons/

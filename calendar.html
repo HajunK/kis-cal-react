@@ -161,6 +161,9 @@
        scripts below as globals (see src/legacy/core-globals.js). A module,
        so it runs before them, in document order. -->
   <script type="module" src="/src/legacy/core-globals.js"></script>
+  <!-- The account menu's popups (Settings, Login Key, My Courses) and Learn
+       More, in React (src/popups/main.jsx). -->
+  <script type="module" src="/src/popups/main.jsx"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -172,7 +175,6 @@
        script is exactly what an ad blocker or school network filter
        blocks, which broke this before. A same-origin file can't be. -->
   <script defer src="/js/vendor/qrcode-generator.js"></script>
-  <script defer src="/js/settings-modal.js"></script>
   <script defer src="/js/shared.js"></script>
   <script defer src="/js/assessments-shared.js"></script>
   <script defer src="/js/my-courses.js"></script>

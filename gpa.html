@@ -102,7 +102,9 @@
       );
     })();
   </script>
-  <div class="page-content">
+  <!-- The GPA tab, in React (src/gpa/main.jsx), which hydrates this markup
+       as it is: keep it exactly what GpaPage renders before the data is in. -->
+  <div class="page-content" id="gpa-root">
     <div class="gpa-layout">
       <div class="gpa-card gpa-classes-card">
         <h2 class="gpa-classes-title">Course Grades</h2>
@@ -140,6 +142,10 @@
        scripts below as globals (see src/legacy/core-globals.js). A module,
        so it runs before them, in document order. -->
   <script type="module" src="/src/legacy/core-globals.js"></script>
+  <!-- The account menu's popups (Settings, Login Key, My Courses) and Learn
+       More, in React (src/popups/main.jsx). -->
+  <script type="module" src="/src/popups/main.jsx"></script>
+  <script type="module" src="/src/gpa/main.jsx"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -151,15 +157,13 @@
        script is exactly what an ad blocker or school network filter
        blocks, which broke this before. A same-origin file can't be. -->
   <script defer src="/js/vendor/qrcode-generator.js"></script>
-  <script defer src="/js/settings-modal.js"></script>
   <script defer src="/js/shared.js"></script>
-  <script defer src="/js/grade-protection.js"></script>
   <script defer src="/js/assessments-shared.js"></script>
-  <!-- Not for the calendar/period-editing UI on this page (there is none)
-       — this defines openMyCoursesModal, opened from the account-menu
-       dropdown (see auth.js) on any page that loads it. -->
+  <!-- Not for the calendar on this page (there is none): for the course
+       colors the schedule popup uses (courseColorNames) and the cleanup of
+       suggestions an admin has accepted (dropAcceptedSuggestions, see
+       boot.js). -->
   <script defer src="/js/my-courses.js"></script>
-  <script defer src="/js/gpa.js"></script>
   <script defer src="/js/class-countdown.js"></script>
   <script defer src="/js/boot.js"></script>
 </body>

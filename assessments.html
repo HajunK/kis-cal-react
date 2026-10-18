@@ -102,114 +102,16 @@
       );
     })();
   </script>
-  <div class="page-content">
-    <p class="admin-not-authorized" id="admin-not-authorized" hidden>
-      This page is for admins only.
-    </p>
-
-    <div class="admin-calendar-layout" id="admin-calendar-layout" hidden>
-      <div class="assessment-calendar-card">
-        <h2 class="assessment-calendar-title">Assessment Calendar</h2>
-        <div class="assessment-calendar-header">
-          <button type="button" class="assessment-calendar-nav-btn" id="admin-cal-prev" aria-label="Previous month">‹</button>
-          <span class="assessment-calendar-label" id="admin-cal-label"></span>
-          <button type="button" class="assessment-calendar-nav-btn" id="admin-cal-next" aria-label="Next month">›</button>
-        </div>
-        <div class="assessment-calendar-weekday-row" id="admin-cal-weekdays"></div>
-        <div class="assessment-calendar-grid" id="admin-cal-grid"></div>
-        <div class="assessment-calendar-loading" id="admin-cal-loading">
-          <div class="assessment-calendar-spinner"></div>
-        </div>
-      </div>
-
-      <div class="admin-day-panel">
-        <div class="admin-day-panel-header">
-          <h2 class="admin-day-panel-title" id="admin-day-title">Select a day</h2>
-          <div class="admin-day-panel-header-actions">
-            <!-- Opens the Bell Schedule popup (see initScheduleModal in
-                 assessments-admin.js) — not tied to whichever day happens
-                 to be selected, just placed next to the A/B/? toggle. -->
-            <button type="button" class="admin-schedule-open-btn" id="admin-schedule-open-btn" aria-label="Bell Schedule" hidden>
-              <svg class="admin-schedule-open-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
-                <path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
-            <!-- Hidden until a day is picked — sets that day's A/B/? type,
-                 shown read-only as gray text on each date in the calendar. -->
-            <div class="segmented-control" id="admin-day-type-toggle" hidden>
-              <button type="button" class="segmented-option" data-value="A">A</button>
-              <button type="button" class="segmented-option" data-value="B">B</button>
-              <button type="button" class="segmented-option segmented-option--active" data-value="?">?</button>
-            </div>
-          </div>
-        </div>
-
-        <ul class="admin-day-entry-list" id="admin-day-entries"></ul>
-
-        <form class="admin-add-form" id="admin-add-form" hidden>
-          <div class="admin-add-field">
-            <span class="admin-add-label">Course</span>
-            <div class="schedule-field admin-course-field">
-              <input class="schedule-input admin-course-input" type="text" autocomplete="off" placeholder="Type a course name" />
-              <ul class="schedule-dropdown"></ul>
-            </div>
-          </div>
-          <!-- Only shown once the typed/picked course has divisions. -->
-          <div class="admin-add-field" id="admin-division-field" hidden>
-            <span class="admin-add-label">Division</span>
-            <div class="division-picker" id="admin-division-picker"></div>
-          </div>
-          <div class="admin-add-field">
-            <span class="admin-add-label">Type of Assessment</span>
-            <div class="segmented-control" id="admin-type-toggle">
-              <button type="button" class="segmented-option segmented-option--active" data-value="In-Class">In-Class</button>
-              <button type="button" class="segmented-option" data-value="Testing Block">Testing Block</button>
-              <button type="button" class="segmented-option" data-value="Formative">Formative</button>
-              <button type="button" class="segmented-option" data-value="Reassessment">Reassessment</button>
-              <button type="button" class="segmented-option" data-value="Other">Other</button>
-              <!-- Only shown while "Other" is the active option. Inside
-                   the same segmented-control bar, not a separate box. -->
-              <input type="text" class="admin-type-other-input" id="admin-type-other-input" placeholder="Type a label" hidden />
-            </div>
-          </div>
-          <button type="submit" class="admin-add-submit-btn">Add assessment</button>
-        </form>
-      </div>
-    </div>
-
-    <div class="suggestions-card" id="suggestions-layout" hidden>
-      <h2 class="suggestions-title">
-        Suggestions
-        <span class="suggestions-count" id="suggestions-count" hidden></span>
-      </h2>
-
-      <!-- Shown until the suggested collection actually loads. -->
-      <div class="assessment-calendar-loading" id="suggestions-loading">
-        <span class="assessment-calendar-spinner"></span>
-      </div>
-
-      <p class="suggestions-empty" id="suggestions-empty" hidden>Nothing suggested right now.</p>
-
-      <div class="suggestions-list" id="suggestions-list" hidden>
-        <div class="suggestions-row suggestions-row--header">
-          <span class="suggestions-cell suggestions-cell--added">Added</span>
-          <span class="suggestions-cell suggestions-cell--date">Date</span>
-          <span class="suggestions-cell suggestions-cell--course">Course</span>
-          <span class="suggestions-cell suggestions-cell--type">Type</span>
-          <span class="suggestions-cell suggestions-cell--count">Count</span>
-          <span class="suggestions-cell suggestions-cell--emails">Emails</span>
-          <span class="suggestions-cell suggestions-cell--actions"></span>
-        </div>
-        <div class="suggestions-rows" id="suggestions-rows"></div>
-      </div>
-    </div>
-  </div>
+  <!-- Filled by the React Assessments page (src/admin/main.jsx). -->
+  <div class="page-content" id="assessments-root"></div>
 
   <!-- src/core's grade, schedule, catalog and encryption logic, handed to the
        scripts below as globals (see src/legacy/core-globals.js). A module,
        so it runs before them, in document order. -->
   <script type="module" src="/src/legacy/core-globals.js"></script>
+  <!-- The account menu's popups (Settings, Login Key, My Courses) and Learn
+       More, in React (src/popups/main.jsx). -->
+  <script type="module" src="/src/popups/main.jsx"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -221,8 +123,6 @@
        script is exactly what an ad blocker or school network filter
        blocks, which broke this before. A same-origin file can't be. -->
   <script defer src="/js/vendor/qrcode-generator.js"></script>
-  <script defer src="/js/settings-modal.js"></script>
-  <script defer src="/js/assessments-admin.js"></script>
-  <script defer src="/js/suggestions-admin.js"></script>
+  <script type="module" src="/src/admin/main.jsx"></script>
 </body>
 </html>

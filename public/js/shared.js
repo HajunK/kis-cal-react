@@ -5,11 +5,7 @@ function themeFolder() {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
-// The colored circle is drawn in CSS from data-slug, so one set of letters
-// serves both themes.
-function gradeIconPath(slug) {
-  return `grade-icons/${slug}.png`;
-}
+// gradeIconPath is src/core/grades.js.
 
 function uiIconPath(name) {
   return `icons/${themeFolder()}/${name}`;

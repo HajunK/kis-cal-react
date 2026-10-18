@@ -102,47 +102,16 @@
       );
     })();
   </script>
-  <div class="page-content">
-    <p class="admin-not-authorized" id="admin-not-authorized" hidden>
-      This page is for admins only.
-    </p>
-
-    <div class="admin-day-panel posts-admin-panel" id="posts-layout" hidden>
-      <div class="admin-day-panel-header">
-        <h2 class="admin-day-panel-title">Posts</h2>
-      </div>
-
-      <!-- Shown until the posts collection actually loads. -->
-      <div class="assessment-calendar-loading" id="posts-loading">
-        <span class="assessment-calendar-spinner"></span>
-      </div>
-
-      <p class="posts-empty" id="posts-empty" hidden>Nothing posted yet.</p>
-
-      <ul class="admin-day-entry-list" id="posts-entry-list" hidden></ul>
-
-      <form class="admin-add-form" id="posts-add-form">
-        <div class="admin-add-field">
-          <span class="admin-add-label">Title</span>
-          <input type="text" class="posts-input" id="posts-title-input" autocomplete="off" placeholder="Post title" />
-        </div>
-        <div class="admin-add-field">
-          <span class="admin-add-label">Body</span>
-          <textarea class="posts-input posts-textarea" id="posts-body-input" placeholder="What do you want to say?"></textarea>
-        </div>
-        <div class="admin-add-field">
-          <span class="admin-add-label">Link URL (optional)</span>
-          <input type="url" class="posts-input" id="posts-link-input" autocomplete="off" placeholder="https://..." />
-        </div>
-        <button type="submit" class="admin-add-submit-btn">Add Post</button>
-      </form>
-    </div>
-  </div>
+  <!-- Filled by the React Posts page (src/posts/main.jsx). -->
+  <div class="page-content" id="posts-root"></div>
 
   <!-- src/core's grade, schedule, catalog and encryption logic, handed to the
        scripts below as globals (see src/legacy/core-globals.js). A module,
        so it runs before them, in document order. -->
   <script type="module" src="/src/legacy/core-globals.js"></script>
+  <!-- The account menu's popups (Settings, Login Key, My Courses) and Learn
+       More, in React (src/popups/main.jsx). -->
+  <script type="module" src="/src/popups/main.jsx"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -154,7 +123,6 @@
        script is exactly what an ad blocker or school network filter
        blocks, which broke this before. A same-origin file can't be. -->
   <script defer src="/js/vendor/qrcode-generator.js"></script>
-  <script defer src="/js/settings-modal.js"></script>
-  <script defer src="/js/posts-admin.js"></script>
+  <script type="module" src="/src/posts/main.jsx"></script>
 </body>
 </html>

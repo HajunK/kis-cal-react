@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
@@ -37,13 +38,13 @@ function firebaseHostingUrls() {
 
 export default defineConfig({
   appType: "mpa",
-  plugins: [firebaseHostingUrls()],
+  plugins: [react(), firebaseHostingUrls()],
   build: {
     rollupOptions: {
       input: Object.fromEntries(PAGES.map((page) => [page, `${root}${page}.html`])),
     },
   },
   test: {
-    include: ["src/**/*.test.js"],
+    include: ["src/**/*.test.{js,jsx}"],
   },
 });

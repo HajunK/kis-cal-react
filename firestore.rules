@@ -2,7 +2,7 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Kept in sync with ADMIN_EMAILS in public/js/auth.js — that list is
+    // Kept in sync with ADMIN_EMAILS in src/core/admins.js — that list is
     // only cosmetic (shows/hides the admin nav tabs); this one is the real
     // gate.
     function isAdmin() {

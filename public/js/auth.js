@@ -2,8 +2,8 @@
 // here.
 const TRANSPARENT_GIF = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
-// Cosmetic only: firestore.rules enforces admin writes.
-const ADMIN_EMAILS = ["hajunk105@gmail.com", "hjkim29@kis.ac"];
+// ADMIN_EMAILS is src/core/admins.js (cosmetic only: firestore.rules enforces
+// admin writes).
 
 const auth = firebase.auth();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
@@ -179,7 +179,9 @@ function openAuthMenu(avatarBtn) {
   const menu = document.createElement("div");
   menu.className = "popup-menu";
 
-  if (typeof openMyCoursesModal === "function") {
+  // My Courses edits the user's courses, which only pages with their data
+  // (shared.js) have; the popups bundle defines the opener everywhere.
+  if (typeof openMyCoursesModal === "function" && typeof loadPeriods === "function") {
     menu.appendChild(buildAuthMenuItem("My Courses", openMyCoursesModal));
   }
   if (typeof openSettingsModal === "function") {

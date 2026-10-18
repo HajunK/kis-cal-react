@@ -6,6 +6,7 @@
 // the school data as arguments, so assessments-shared.js wraps them with the
 // data it has loaded instead (see KisCore.schedule there).
 
+import * as admins from "../core/admins.js";
 import * as catalog from "../core/catalog.js";
 import * as crypto from "../core/crypto.js";
 import * as dates from "../core/dates.js";
@@ -13,5 +14,5 @@ import * as grades from "../core/grades.js";
 import * as schedule from "../core/schedule.js";
 import * as sync from "../core/sync.js";
 
-window.KisCore = { catalog, crypto, dates, grades, schedule, sync };
-Object.assign(window, catalog, crypto, dates, grades, sync);
+window.KisCore = { admins, catalog, crypto, dates, grades, schedule, sync };
+Object.assign(window, admins, catalog, crypto, dates, grades, sync);
