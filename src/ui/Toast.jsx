@@ -5,7 +5,7 @@ export const TOAST_VISIBLE_MS = 4000;
 
 const ToastContext = createContext(null);
 
-// The app's toast (.signin-toast, as showToast in shared.js draws it): one
+// The app's toast (.signin-toast, as showToast in src/shell/ui.js draws it): one
 // message at a time at the bottom of the window, gone after four seconds. A
 // new message replaces the one showing and restarts the clock. The element
 // stays on the page, invisible, so each message transitions in.

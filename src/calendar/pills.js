@@ -1,5 +1,3 @@
-/* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, allDayTypes */
-
 // The Calendar's pills and their motion: building a pill, the fade and
 // collapse as pills come and go, course names scrolling when cut off, and a
 // month-grid day. Carried over from my-courses.js unchanged (only its helpers
@@ -9,6 +7,8 @@ import { shortCourseName } from "../core/catalog.js";
 import { toISODate } from "../core/dates.js";
 import { completedTaskRecords } from "./data.js";
 import { assessmentCategory, stripDivisionSuffix } from "./model.js";
+import { allDayTypes } from "../shell/school.js";
+import { attachHoverTooltip } from "../shell/ui.js";
 
 // Rechecked whenever the window resizes, since a hidden grid can't be measured
 // and day widths follow the page.
@@ -19,10 +19,12 @@ const nameFitObserver = new ResizeObserver((records) =>
   })
 );
 
-export function fitName(windowEl, textEl, full, short) {
+// held(), while true, keeps the name as it is.
+export function fitName(windowEl, textEl, full, short, held = () => false) {
   textEl.textContent = full;
   if (!short || short === full) return;
   windowEl._fitName = () => {
+    if (held()) return;
     textEl.textContent = full;
     if (textEl.scrollWidth > windowEl.clientWidth) textEl.textContent = short;
   };
@@ -392,11 +394,12 @@ export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames,
 // Unlike a calendar pill's, scrolls as soon as it's hovered. shortText stands
 // in when the full text is cut off. Judged by the room it has at rest: a name
 // that fits then doesn't scroll just because a course row's chevron slides in
-// on hover and narrows it.
+// on hover and narrows it, nor switches to its short name then: while hovered
+// it keeps the name it had.
 export function attachHoverMarquee(hoverEl, windowEl, text, shortText = null) {
   const textEl = windowEl.appendChild(document.createElement("span"));
   textEl.className = "assessment-pill-text";
-  fitName(windowEl, textEl, text, shortText);
+  fitName(windowEl, textEl, text, shortText, () => hoverEl.matches(":hover"));
   hoverEl.addEventListener("mouseenter", () => {
     cancelMarqueeReturn(textEl);
     if (textEl.scrollWidth > windowEl.clientWidth) startMarqueeText(textEl);

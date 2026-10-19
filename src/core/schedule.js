@@ -62,17 +62,35 @@ export function scheduleEventTimes(key, periodTimes) {
   return (periodTimes.times || [])[Number(key.slice(5))] || null;
 }
 
-// A date's schedule: [{ key, start, end }] in time order. Slots and their times
-// are the same every day; normally each holds its own event (the day's period
-// in a class slot), the Testing Block on Mondays and Fridays and Advisory on
-// other weekdays. An admin can rearrange a single date (daySchedules[iso]):
-// which event sits in which slot, any period included, and which slots are
-// used at all.
+// Which class slot a period meets in: periods 1-4 on A days and 5-8 on B days
+// share the four class slots (block0, 1, 3, 4).
+const PERIOD_BLOCKS = [0, 1, 3, 4];
+
+// An event's usual times: its slot's, a period's being its class slot's.
+export function usualEventTimes(key, periodTimes) {
+  if (/^period[1-8]$/.test(key)) return scheduleEventTimes(`block${PERIOD_BLOCKS[(Number(key.slice(6)) - 1) % 4]}`, periodTimes);
+  return scheduleEventTimes(key, periodTimes);
+}
+
+// A date's schedule: [{ key, start, end }] in time order. Normally each slot
+// holds its own event (the day's period in a class slot) at the slot's times,
+// the Testing Block on Mondays and Fridays and Advisory on other weekdays. An
+// admin can set a single date (daySchedules[iso]): which events it has, each
+// at its own times ({ included, times }). Dates saved before times went with
+// the event say instead which event sat in which slot ({ slots, included }),
+// at the slots' times; those are still read that way.
 export function scheduleForDate(iso, dayTypes, periodTimes) {
   const weekday = fromISODate(iso).getDay();
   if (weekday === 0 || weekday === 6 || !periodTimes) return [];
   const dayType = dayTypes[iso];
   const custom = periodTimes.daySchedules && periodTimes.daySchedules[iso];
+  if (custom && custom.times && Array.isArray(custom.included)) {
+    return custom.included
+      .map((key) => ({ key, time: custom.times[key] || usualEventTimes(key, periodTimes) }))
+      .filter(({ time }) => time && time.start && time.end)
+      .sort((a, b) => (a.time.start < b.time.start ? -1 : a.time.start > b.time.start ? 1 : 0))
+      .map(({ key, time }) => ({ key, start: time.start, end: time.end }));
+  }
   const included = (key) => {
     if (custom && Array.isArray(custom.included)) return custom.included.includes(key);
     if (key === "testingBlock") return weekday === 1 || weekday === 5;

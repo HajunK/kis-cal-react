@@ -2,6 +2,7 @@ import { Fragment, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { fromISODate } from "../core/dates.js";
 import { WEEKDAY_LABELS, initialPickerMonth, pickerMonth, schoolYearBounds } from "./model.js";
+import { formatPreferredDate } from "../shell/preferences.js";
 
 // A score's "taken on" date picker, under its row's date button. In <body>
 // so the list's scroll area doesn't clip it; limited to the current school
@@ -165,7 +166,7 @@ function Panel({ panel }) {
       <Fragment key={shown.label}>
         {date ? (
           <div className="score-date-calendar-clear-row">
-            <span className="score-date-calendar-clear-label">{`Taken on ${window.formatPreferredDate(fromISODate(date))}`}</span>
+            <span className="score-date-calendar-clear-label">{`Taken on ${formatPreferredDate(fromISODate(date))}`}</span>
             <button
               type="button"
               className="score-date-calendar-clear-btn"

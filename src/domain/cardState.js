@@ -155,7 +155,7 @@ export function updateEmptyBoxPlaceholder(card, box) {
   if (!isLinkedBox(box)) return;
   const cells = card[box];
   if (!cells[0]) return;
-  cells[0].typeHint = cells.every((cell) => cell.value === "") ? "Type here" : "";
+  cells[0].typeHint = cells.every((cell) => cell.value === "") ? "Type score" : "";
 }
 
 const rawOf = (cell) => (cell ? cell.rawValue ?? cell.value : "");
@@ -200,7 +200,7 @@ export function updateTargetHints(card, prefs) {
   const decimals = cardUsesDecimals(card);
   const show = (cell, needed) => {
     cell.target = needed === null ? null : { score: needed.score, tier: needed.tier, decimals };
-    // It takes the "Type here" hint's spot, which gives way to it.
+    // It takes the "Type score" hint's spot, which gives way to it.
     if (needed !== null) cell.typeHint = "";
   };
   boxes.forEach((box) => {

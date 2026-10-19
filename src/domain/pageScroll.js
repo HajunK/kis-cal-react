@@ -4,7 +4,7 @@
 // DomainPage renders.
 
 // Reset on every scroll event so the scrollbar stays through a long scroll.
-export function initScrollingClass(container) {
+export function initScrollingClass(container, signal) {
   let classesScrollingTimeout = null;
   // Also called by the rubber band, so the scrollbar shows while it stretches.
   container._showScrollbar = (ms = 800) => {
@@ -18,6 +18,7 @@ export function initScrollingClass(container) {
     if (container._buttonScrolling) return;
     container._showScrollbar();
   });
+  signal.addEventListener("abort", () => clearTimeout(classesScrollingTimeout));
 }
 
 // Chrome only rubber-bands the page itself, so the cards' row gets its own.
@@ -213,7 +214,7 @@ export function initClassesOverscroll(container) {
 }
 
 // Sized and placed as a native scrollbar would be.
-export function initClassesScrollbar(container, thumb) {
+export function initClassesScrollbar(container, thumb, signal) {
   // A stretch past either end shortens the thumb, as a page's does, keeping
   // it against that end: by as many pixels as the row is stretched (a native
   // thumb's proportional shrink would barely show on a row this much wider
@@ -255,8 +256,10 @@ export function initClassesScrollbar(container, thumb) {
   container._scrollbarTransform = transformFor;
   container._placeScrollbar = place;
   if (!scrollDriven) container.addEventListener("scroll", place, { passive: true });
-  window.addEventListener("resize", place);
-  new MutationObserver(place).observe(container, { childList: true });
+  window.addEventListener("resize", place, { signal });
+  const observer = new MutationObserver(place);
+  observer.observe(container, { childList: true });
+  signal.addEventListener("abort", () => observer.disconnect());
   place();
 
   thumb.addEventListener("pointerdown", (event) => {
@@ -284,7 +287,7 @@ export function initClassesScrollbar(container, thumb) {
 
 // At either end the button does nothing rather than wrapping around.
 // popupOpen() says whether the arrow keys belong to a popup instead.
-export function initCardScrollButtons(container, nav, prev, next, popupOpen) {
+export function initCardScrollButtons(container, nav, prev, next, popupOpen, signal) {
   const cardStep = () => {
     const card = container.querySelector(".class-card");
     if (!card) return 0;
@@ -366,28 +369,42 @@ export function initCardScrollButtons(container, nav, prev, next, popupOpen) {
   };
 
   // Not while the arrows are moving a text cursor or a popup is open.
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.defaultPrevented) return;
-    if (nav.hidden) return;
-    const target = event.target;
-    if (target.closest && target.closest("input, textarea, select, [contenteditable]")) return;
-    // Every popup's backdrop is a "...-overlay".
-    if (popupOpen() || document.querySelector('[class*="-overlay"]')) return;
-    event.preventDefault();
-    // Auto-repeat fires much faster than a card can glide, and each repeat
-    // restarting the glide stuttered, so holding a key steps at its own pace
-    // instead.
-    if (event.repeat || heldKey) return;
-    startKeyHold(event.key);
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.defaultPrevented) return;
+      if (nav.hidden) return;
+      const target = event.target;
+      if (target.closest && target.closest("input, textarea, select, [contenteditable]")) return;
+      // Every popup's backdrop is a "...-overlay".
+      if (popupOpen() || document.querySelector('[class*="-overlay"]')) return;
+      event.preventDefault();
+      // Auto-repeat fires much faster than a card can glide, and each repeat
+      // restarting the glide stuttered, so holding a key steps at its own pace
+      // instead.
+      if (event.repeat || heldKey) return;
+      startKeyHold(event.key);
+    },
+    { signal }
+  );
+  document.addEventListener(
+    "keyup",
+    (event) => {
+      if (event.key === heldKey) stopKeyHold();
+    },
+    { signal }
+  );
+  window.addEventListener("blur", () => stopKeyHold(), { signal });
+  signal.addEventListener("abort", () => {
+    stopKeyHold();
+    clearTimeout(buttonScrollTimer);
   });
-  document.addEventListener("keyup", (event) => {
-    if (event.key === heldKey) stopKeyHold();
-  });
-  window.addEventListener("blur", () => stopKeyHold());
 
   container.addEventListener("scroll", update, { passive: true });
-  window.addEventListener("resize", update);
-  new MutationObserver(update).observe(container, { childList: true });
+  window.addEventListener("resize", update, { signal });
+  const observer = new MutationObserver(update);
+  observer.observe(container, { childList: true });
+  signal.addEventListener("abort", () => observer.disconnect());
   update();
 }

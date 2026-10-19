@@ -21,6 +21,9 @@ import {
 import { BellScheduleModal } from "./BellScheduleModal.jsx";
 import { DEFAULT_SCHEDULE_TIMES, dayHasTestingBlock } from "./bellSchedule.js";
 
+// Matches the Domain tab's date picker's month change.
+const MONTH_SLIDE_MS = 220;
+
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TYPES = ["In-Class", "Testing Block", "Formative", "Reassessment", "Other"];
@@ -203,6 +206,61 @@ export function AssessmentsAdmin({ page }) {
 
   const [scheduleModal, setScheduleModal] = useState(null); // { id, iso, open }
 
+  // The Domain tab's date picker's month change: the old month's days slide
+  // out as the new one's slide in, and the space eases between heights, since
+  // a month can take 5 rows or 6.
+  const daysWindowRef = useRef(null);
+  const slide = useRef(null);
+  const slideCount = useRef(0);
+  const changeMonth = (direction) => {
+    const oldDays = document.getElementById("admin-cal-grid").cloneNode(true);
+    oldDays.id = "admin-cal-grid-leaving";
+    slide.current = { oldDays, direction };
+    model.month = new Date(model.month.getFullYear(), model.month.getMonth() + direction, 1);
+    model.selectedDate = null;
+    render();
+  };
+  useLayoutEffect(() => {
+    if (!slide.current) return;
+    const { oldDays, direction } = slide.current;
+    slide.current = null;
+    const daysWindow = daysWindowRef.current;
+    const newDays = document.getElementById("admin-cal-grid");
+    // No Web Animations in the tests' jsdom.
+    if (!newDays.animate) return;
+    daysWindow.querySelectorAll("#admin-cal-grid-leaving").forEach((left) => left.remove());
+    oldDays.classList.add("admin-cal-grid--leaving");
+    daysWindow.appendChild(oldDays);
+    // Clipped only while sliding, so a day's hover and selection aren't.
+    daysWindow.classList.add("admin-cal-days-window--sliding");
+    const from = oldDays.offsetHeight;
+    const to = newDays.offsetHeight;
+    if (from !== to) daysWindow.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: MONTH_SLIDE_MS, easing: "ease" });
+    const shift = 24 * direction;
+    oldDays
+      .animate(
+        [
+          { opacity: 1, transform: "translateX(0)" },
+          { opacity: 0, transform: `translateX(${-shift}px)` },
+        ],
+        { duration: MONTH_SLIDE_MS * 0.7, easing: "ease", fill: "forwards" }
+      )
+      .finished.catch(() => {})
+      .finally(() => oldDays.remove());
+    const mine = ++slideCount.current;
+    newDays
+      .animate(
+        [
+          { opacity: 0, transform: `translateX(${shift}px)` },
+          { opacity: 1, transform: "translateX(0)" },
+        ],
+        { duration: MONTH_SLIDE_MS, easing: "ease" }
+      )
+      .finished.catch(() => {})
+      // Unless another month's slide has started since.
+      .finally(() => mine === slideCount.current && daysWindow.classList.remove("admin-cal-days-window--sliding"));
+  });
+
   return (
     <>
       <p className="admin-not-authorized" id="admin-not-authorized" hidden={user === undefined || isAdmin}>
@@ -218,13 +276,11 @@ export function AssessmentsAdmin({ page }) {
               className="assessment-calendar-nav-btn"
               id="admin-cal-prev"
               aria-label="Previous month"
-              onClick={() => {
-                model.month = new Date(model.month.getFullYear(), model.month.getMonth() - 1, 1);
-                model.selectedDate = null;
-                render();
-              }}
+              onClick={() => changeMonth(-1)}
             >
-              ‹
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M12 4.5L6.5 10l5.5 5.5" />
+              </svg>
             </button>
             <span className="assessment-calendar-label" id="admin-cal-label">
               {view ? `${MONTH_NAMES[view.month.getMonth()]} ${view.month.getFullYear()}` : ""}
@@ -234,13 +290,11 @@ export function AssessmentsAdmin({ page }) {
               className="assessment-calendar-nav-btn"
               id="admin-cal-next"
               aria-label="Next month"
-              onClick={() => {
-                model.month = new Date(model.month.getFullYear(), model.month.getMonth() + 1, 1);
-                model.selectedDate = null;
-                render();
-              }}
+              onClick={() => changeMonth(1)}
             >
-              ›
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M8 4.5l5.5 5.5L8 15.5" />
+              </svg>
             </button>
           </div>
           <div className="assessment-calendar-weekday-row" id="admin-cal-weekdays">
@@ -248,6 +302,7 @@ export function AssessmentsAdmin({ page }) {
           </div>
           {/* Testing Blocks only go on Mondays and Fridays, so those are
               highlighted while that type is picked. */}
+          <div className="admin-cal-days-window" ref={daysWindowRef}>
           <div className={`assessment-calendar-grid${type === "Testing Block" ? " admin-cal-grid--testing-block" : ""}`} id="admin-cal-grid">
             {view && (
               <CalendarDays
@@ -260,6 +315,7 @@ export function AssessmentsAdmin({ page }) {
               />
             )}
           </div>
+          </div>
           <div className="assessment-calendar-loading" id="admin-cal-loading" hidden={loaded}>
             <div className="assessment-calendar-spinner" />
           </div>
@@ -268,7 +324,7 @@ export function AssessmentsAdmin({ page }) {
         <div className="admin-day-panel">
           <div className="admin-day-panel-header">
             <h2 className="admin-day-panel-title" id="admin-day-title">
-              {view && view.selectedDate ? longDate(view.selectedDate) : "Select a day"}
+              {view && view.selectedDate ? longDate(view.selectedDate) : ""}
             </h2>
             <div className="admin-day-panel-header-actions">
               {/* Not tied to whichever day happens to be selected, just placed
@@ -298,7 +354,11 @@ export function AssessmentsAdmin({ page }) {
           </div>
 
           <ul className="admin-day-entry-list" id="admin-day-entries">
-            {view && view.selectedDate && <DayEntries key={view.generation} view={view} onDelete={removeAssessment} />}
+            {view && view.selectedDate ? (
+              <DayEntries key={view.generation} view={view} onDelete={removeAssessment} />
+            ) : (
+              <li className="admin-day-select-hint">Select a day</li>
+            )}
           </ul>
 
           <form className="admin-add-form" id="admin-add-form" hidden={!(view && view.selectedDate)} onSubmit={submit}>
@@ -354,7 +414,7 @@ export function AssessmentsAdmin({ page }) {
           open={scheduleModal.open}
           name="admin-schedule"
           dialog="admin-schedule-dialog"
-          label="Bell Schedule"
+          label="Schedule"
           onClose={() => setScheduleModal((last) => ({ ...last, open: false }))}
         >
           <BellScheduleModal
@@ -454,7 +514,7 @@ function DayEntries({ view, onDelete }) {
           <span className="admin-day-entry-name">{entry.courseName}</span>
           <span className={`assessment-calendar-entry-type assessment-calendar-entry-type--${isSummative ? "summative" : "formative"}`}>{entry.type}</span>
           <button type="button" className="admin-day-entry-delete" aria-label="Delete assessment" onClick={() => onDelete(entry.id)}>
-            ×
+            <span className="close-icon" aria-hidden="true" />
           </button>
         </li>
       );

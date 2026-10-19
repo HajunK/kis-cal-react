@@ -4,20 +4,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFirestore } from "../test/fakeFirebase.js";
 import { SettingsPopup } from "./SettingsPopup.jsx";
 
-let prefs;
-beforeEach(() => {
-  prefs = { appearance: "system", dateFormat: "monthDay", privacyBlurMode: "never", showBreakdown: true, showUpcomingAssessments: false, replaceFormativesByDefault: true, hideAdminTabs: false };
-  window.getPreferences = () => ({ ...prefs });
-  window.setPreference = vi.fn((key, value) => {
-    prefs = { ...prefs, [key]: value };
+// The app's preferences (src/shell/preferences.js), kept here.
+const store = vi.hoisted(() => ({ prefs: null }));
+vi.mock("../shell/preferences.js", () => ({
+  getPreferences: () => ({ ...store.prefs }),
+  setPreference: vi.fn((key, value) => {
+    store.prefs = { ...store.prefs, [key]: value };
     window.dispatchEvent(new CustomEvent("app:preferences-changed"));
-  });
-  window.formatPreferredDate = (date, format) => `${format}-date`;
+  }),
+  formatPreferredDate: (date, format) => `${format}-date`,
+}));
+const { setPreference } = await import("../shell/preferences.js");
+
+beforeEach(() => {
+  store.prefs = { appearance: "system", dateFormat: "monthDay", privacyBlurMode: "never", showBreakdown: true, showUpcomingAssessments: false, replaceFormativesByDefault: true, hideAdminTabs: false };
+  setPreference.mockClear();
   vi.spyOn(window, "alert").mockImplementation(() => {});
 });
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  vi.mocked(window.alert).mockRestore?.();
 });
 
 function fakePage(user = { uid: "u1", email: "student@kis.ac" }) {
@@ -45,18 +51,18 @@ describe("SettingsPopup", () => {
     render(<SettingsPopup page={fakePage()} />);
     expect(control("appearance").querySelector(".segmented-option--active").textContent).toBe("System");
     fireEvent.click(within(control("appearance")).getByText("Dark"));
-    expect(window.setPreference).toHaveBeenCalledWith("appearance", "dark");
+    expect(setPreference).toHaveBeenCalledWith("appearance", "dark");
     expect(control("appearance").querySelector(".segmented-option--active").textContent).toBe("Dark");
 
     // Clicking the active option does nothing.
     fireEvent.click(within(control("appearance")).getByText("Dark"));
-    expect(window.setPreference).toHaveBeenCalledTimes(1);
+    expect(setPreference).toHaveBeenCalledTimes(1);
 
     const breakdown = document.querySelector('.settings-toggle[data-pref="showBreakdown"]');
     const upcoming = document.querySelector('.settings-toggle[data-pref="showUpcomingAssessments"]');
     expect([breakdown.checked, upcoming.checked]).toEqual([true, false]);
     fireEvent.click(upcoming);
-    expect(window.setPreference).toHaveBeenLastCalledWith("showUpcomingAssessments", true);
+    expect(setPreference).toHaveBeenLastCalledWith("showUpcomingAssessments", true);
   });
 
   it("labels each date format with today's date in it", () => {

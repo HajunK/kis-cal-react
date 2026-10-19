@@ -5,7 +5,7 @@
 import { decryptValue } from "./crypto.js";
 
 // Every field, defaulted. email and preferences are round-tripped so a plain
-// save doesn't wipe what auth.js and preferences.js write there.
+// save doesn't wipe what the session (the email) and the preferences write there.
 export function emptyAppData() {
   return {
     periods: [],

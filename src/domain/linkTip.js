@@ -1,10 +1,11 @@
-/* global HOVER_TOOLTIP_EDGE_GAP, hideHoverTooltip */
-
 // The first time a typed Summative takes over a Formative, a short tour walks
 // through the link: the Formative's new score, then the original kept beside
 // it. Each step waits for OK. Shown until both have been OK'd, once per
 // account. Carried over from domain.js unchanged: a tip in <body> that
 // follows its target every frame.
+
+import { getPreferences, setPreference } from "../shell/preferences.js";
+import { HOVER_TOOLTIP_EDGE_GAP, hideHoverTooltip } from "../shell/ui.js";
 
 const FORMATIVE_LINK_TIP_POINTER_PX = 6;
 const FORMATIVE_LINK_TIP_RADIUS_PX = 8;
@@ -53,7 +54,7 @@ function shapeFormativeLinkTip(tip, x) {
 let formativeLinkTip = null;
 
 export function showFormativeLinkTipOnce(formativeInput) {
-  if (window.getPreferences().seenFormativeLinkTip || formativeLinkTip) return;
+  if (getPreferences().seenFormativeLinkTip || formativeLinkTip) return;
 
   const row = formativeInput.closest("li");
   const steps = [
@@ -121,7 +122,7 @@ export function showFormativeLinkTipOnce(formativeInput) {
     if (!step) {
       // Past the last OK, so it's been seen through. Left unsaved otherwise,
       // so a tour cut short (its row removed) comes back next time.
-      window.setPreference("seenFormativeLinkTip", true);
+      setPreference("seenFormativeLinkTip", true);
       return end();
     }
     // The tour's tip says it all; a hover tooltip would only cover it.

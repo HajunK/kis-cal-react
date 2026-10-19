@@ -1,49 +1,33 @@
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+// One page, index.html; React Router picks the tab from the path, and every
+// path serves it (see firebase.json's rewrite). public/ (styles, images, the
+// vendored scripts) is copied into the build unchanged.
 
-// Each tab is its own page. public/ (the plain scripts, styles and images) is
-// copied into the build unchanged.
-const PAGES = ["domain", "calendar", "gpa", "assessments", "posts", "calendar-demo"];
-
-// Firebase Hosting serves /calendar from calendar.html (cleanUrls) and applies
-// firebase.json's redirects; the dev and preview servers do the same, read
-// from that file so the two can't drift apart.
-function firebaseHostingUrls() {
+// firebase.json's redirects (/ to /domain, old page names), applied by the dev
+// and preview servers too, read from that file so the two can't drift apart.
+function firebaseRedirects() {
   const { hosting } = JSON.parse(readFileSync(new URL("firebase.json", import.meta.url), "utf8"));
   const redirects = new Map((hosting.redirects || []).map(({ source, destination }) => [source, destination]));
   const middleware = (req, res, next) => {
     const [path, query = ""] = req.url.split("?");
     const destination = redirects.get(path);
-    if (destination) {
-      res.statusCode = 301;
-      res.setHeader("Location", destination + (query ? `?${query}` : ""));
-      res.end();
-      return;
-    }
-    if (!path.includes(".") && existsSync(`${root}${path}.html`)) {
-      req.url = `${path}.html${query ? `?${query}` : ""}`;
-    }
-    next();
+    if (!destination) return next();
+    res.statusCode = 301;
+    res.setHeader("Location", destination + (query ? `?${query}` : ""));
+    res.end();
   };
   return {
-    name: "firebase-hosting-urls",
+    name: "firebase-redirects",
     configureServer: (server) => void server.middlewares.use(middleware),
     configurePreviewServer: (server) => void server.middlewares.use(middleware),
   };
 }
 
 export default defineConfig({
-  appType: "mpa",
-  plugins: [react(), firebaseHostingUrls()],
-  build: {
-    rollupOptions: {
-      input: Object.fromEntries(PAGES.map((page) => [page, `${root}${page}.html`])),
-    },
-  },
+  plugins: [react(), firebaseRedirects()],
   test: {
     include: ["src/**/*.test.{js,jsx}"],
   },

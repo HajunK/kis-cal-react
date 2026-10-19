@@ -1,5 +1,3 @@
-/* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, loadPeriods, loadCompletedTasks, allDayTypes */
-
 // The Courses view: a row per course, a column per day, laid out like a
 // school's assessment spreadsheet. Carried over from my-courses.js unchanged
 // (only its helpers now come from model.js, data.js and pills.js).
@@ -9,6 +7,9 @@ import { toISODate } from "../core/dates.js";
 import { courseColorAssignments } from "./data.js";
 import { CAL_WEEKDAY_LABELS, assessmentCategory, latestAugustFirst, startOfWeek } from "./model.js";
 import { CAL_MONTH_SHORT, CLASS_GRID_PILL_CELLS, PILL_FADE_MS, PILL_MOVE_MS, animatePillChanges, buildAssessmentPill, fitName, renderedPillsByDate } from "./pills.js";
+import { loadCompletedTasks, loadPeriods } from "../shell/data.js";
+import { allDayTypes } from "../shell/school.js";
+import { hideHoverTooltip } from "../shell/ui.js";
 
 // How many weeks past this one the calendars run.
 export const ASSESSMENT_CALENDAR_WEEK_COUNT = 4;

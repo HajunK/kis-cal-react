@@ -44,7 +44,7 @@ describe("a new card", () => {
     expect(card.formative).toHaveLength(EMPTY_SCORE_ROWS);
     expect(card.summative).toHaveLength(EMPTY_SCORE_ROWS);
     expect(card.final).toHaveLength(1);
-    expect(card.formative[0].typeHint).toBe("Type here");
+    expect(card.formative[0].typeHint).toBe("Type score");
     expect(card.weights).toEqual({ formative: 20, summative: 60, final: 20 });
     expect(newCard(false).weights.summative).toBe(80);
   });

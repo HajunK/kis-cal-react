@@ -1,5 +1,3 @@
-/* global animateNumberChange, ROLL_DURATION_MS, ROLL_STAGGER_MS, uiIconPath, loadAssessmentData, nearestUpcomingAnyAssessment */
-
 // The Domain cards' motion and measured layout, carried over from domain.js
 // unchanged, so number rolls, the Formative swap, the badge crossfade and the
 // card fades look exactly as they did. They work on the elements ClassCard
@@ -9,6 +7,8 @@
 import { fromISODate } from "../core/dates.js";
 import { gradeIconPath, letterGradeForScore, truncateToTwoDecimals } from "../core/grades.js";
 import { formatRelativeAssessmentLabel } from "./model.js";
+import { loadAssessmentData, nearestUpcomingAnyAssessment } from "../shell/school.js";
+import { ROLL_DURATION_MS, ROLL_STAGGER_MS, animateNumberChange, uiIconPath } from "../shell/ui.js";
 
 // The blurred copy (see attachScoreScrollBlur) has inputs too.
 export const SCORE_INPUT = ".score-value:not(.score-blur *)";

@@ -1,4 +1,3 @@
-/* global attachHoverTooltip, hideHoverTooltip, loadPeriods, openMyCoursesModal */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { shortCourseName } from "../core/catalog.js";
@@ -6,6 +5,11 @@ import { initAddToCalendarPopup } from "./addPopup.js";
 import { createAssessmentCalendar } from "./calendar.js";
 import { COURSE_COLOR_CHOICES } from "./model.js";
 import { fitName } from "./pills.js";
+import { openMyCoursesModal } from "../popups/popupStore.js";
+import { onCalendarRedraw, redrawCalendar } from "../shell/openTab.js";
+import { loadPeriods } from "../shell/data.js";
+import { getPreferences, setPreference } from "../shell/preferences.js";
+import { attachHoverTooltip, hideHoverTooltip } from "../shell/ui.js";
 
 const FILTERS = [
   { category: "summative", label: "Summatives", look: "calendar-filter--filled" },
@@ -16,7 +20,7 @@ const FILTERS = [
 // Matches .course-color-picker's fade.
 const COLOR_PICKER_EXIT_MS = 180;
 
-const savedViewMode = () => (window.getPreferences().calendarView === "byClass" ? "byClass" : "calendar");
+const savedViewMode = () => (getPreferences().calendarView === "byClass" ? "byClass" : "calendar");
 
 // The Calendar tab: the assessment calendar (a month grid, or a row per
 // course), the Upcoming list beside it, and the side panel's view toggle,
@@ -39,21 +43,29 @@ export function CalendarPage() {
   const viewToggleRef = useRef(null);
 
   useLayoutEffect(() => {
+    // Everything the calendar listens to and times stops as the tab is left.
+    const lifetime = new AbortController();
+    const { signal } = lifetime;
     const render = createAssessmentCalendar({
       showColorLegend: (colorNames) => setLegend((last) => ({ generation: (last ? last.generation : 0) + 1, colorNames })),
       hiddenCategories: hiddenCategoriesRef.current,
       viewMode: () => viewModeRef.current,
+      signal,
     });
     calendarRef.current = render;
-    window.myCoursesRefreshCalendar = render;
-    initAddToCalendarPopup(render);
+    const unregister = onCalendarRedraw(render);
+    initAddToCalendarPopup(render, signal);
     viewToggleRef.current.start((mode) => {
       viewModeRef.current = mode;
       flushSync(() => setViewMode(mode));
-    });
+    }, signal);
     // The Calendar is empty without courses, so it opens My Courses to fill
     // them in.
     if (render && loadPeriods().every((name) => !(name || "").trim())) openMyCoursesModal();
+    return () => {
+      lifetime.abort();
+      unregister();
+    };
   }, []);
 
   const toggleFilter = (category) => {
@@ -68,8 +80,8 @@ export function CalendarPage() {
     viewModeRef.current = mode;
     flushSync(() => setViewMode(mode));
     viewToggleRef.current.place(true);
-    if (window.myCoursesRefreshCalendar) window.myCoursesRefreshCalendar(false);
-    window.setPreference("calendarView", mode);
+    calendarRef.current(false);
+    setPreference("calendarView", mode);
   };
 
   return (
@@ -168,17 +180,25 @@ function ViewToggle({ handleRef, mode, onPick }) {
     place,
     // onSavedChange(mode): the preference changed elsewhere (another tab or
     // device), after which the thumb slides and the calendar redraws.
-    start(onSavedChange) {
+    start(onSavedChange, signal) {
       place(false);
-      window.addEventListener("app:preferences-changed", () => {
-        const saved = savedViewMode();
-        if (saved === modeRef.current) return;
-        onSavedChange(saved);
-        place(true);
-        if (window.myCoursesRefreshCalendar) window.myCoursesRefreshCalendar(false);
-      });
-      if (document.fonts) document.fonts.ready.then(() => place(false));
-      if (window.ResizeObserver) new ResizeObserver(() => place(false)).observe(containerRef.current);
+      window.addEventListener(
+        "app:preferences-changed",
+        () => {
+          const saved = savedViewMode();
+          if (saved === modeRef.current) return;
+          onSavedChange(saved);
+          place(true);
+          redrawCalendar(false);
+        },
+        { signal }
+      );
+      if (document.fonts) document.fonts.ready.then(() => !signal.aborted && place(false));
+      if (window.ResizeObserver) {
+        const observer = new ResizeObserver(() => place(false));
+        observer.observe(containerRef.current);
+        signal.addEventListener("abort", () => observer.disconnect());
+      }
     },
   };
 
@@ -338,8 +358,8 @@ function ColorPicker({ picker, onClose }) {
             onClick={() => {
               onClose();
               if (color === picker.color) return;
-              const picked = { ...(window.getPreferences().courseColors || {}), [picker.name]: color };
-              window.setPreference("courseColors", picked);
+              const picked = { ...(getPreferences().courseColors || {}), [picker.name]: color };
+              setPreference("courseColors", picked);
             }}
           >
           </button>

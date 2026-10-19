@@ -15,8 +15,8 @@ const PASTE_LABEL = "Paste from Domain Tab";
 // The numbers' text belongs to animateNumberChange; React never sets it again.
 const DASH = { __html: "-" };
 
-// The GPA tab. Its first render is the page's own markup (gpa.html), which it
-// hydrates; it fills in once page.ready, when boot.js has the user's data.
+// The GPA tab. It's drawn empty at first and fills in once page.ready, when
+// the app has the user's data.
 // page: { ready, data: () => ({ periods, gpaClasses, domainSnapshot }),
 //   saveGpaClasses(classes), fetchDomainSnapshot(), animateNumber(el, text,
 //   style), roll: { rollMs, staggerMs } }.
@@ -194,7 +194,7 @@ export function GpaPage({ page }) {
   );
 }
 
-// A GPA value, rolled to each new text by animateNumberChange (shared.js), the
+// A GPA value, rolled to each new text by animateNumberChange (src/shell/ui.js), the
 // first time instantly. null leaves it as it is: only the values on show are
 // updated, as before.
 function RollingNumber({ className, text, rollStyle, animate }) {

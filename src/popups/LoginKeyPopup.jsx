@@ -7,7 +7,7 @@ const CHECK_ICON = <span className="settings-copy-icon settings-copy-check" aria
 
 // The Login Key card: this device's key as a QR code to scan from another
 // device, and as text to copy. Reading it can ask for the key first, when this
-// device doesn't have it yet (see resolveDeviceKeyForBoot in encryption.js).
+// device doesn't have it yet (see resolveDeviceKeyForBoot in src/shell/data.js).
 export function LoginKeyPopup({ page }) {
   const [code, setCode] = useState("");
   // Stays a check while the popup is open; it's built fresh, as a copy button

@@ -1,15 +1,17 @@
-/* global appData, pushDataToCloud, loadPeriods, loadPeriodDivisions, loadHiddenCourses, saveHiddenCourses, showToast, hideToast,
-   openMyCoursesModal, currentScheduleBlock */
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ClassCard } from "./ClassCard.jsx";
-import { SAMPLE_CARDS, sortPosts, visibleCourseCards } from "./model.js";
+import { SAMPLE_CARDS, visibleCourseCards } from "./model.js";
 import { CARD_HIDE_MS, badgeFor, fadeOutCard } from "./motion.js";
 import { initCardScrollButtons, initClassesOverscroll, initClassesScrollbar, initScrollingClass } from "./pageScroll.js";
 import { ScoreDatePickers, isScoreDatePickerOpen } from "./ScoreDatePicker.jsx";
+import { openMyCoursesModal } from "../popups/popupStore.js";
+import { appData, loadHiddenCourses, loadPeriodDivisions, loadPeriods, pushDataToCloud, saveHiddenCourses } from "../shell/data.js";
+import { currentScheduleBlock } from "../shell/schedule.js";
+import { nearestUpcomingAnyAssessment } from "../shell/school.js";
+import { hideToast, showToast } from "../shell/ui.js";
 
-// The Domain tab: the row of course cards, its scrollbar and arrows, and the
-// admins' posts. The row is kept as a list of what's in it, in order (cards,
+// The Domain tab: the row of course cards, its scrollbar and arrows. The row is kept as a list of what's in it, in order (cards,
 // the gray bar after the class in session, the empty-account hint), changed
 // the way domain.js changed the page: cards that stay are kept as they are,
 // only ones that come or go fade. page (from main.jsx) gets the functions
@@ -21,7 +23,6 @@ export function DomainPage({ page }) {
   const prevRef = useRef(null);
   const nextRef = useRef(null);
   const [, setVersion] = useState(0);
-  const [posts, setPosts] = useState([]);
   const model = useRef(null);
   if (!model.current) model.current = { items: [], inClassPeriod: null, nextId: 0, cards: new Map(), syncingTwin: false };
   const m = model.current;
@@ -260,7 +261,7 @@ export function DomainPage({ page }) {
     m.cards.forEach((card) => {
       if (!card.meta.nextAssessmentArgs) return;
       const [name, periodIndex] = card.meta.nextAssessmentArgs;
-      const next = window.nearestUpcomingAnyAssessment(name, periodIndex);
+      const next = nearestUpcomingAnyAssessment(name, periodIndex);
       if ((next ? next.id : null) !== card.meta.nextAssessmentId) card.updateLine(name, periodIndex);
     });
   };
@@ -276,14 +277,17 @@ export function DomainPage({ page }) {
       .forEach((item) => m.cards.get(item.id).refreshHints());
   };
 
-  Object.assign(page, { renderDomainClasses, markCardInClassNow, refreshNextAssessmentLines, onPreferencesChanged, setPosts });
+  Object.assign(page, { renderDomainClasses, markCardInClassNow, refreshNextAssessmentLines, onPreferencesChanged });
 
   useLayoutEffect(() => {
     const container = containerRef.current;
-    initScrollingClass(container);
-    initCardScrollButtons(container, navRef.current, prevRef.current, nextRef.current, isScoreDatePickerOpen);
-    initClassesScrollbar(container, thumbRef.current);
+    const lifetime = new AbortController();
+    const { signal } = lifetime;
+    initScrollingClass(container, signal);
+    initCardScrollButtons(container, navRef.current, prevRef.current, nextRef.current, isScoreDatePickerOpen, signal);
+    initClassesScrollbar(container, thumbRef.current, signal);
     initClassesOverscroll(container);
+    return () => lifetime.abort();
   }, []);
 
   return (
@@ -322,21 +326,6 @@ export function DomainPage({ page }) {
         </button>
       </div>
 
-      {/* Admin-authored posts (see the Posts admin page), hidden until
-          there's something to show. */}
-      <div className="domain-posts" id="domain-posts" hidden={posts.length === 0}>
-        {sortPosts(posts).map((post, index) => (
-          <div className="domain-post-card" key={index}>
-            <h3 className="domain-post-title">{post.title}</h3>
-            <p className="domain-post-body">{post.body}</p>
-            {post.linkUrl ? (
-              <a className="domain-post-link" href={post.linkUrl} target="_blank" rel="noopener noreferrer">
-                Learn More →
-              </a>
-            ) : null}
-          </div>
-        ))}
-      </div>
       <ScoreDatePickers />
     </>
   );

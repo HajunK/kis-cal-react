@@ -1,0 +1,621 @@
+/* Pinned to the middle of the window while the cards load, rather than
+   taking up the page's height (which let it scroll, spinner and all). */
+.domain-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.domain-loading[hidden] {
+  display: none;
+}
+
+.classes-container {
+  display: flex;
+  gap: 32px;
+  /* Less room above than below: the cards sit up near the tab bar, with
+     just enough space that they don't crowd it. */
+  padding: 16px 48px 32px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* A push past the end stays here (for the rubber band, see
+     initClassesOverscroll) instead of setting off the browser's swipe back. */
+  overscroll-behavior-x: contain;
+  /* No native scrollbar: switching one on while scrolling took height
+     from the page and nudged everything below down. A drawn one
+     (.classes-scrollbar) shows instead. */
+  scrollbar-width: none;
+}
+
+.classes-container::-webkit-scrollbar {
+  display: none;
+}
+
+
+
+/* The cards' scrollbar, drawn over the bottom of their row (it takes no
+   room of its own) and shown only while scrolling, like a native overlay
+   one. Positioned and sized in JS (see initClassesScrollbar). */
+/* Above the arrows' row just below it (which reaches up over the cards'
+   bottom edge), so the bar can be grabbed there. */
+.classes-scrollbar {
+  position: relative;
+  z-index: 2;
+  height: 0;
+}
+
+.classes-scrollbar-thumb {
+  position: absolute;
+  /* Scaled from its left edge when a stretch shortens it (see
+     initClassesScrollbar). */
+  transform-origin: left center;
+  top: -3px;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-scrollbar-thumb);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.classes-container--scrolling ~ .classes-scrollbar .classes-scrollbar-thumb {
+  opacity: 1;
+}
+
+/* Moved by the row's own scroll position (a scroll-driven animation), so
+   the browser keeps it in step with the scrolling itself; positioning it
+   from scroll events lagged on fast scrolls. The row's timeline is named
+   on <body> (timeline-scope) so this sibling can use it. The ends of its
+   travel are set in JS (see initClassesScrollbar). */
+@supports (animation-timeline: scroll()) {
+  body {
+    timeline-scope: --classes-scroll;
+  }
+
+  .classes-container {
+    scroll-timeline: --classes-scroll x;
+  }
+
+  .classes-scrollbar-thumb {
+    animation: classes-thumb-travel linear both;
+    animation-timeline: --classes-scroll;
+  }
+}
+
+@keyframes classes-thumb-travel {
+  from {
+    translate: var(--thumb-from, 0px) 0;
+  }
+  to {
+    translate: var(--thumb-to, 0px) 0;
+  }
+}
+
+/* While it shows, it can be grabbed and dragged like a real scrollbar (see
+   initClassesScrollbar); the pointer on it, or holding it, keeps it shown.
+   The grab area reaches 8px above and below the thin bar, so it's easy to
+   catch. */
+.classes-container--scrolling ~ .classes-scrollbar .classes-scrollbar-thumb,
+.classes-scrollbar-thumb:hover,
+.classes-scrollbar-thumb--dragging {
+  pointer-events: auto;
+  cursor: default;
+}
+
+.classes-scrollbar-thumb:hover,
+.classes-scrollbar-thumb--dragging {
+  opacity: 1;
+}
+
+.classes-scrollbar-thumb::before {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+/* Between the pinned card for the class going on now (see
+   syncPinnedCurrentCard) and every course's own card after it. */
+.domain-current-divider {
+  flex: none;
+  align-self: stretch;
+  width: 2px;
+  margin: 24px 0;
+  border-radius: 1px;
+  background: var(--color-gray-light);
+}
+
+/* "Current Class", in gray under each card for the class going on now
+   (pinned or already first; see syncPinnedCurrentCard), in the room
+   below the cards. Out of the way while the cards' scrollbar shows there,
+   like the arrows. */
+.class-card--current-label::after {
+  content: "Current Class";
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-gray-dark);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.classes-container--scrolling .class-card--current-label::after {
+  opacity: 0;
+}
+
+/* Under the cards, at their right end (the same 48px in as their own
+   padding), 16px below them: half of the container's bottom padding is
+   taken back. */
+.domain-card-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: -16px;
+  padding: 0 48px 16px;
+}
+
+.domain-card-nav[hidden] {
+  display: none;
+}
+
+/* Out of the way while the cards' scrollbar shows (see
+   .classes-container--scrolling), which runs right behind them; back once
+   it fades. */
+.domain-card-nav {
+  transition: opacity 0.3s ease;
+}
+
+.classes-container--scrolling ~ .domain-card-nav {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* White circles like the Calendar's Upcoming + button. */
+.domain-card-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-gray-dark);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+/* No focus ring: the arrow keys and Tab both left one on the last-clicked
+   button. The pressed tint already shows a key working the arrows. */
+.domain-card-nav-btn:focus,
+.domain-card-nav-btn:focus-visible {
+  outline: none;
+}
+
+/* A very light tint over the white, so the circle still stands out from
+   the gray page behind it. */
+.domain-card-nav-btn--pressed,
+.domain-card-nav-btn:hover:not(:disabled) {
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-gray-light) 20%, transparent), color-mix(in srgb, var(--color-gray-light) 20%, transparent)),
+    var(--color-surface);
+}
+
+/* At its end of the row: still there and clickable, but no tint on hover
+   or a key press, since there's nowhere further to go. */
+.domain-card-nav-btn--at-end,
+.domain-card-nav-btn--at-end:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.domain-card-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.domain-card-nav-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.domain-empty-hint {
+  align-self: center;
+  flex: 0 0 300px;
+  margin: 0;
+  background: var(--color-surface);
+  border-radius: calc(20px * var(--squircle-scale));
+  corner-shape: squircle;
+  padding: 64px 32px;
+  text-align: center;
+  font-size: 22px;
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-card);
+}
+
+.domain-empty-hint-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* In dark mode, the light blue of the Learn More panel's links: the plain
+   accent is too deep to read easily on the dark card. */
+:root[data-theme="dark"] .domain-empty-hint-link {
+  color: var(--color-segment-active);
+}
+
+.class-card {
+  position: relative;
+  flex: 0 0 380px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: calc(20px * var(--squircle-scale));
+  corner-shape: squircle;
+  padding: 24px 32px 32px;
+  /* A floor, not a hard height. .next-assessment-line takes from
+     .assessment-groups' locked height budget, shrinking Formatives/Summatives
+     rather than growing the card. */
+  min-height: 520px;
+  box-shadow: var(--shadow-card);
+}
+
+.card-hide-btn {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.class-card:hover .card-hide-btn {
+  opacity: 0.65;
+}
+
+/* Higher specificity than the rule above on purpose, so this wins once the
+   mouse is on the button. */
+.class-card:hover .card-hide-btn:hover {
+  opacity: 1;
+}
+
+.card-hide-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.class-name {
+  margin: 0 0 4px;
+  font-size: 28px;
+  font-weight: var(--fw-class-name);
+  color: var(--color-text-primary);
+}
+
+/* Opens My Courses on this course's period, ready to type over (see
+   addClassCard), hence the text cursor. */
+.class-name--editable {
+  cursor: text;
+}
+
+.grade-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 54px;
+  margin-bottom: 12px;
+}
+
+.letter-grade {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  /* Dragging near one of these would otherwise catch the icon in the selection
+     highlight, and <img> is draggable by default. */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* The PNGs are white letters on transparent; the circle is this background,
+   colored by the icon's slug. */
+img[data-slug] {
+  border-radius: 50%;
+  background-color: var(--grade-color, transparent);
+}
+
+/* Grade -> color. The score label and domain summary carry the color too, so
+   their numbers can use it for the text selection color. */
+img[data-slug="a-plus"],
+.score-list label:has(img[data-slug="a-plus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="a-plus"]),
+img[data-slug="a"],
+.score-list label:has(img[data-slug="a"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="a"]) {
+  --grade-color: var(--color-dark-blue);
+  --grade-highlight: var(--color-dark-blue-highlight);
+}
+img[data-slug="a-minus"],
+.score-list label:has(img[data-slug="a-minus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="a-minus"]) { --grade-color: var(--color-light-blue); }
+img[data-slug="b-plus"],
+.score-list label:has(img[data-slug="b-plus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="b-plus"]) { --grade-color: var(--color-teal); }
+img[data-slug="b"],
+.score-list label:has(img[data-slug="b"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="b"]) { --grade-color: var(--color-green); }
+img[data-slug="b-minus"],
+.score-list label:has(img[data-slug="b-minus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="b-minus"]) { --grade-color: var(--color-lime); }
+img[data-slug="c-plus"],
+.score-list label:has(img[data-slug="c-plus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="c-plus"]) { --grade-color: var(--color-yellow); }
+img[data-slug="c"],
+.score-list label:has(img[data-slug="c"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="c"]) { --grade-color: var(--color-amber); }
+img[data-slug="c-minus"],
+.score-list label:has(img[data-slug="c-minus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="c-minus"]) { --grade-color: var(--color-orange); }
+img[data-slug="d-plus"],
+.score-list label:has(img[data-slug="d-plus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="d-plus"]),
+img[data-slug="d"],
+.score-list label:has(img[data-slug="d"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="d"]),
+img[data-slug="d-minus"],
+.score-list label:has(img[data-slug="d-minus"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="d-minus"]),
+img[data-slug="f"],
+.score-list label:has(img[data-slug="f"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="f"]) { --grade-color: var(--color-f-red); }
+img[data-slug="ng"],
+.score-list label:has(img[data-slug="ng"]),
+.grade-summary:has(.letter-grade--lg:not(.letter-grade-lg-fade)[data-slug="ng"]) { --grade-color: var(--color-gray); }
+
+.letter-grade--lg {
+  width: 54px;
+  height: 54px;
+}
+
+/* A second stacked copy of the icon fades in over the old one so a tier change
+   crossfades instead of snapping (see crossfadeBadgeIcon). */
+.letter-grade-lg-wrap {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+}
+
+.letter-grade-lg-wrap .letter-grade--lg {
+  position: absolute;
+  inset: 0;
+}
+
+.letter-grade-lg-fade {
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.letter-grade--empty {
+  background: transparent;
+}
+
+/* Scoped to .score-list: .letter-grade is also the big domain badge. Clicking a
+   filled icon selects the whole score; an empty one is part of the row's
+   click-to-type area. */
+.score-list .letter-grade {
+  cursor: pointer;
+}
+
+.score-list .letter-grade--empty {
+  cursor: text;
+}
+
+/* Desaturated, not just faded, and the same gray for every grade, so it reads as
+   a muted placeholder rather than a dim real icon. */
+img.letter-grade--preview[data-slug] {
+  --grade-color: var(--color-gray-dark);
+  opacity: var(--preview-opacity);
+  filter: grayscale(1);
+}
+
+/* Turning Privacy Blur on or off in Settings eases everything into its new
+   look rather than snapping. Only for that moment (the class is set by
+   evaluatePrivacyBlur in preferences.js): kept on all the time, it also
+   faded every other change, like a grade circle switching color as its
+   number finished rolling, which dimmed it for a moment. Opacity is kept
+   in the list for the big badge's crossfade copy (.letter-grade-lg-fade),
+   which this would otherwise override. */
+.privacy-blur-changing .class-card .score-value,
+.privacy-blur-changing .class-card .score-original,
+.privacy-blur-changing .class-card .grade-value {
+  transition: filter 0.2s ease, color 0.2s ease;
+}
+
+.privacy-blur-changing .class-card img.letter-grade:not(.letter-grade--preview) {
+  transition: background-color 0.2s ease, opacity 200ms ease;
+}
+
+html[data-privacy-blur] .class-card .score-value,
+html[data-privacy-blur] .class-card .score-original {
+  filter: blur(4px);
+}
+
+/* :not([data-empty]): a "--" placeholder has nothing to hide. */
+html[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
+  filter: blur(6px);
+}
+
+/* Hover reveals ease in and out, but only once the page has settled
+   (privacy-blur-settled, set by evaluatePrivacyBlur): before that, the blur
+   coming on as the page loads would play as an animation. */
+html.privacy-blur-settled[data-privacy-blur] .class-card .score-value,
+html.privacy-blur-settled[data-privacy-blur] .class-card .score-original,
+html.privacy-blur-settled[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
+  transition: filter 0.2s ease, color 0.2s ease;
+}
+
+html[data-privacy-blur] .class-card .score-value,
+html[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
+  color: var(--color-gray-dark);
+}
+
+/* Grade circles all turn the same solid slate rather than their grade's
+   own color; the letter on top stays as it is. */
+html[data-privacy-blur] .class-card img.letter-grade[data-slug]:not(.letter-grade--preview) {
+  background-color: var(--blurred-circle-bg);
+}
+
+/* Their real colors back wherever the scores show (the reveals below).
+   Hovering (or editing) a row reveals just that row and the ones right
+   above and below it, not the whole box. */
+html[data-privacy-blur] .class-card .score-list :is(li:is(:hover, :focus-within), li:has(+ li:is(:hover, :focus-within)), li:is(:hover, :focus-within) + li) img.letter-grade[data-slug]:not(.letter-grade--preview),
+html[data-privacy-blur] .class-card .grade-summary:hover img.letter-grade[data-slug],
+html[data-privacy-blur] .class-card[data-reveal-domain] .grade-summary img.letter-grade[data-slug] {
+  background-color: var(--grade-color, transparent);
+}
+
+html[data-privacy-blur] .class-card .score-list :is(li:is(:hover, :focus-within), li:has(+ li:is(:hover, :focus-within)), li:is(:hover, :focus-within) + li) .score-value,
+html[data-privacy-blur] .class-card .score-list :is(li:is(:hover, :focus-within), li:has(+ li:is(:hover, :focus-within)), li:is(:hover, :focus-within) + li) .score-original,
+html[data-privacy-blur] .class-card .grade-summary:hover .grade-value {
+  filter: none;
+}
+
+html[data-privacy-blur] .class-card .score-list :is(li:is(:hover, :focus-within), li:has(+ li:is(:hover, :focus-within)), li:is(:hover, :focus-within) + li) .score-value,
+html[data-privacy-blur] .class-card .grade-summary:hover .grade-value {
+  color: var(--color-text-primary);
+}
+
+html[data-privacy-blur] .class-card li[data-reveal-score] .score-value,
+html[data-privacy-blur] .class-card li[data-reveal-score] .score-original {
+  filter: none;
+}
+
+html[data-privacy-blur] .class-card li[data-reveal-score] .score-value {
+  color: var(--color-text-primary);
+}
+
+html[data-privacy-blur] .class-card[data-reveal-domain] .grade-summary .grade-value {
+  filter: none;
+  color: var(--color-text-primary);
+}
+
+html[data-privacy-blur] .class-card[data-reveal-domain] .grade-summary .letter-grade-lg-wrap {
+  filter: none;
+}
+
+/* :not(--preview) keeps a live-typing preview icon's desaturation. */
+html[data-privacy-blur] .class-card .score-list :is(li:is(:hover, :focus-within), li:has(+ li:is(:hover, :focus-within)), li:is(:hover, :focus-within) + li) .letter-grade:not(.letter-grade--preview),
+html[data-privacy-blur] .class-card .grade-summary:hover .letter-grade-lg-wrap {
+  filter: none;
+}
+
+.grade-value {
+  font-size: 44px;
+  font-weight: var(--fw-grade-value);
+  color: var(--color-text-primary);
+}
+
+.grade-breakdown {
+  margin: 0 0 20px;
+  font-size: 15px;
+  font-weight: var(--fw-grade-breakdown);
+  color: var(--color-gray-dark);
+  /* The line's variants share one cell so its height doesn't change as they
+     swap. */
+  display: grid;
+}
+
+.breakdown-empty,
+.breakdown-values,
+.breakdown-single {
+  grid-area: 1 / 1;
+  opacity: 0;
+  filter: blur(4px);
+  visibility: hidden;
+  transition: opacity 250ms ease, filter 250ms ease, visibility 0s linear 250ms;
+}
+
+.grade-breakdown[data-state="empty"] .breakdown-empty,
+.grade-breakdown[data-state="values"] .breakdown-values,
+.grade-breakdown[data-state="single"] .breakdown-single {
+  opacity: 1;
+  filter: blur(0);
+  visibility: visible;
+  transition: opacity 250ms ease, filter 250ms ease, visibility 0s;
+}
+
+.grade-breakdown--instant .breakdown-empty,
+.grade-breakdown--instant .breakdown-values,
+.grade-breakdown--instant .breakdown-single {
+  transition: none !important;
+}
+
+/* Tightens the gap to .next-assessment-line when it shows something. It's a
+   descendant of the next sibling, not a direct next sibling. */
+html:not([data-hide-upcoming-assessments])
+  .grade-breakdown:has(+ .assessment-groups .next-assessment-line:not(:empty)) {
+  margin-bottom: 6px;
+}
+
+html[data-hide-breakdown] .grade-breakdown {
+  display: none;
+}
+
+html[data-hide-upcoming-assessments] .next-assessment-line {
+  display: none;
+}
+
+.grade-breakdown .divider {
+  margin: 0;
+  color: var(--color-gray-light);
+}
+
+.grade-breakdown .breakdown-value {
+  font-weight: var(--fw-breakdown-value);
+  color: var(--color-text-primary);
+}
+
+.next-assessment-line {
+  /* 0 0 auto keeps this at one line, so Formatives/Summatives shrink to make
+     room. */
+  flex: 0 0 auto;
+  margin: 0 0 20px;
+  font-size: 15px;
+  font-weight: var(--fw-grade-breakdown);
+  color: var(--color-gray-dark);
+}
+
+.next-assessment-line-date {
+  font-weight: var(--fw-breakdown-value);
+  color: var(--color-text-primary);
+}
+
+.next-assessment-line:empty {
+  display: none;
+}

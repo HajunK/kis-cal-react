@@ -4,13 +4,14 @@ import { ConfirmDialog } from "../ui/ConfirmDialog.jsx";
 import { SegmentedControl } from "../ui/SegmentedControl.jsx";
 import { ToggleSwitch } from "../ui/ToggleSwitch.jsx";
 import { deleteAccount, deleteAllData } from "./accountActions.js";
+import { formatPreferredDate, getPreferences, setPreference } from "../shell/preferences.js";
 
-// window.getPreferences, kept current as they change here or arrive from
-// another tab or device (preferences.js announces both).
+// getPreferences, kept current as they change here or arrive from
+// another tab or device (src/shell/preferences.js announces both).
 export function usePreferences() {
-  const [prefs, setPrefs] = useState(() => window.getPreferences());
+  const [prefs, setPrefs] = useState(() => getPreferences());
   useEffect(() => {
-    const update = () => setPrefs(window.getPreferences());
+    const update = () => setPrefs(getPreferences());
     window.addEventListener("app:preferences-changed", update);
     return () => window.removeEventListener("app:preferences-changed", update);
   }, []);
@@ -50,7 +51,7 @@ export function SettingsPopup({ page }) {
   const [accountDialogs, setAccountDialogs] = useState(0);
 
   const segmented = (pref, options) => (
-    <SegmentedControl data-pref={pref} value={prefs[pref]} options={options} onChange={(value) => window.setPreference(pref, value)} />
+    <SegmentedControl data-pref={pref} value={prefs[pref]} options={options} onChange={(value) => setPreference(pref, value)} />
   );
   const toggle = (pref, label) => (
     <div className="settings-row" key={pref}>
@@ -59,7 +60,7 @@ export function SettingsPopup({ page }) {
         className="settings-toggle"
         data-pref={pref}
         checked={prefs[pref] !== false}
-        onChange={(checked) => window.setPreference(pref, checked)}
+        onChange={(checked) => setPreference(pref, checked)}
       />
     </div>
   );
@@ -105,7 +106,7 @@ export function SettingsPopup({ page }) {
         <span className="settings-label">Date format</span>
         {segmented(
           "dateFormat",
-          DATE_FORMATS.map((format) => ({ value: format, label: window.formatPreferredDate(today, format) }))
+          DATE_FORMATS.map((format) => ({ value: format, label: formatPreferredDate(today, format) }))
         )}
       </div>
 

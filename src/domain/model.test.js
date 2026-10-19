@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRelativeAssessmentLabel, pickerMonth, schoolYearBounds, sortPosts, visibleCourseCards } from "./model.js";
+import { formatRelativeAssessmentLabel, pickerMonth, schoolYearBounds, visibleCourseCards } from "./model.js";
 
 describe("visibleCourseCards", () => {
   it("gives a card per course in period order, splitting combos and leaving out hidden ones", () => {
@@ -37,11 +37,5 @@ describe("the date picker", () => {
     expect(october.days[0]).toMatchObject({ iso: "2026-09-27", outside: true });
     expect(october.days.find((day) => day.today).iso).toBe("2026-10-19");
     expect(pickerMonth(new Date(2026, 7, 1), bounds)).toMatchObject({ atStart: true, atEnd: false });
-  });
-});
-
-describe("sortPosts", () => {
-  it("puts the newest first", () => {
-    expect(sortPosts([{ title: "a", createdAt: 1 }, { title: "b", createdAt: 3 }, { title: "c" }]).map((post) => post.title)).toEqual(["b", "a", "c"]);
   });
 });

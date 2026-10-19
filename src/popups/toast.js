@@ -1,6 +1,6 @@
-// The popups' toast: the page's own (showToast in shared.js) where it has one;
-// the admin pages don't load shared.js, so there it's drawn here instead, the
-// same way.
+// The popups' toast: the app's own (showToast in src/shell/ui.js) on the
+// student's tabs; the admin tabs never showed it, so there it's drawn here
+// instead, the same way.
 
 const TOAST_VISIBLE_MS = 4000;
 let toastEl = null;

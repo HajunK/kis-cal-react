@@ -5,7 +5,9 @@
 //   assessments/{id}: { type, date, courseName, createdAt }
 //   dayTypes/{iso}: { type: "A" | "B" } (no doc: unset)
 //   periodTimes/default: { times, testingBlock, academicSupport, advisory,
-//     daySchedules: { [iso]: { slots, included } } }
+//     daySchedules: { [iso]: { included, times: { [event]: { start, end } } } } }
+//     (dates saved before times went with the event have { slots, included }
+//     instead, still read; see scheduleForDate in src/core/schedule.js)
 //   meta/cacheVersions: { assessments, dayTypes, periodTimes } (ms stamps)
 //   suggested/{hash}: { date, courseName, type, emails, lastAddedAt }
 
@@ -50,7 +52,7 @@ export function fetchPeriodTimes(db) {
 }
 
 // Students' pages only refetch a collection when its stamp changes (see
-// fetchUnlessCached in assessments-shared.js), which keeps the daily read quota
+// fetchUnlessCached in src/shell/school.js), which keeps the daily read quota
 // in hand.
 export function bumpCacheVersion(db, key) {
   return db

@@ -36,12 +36,42 @@
         "source": "/suggestions.html",
         "destination": "/assessments",
         "type": 301
+      },
+      {
+        "source": "/domain.html",
+        "destination": "/domain",
+        "type": 301
+      },
+      {
+        "source": "/calendar.html",
+        "destination": "/calendar",
+        "type": 301
+      },
+      {
+        "source": "/gpa.html",
+        "destination": "/gpa",
+        "type": 301
+      },
+      {
+        "source": "/assessments.html",
+        "destination": "/assessments",
+        "type": 301
+      },
+      {
+        "source": "/posts.html",
+        "destination": "/domain",
+        "type": 301
+      },
+      {
+        "source": "/calendar-demo.html",
+        "destination": "/calendar-demo",
+        "type": 301
       }
     ],
     "rewrites": [
       {
         "source": "**",
-        "destination": "/domain.html"
+        "destination": "/index.html"
       }
     ],
     "headers": [
@@ -60,6 +90,24 @@
           {
             "key": "Cache-Control",
             "value": "max-age=86400"
+          }
+        ]
+      },
+      {
+        "source": "js/vendor/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "max-age=86400"
+          }
+        ]
+      },
+      {
+        "source": "assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
           }
         ]
       }

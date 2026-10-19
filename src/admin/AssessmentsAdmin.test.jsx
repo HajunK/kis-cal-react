@@ -179,9 +179,9 @@ describe("AssessmentsAdmin", () => {
     await settle();
     fireEvent.click(day(MONDAY));
     fireEvent.click(screen.getByRole("button", { name: "Bell Schedule" }));
-    const dialog = screen.getByRole("dialog", { name: "Bell Schedule" });
+    const dialog = screen.getByRole("dialog", { name: "Schedule" });
     expect(dialog.querySelectorAll(".admin-schedule-row").length).toBeGreaterThan(5);
-    expect(dialog.querySelector(".admin-schedule-reset-btn").hidden).toBe(true);
+    expect(dialog.querySelector(".admin-schedule-reset-slot").hasAttribute("inert")).toBe(true);
     fireEvent.click(within(dialog).getByText("Save Schedule"));
     await settle();
     const saved = writesTo(page, "periodTimes");
@@ -190,5 +190,65 @@ describe("AssessmentsAdmin", () => {
     expect(saved[0].value.daySchedules).toEqual({ [MONDAY]: DELETE });
     expect(saved[0].value.times[0]).toEqual({ start: "08:50", end: "10:13" });
     expect(page.toasts).toEqual(["Schedule saved."]);
+  });
+
+  it.each(["A", "B", undefined])("puts a saved day back to normal with Reset, which then goes away (%s day)", async (dayType) => {
+    const times = [{ start: "08:50", end: "10:13" }, { start: "10:18", end: "11:41" }, { start: "11:41", end: "12:30" }, { start: "12:30", end: "13:53" }, { start: "13:58", end: "15:21" }];
+    const custom = { included: ["period1", "period2"], times: { period1: { start: "09:00", end: "10:00" }, period2: { start: "10:30", end: "11:30" } } };
+    renderPage({
+      collections: {
+        dayTypes: dayType ? { [MONDAY]: dayType } : {},
+        periodTimes: { default: { times, daySchedules: { [MONDAY]: custom } } },
+      },
+    });
+    await settle();
+    fireEvent.click(day(MONDAY));
+    fireEvent.click(screen.getByRole("button", { name: "Bell Schedule" }));
+    const dialog = screen.getByRole("dialog", { name: "Schedule" });
+    const slot = dialog.querySelector(".admin-schedule-reset-slot");
+    expect(slot.hasAttribute("inert")).toBe(false);
+    fireEvent.click(within(dialog).getByText("Reset this day"));
+    expect(slot.hasAttribute("inert")).toBe(true);
+  });
+
+  it("puts an event's times back to what they were when it's taken off with its X", async () => {
+    renderPage({ collections: { periodTimes: { default: {} } } });
+    await settle();
+    fireEvent.click(day(MONDAY));
+    fireEvent.click(screen.getByRole("button", { name: "Bell Schedule" }));
+    const dialog = screen.getByRole("dialog", { name: "Schedule" });
+    const start = () => within(dialog).getByLabelText("Lunch start").value;
+    const original = start();
+    fireEvent.change(within(dialog).getByLabelText("Lunch start"), { target: { value: "11:00" } });
+    expect(start()).toBe("11:00");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Lunch" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lunch" }));
+    expect(start()).toBe(original);
+  });
+
+  it("takes an event off the day with its X and adds one from the pills", async () => {
+    const page = renderPage({ collections: { periodTimes: { default: {} } } });
+    await settle();
+    fireEvent.click(day(MONDAY));
+    fireEvent.click(screen.getByRole("button", { name: "Bell Schedule" }));
+    const dialog = screen.getByRole("dialog", { name: "Schedule" });
+    const labels = () => [...dialog.querySelectorAll(".admin-schedule-row-label")].map((el) => el.textContent);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Lunch" }));
+    expect(labels()).not.toContain("Lunch");
+    const pills = () => [...dialog.querySelectorAll(".admin-schedule-add-pill")].map((el) => el.textContent);
+    expect(pills()).toContain("Lunch");
+    expect(pills()).toContain("Advisory");
+    expect(pills()).not.toContain(labels()[0]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Advisory" }));
+    expect(labels()).toContain("Advisory");
+    expect(pills()).not.toContain("Advisory");
+    expect(pills()).toContain("Lunch");
+    expect(dialog.querySelector(".admin-schedule-reset-slot").hasAttribute("inert")).toBe(false);
+    fireEvent.click(within(dialog).getByText("Save Schedule"));
+    await settle();
+    const custom = writesTo(page, "periodTimes")[0].value.daySchedules[MONDAY];
+    expect(custom.included).not.toContain("block2");
+    expect(custom.included).toContain("advisory");
+    expect(custom.times.advisory).toEqual({ start: "08:20", end: "08:45" });
   });
 });

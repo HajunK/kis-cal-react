@@ -1,6 +1,3 @@
-/* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, loadPeriods, loadAddedAssessments, saveAddedAssessments, currentUid,
-   allAssessments, allDayTypes, isAssessmentVisibleForPeriod */
-
 // Adding to the Calendar: the + button's and a day's type menu, the Add popup
 // and its steps, and picking a date straight off the calendar. Carried over
 // from my-courses.js unchanged (only its helpers now come from model.js,
@@ -12,6 +9,10 @@ import { addableCourseOptions, courseColorNames, logSuggestedAssessment, upcomin
 import { ICON_BACK, ICON_CHEVRON, ICON_CHEVRON_DOWN } from "./icons.js";
 import { formatClockTime } from "./model.js";
 import { attachHoverMarquee } from "./pills.js";
+import { currentUid, loadAddedAssessments, loadPeriods, saveAddedAssessments } from "../shell/data.js";
+import { formatPreferredDate } from "../shell/preferences.js";
+import { allAssessments, allDayTypes, isAssessmentVisibleForPeriod } from "../shell/school.js";
+import { attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, uiIconPath } from "../shell/ui.js";
 
 const ADD_POPUP_TYPES = [
   { value: "Assignment", noun: "assignment" },
@@ -27,7 +28,7 @@ const ADD_POPUP_MIN_ROOM_PX = 420;
 
 const CALENDAR_PICK_FADE_MS = 200;
 
-export function initAddToCalendarPopup(refreshAssessmentCalendar) {
+export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
   const triggerBtn = document.getElementById("add-assessment-trigger-btn");
   if (!triggerBtn) return;
   attachHoverTooltip(triggerBtn, "Add to calendar");
@@ -237,7 +238,7 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar) {
       dateBtnText.innerHTML = "";
       dateBtnText.appendChild(el("span", "add-popup-date-label")).textContent = name;
       dateBtnText.appendChild(el("span", "add-popup-date-sub")).textContent =
-        window.formatPreferredDate(date) + (dayType === "A" || dayType === "B" ? ` (${dayType}-day)` : "");
+        formatPreferredDate(date) + (dayType === "A" || dayType === "B" ? ` (${dayType}-day)` : "");
     }
     dateBtn.addEventListener("click", (event) => {
       // Otherwise the document handler would read it as a click outside once
@@ -693,16 +694,30 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar) {
     });
   });
 
-  document.addEventListener("click", (event) => {
-    const path = event.composedPath();
-    if (path.includes(triggerBtn) || event.openedAddMenu) return;
-    if (menu && !path.includes(menu)) closeMenu();
-    if (popup && !path.includes(popup)) closePopup();
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    if (menu) closeMenu();
-    else if (datePick) endDatePick();
-    else if (popup) closePopup();
+  document.addEventListener(
+    "click",
+    (event) => {
+      const path = event.composedPath();
+      if (path.includes(triggerBtn) || event.openedAddMenu) return;
+      if (menu && !path.includes(menu)) closeMenu();
+      if (popup && !path.includes(popup)) closePopup();
+    },
+    { signal }
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape") return;
+      if (menu) closeMenu();
+      else if (datePick) endDatePick();
+      else if (popup) closePopup();
+    },
+    { signal }
+  );
+  // Leaving the tab takes whatever's open with it.
+  signal.addEventListener("abort", () => {
+    if (datePick) endDatePick();
+    if (menu) menu.remove();
+    if (popup) popup.remove();
   });
 }

@@ -1,44 +1,68 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dropAcceptedSuggestions, logSuggestedAssessment, unlogSuggestedAssessment } from "./data.js";
 
-// data.js reads the page's globals by name; these stand in for them.
-const FIELD_VALUE = {
-  arrayUnion: (...values) => ({ arrayUnion: values }),
-  arrayRemove: (...values) => ({ arrayRemove: values }),
-};
+// What data.js reads from the app (src/shell): the student's data, the
+// school's, Firebase, and the open tab's redraw. Kept here.
+const app = vi.hoisted(() => ({ writes: [], data: null, uid: "u1", assessments: [] }));
+vi.mock("../shell/data.js", () => ({
+  get appData() {
+    return app.data;
+  },
+  get currentUid() {
+    return app.uid;
+  },
+  loadPeriods: () => app.data.periods,
+  loadPeriodDivisions: () => app.data.periodDivisions,
+  loadAddedAssessments: () => app.data.addedAssessments,
+  saveAddedAssessments: vi.fn((entries) => (app.data.addedAssessments = entries)),
+  loadCompletedTasks: () => app.data.completedTasks,
+  saveCompletedTasks: vi.fn(),
+}));
+vi.mock("../shell/school.js", () => ({
+  get allAssessments() {
+    return app.assessments;
+  },
+  allDayTypes: {},
+  defaultPeriodTimes: null,
+  assessmentsLoaded: true,
+  assessmentsFetchDone: true,
+  loadAssessments: (callback) => callback(),
+  isAssessmentVisibleForPeriod: () => true,
+}));
+vi.mock("../shell/firebase.js", () => {
+  const doc = (collection, id) => ({
+    set: (value, options) => (app.writes.push({ op: "set", collection, id, value, options }), Promise.resolve()),
+    update: (value) => (app.writes.push({ op: "update", collection, id, value }), Promise.resolve()),
+  });
+  return {
+    hasFirebase: () => true,
+    firestore: () => ({ collection: (name) => ({ doc: (id) => doc(name, id) }) }),
+    firebaseAuth: () => ({ currentUser: { email: "kim@kis.ac" } }),
+    arrayUnion: (...values) => ({ arrayUnion: values }),
+    arrayRemove: (...values) => ({ arrayRemove: values }),
+  };
+});
+vi.mock("../shell/preferences.js", () => ({ getPreferences: () => ({}), formatPreferredDate: (date) => String(date) }));
+vi.mock("../shell/openTab.js", () => ({ redrawCalendar: vi.fn() }));
+
+const { dropAcceptedSuggestions, logSuggestedAssessment, unlogSuggestedAssessment } = await import("./data.js");
+const { saveAddedAssessments } = await import("../shell/data.js");
+const { redrawCalendar } = await import("../shell/openTab.js");
+
 let writes;
 let appData;
-
 beforeEach(() => {
-  writes = [];
-  const doc = (collection, id) => ({
-    set: (value, options) => (writes.push({ op: "set", collection, id, value, options }), Promise.resolve()),
-    update: (value) => (writes.push({ op: "update", collection, id, value }), Promise.resolve()),
-  });
-  const firestore = () => ({ collection: (name) => ({ doc: (id) => doc(name, id) }) });
-  firestore.FieldValue = FIELD_VALUE;
+  app.writes = [];
+  writes = app.writes;
+  app.uid = "u1";
+  app.assessments = [];
   appData = { periods: ["English", "Geometry"], periodDivisions: ["10", ""], addedAssessments: [], completedTasks: [] };
-  Object.assign(globalThis, {
-    firebase: { firestore },
-    currentUid: "u1",
-    auth: { currentUser: { email: "kim@kis.ac" } },
-    appData,
-    loadPeriods: () => appData.periods,
-    loadPeriodDivisions: () => appData.periodDivisions,
-    loadAddedAssessments: () => appData.addedAssessments,
-    saveAddedAssessments: vi.fn((entries) => (appData.addedAssessments = entries)),
-    loadCompletedTasks: () => appData.completedTasks,
-    allAssessments: [],
-    assessmentsFetchDone: true,
-    loadAssessments: (callback) => callback(),
-    isAssessmentVisibleForPeriod: () => true,
-  });
-  globalThis.window = { myCoursesRefreshCalendar: vi.fn() };
+  app.data = appData;
+  saveAddedAssessments.mockClear();
+  redrawCalendar.mockClear();
   vi.spyOn(Date, "now").mockReturnValue(1000);
 });
 afterEach(() => {
-  vi.restoreAllMocks();
-  for (const name of ["firebase", "currentUid", "auth", "appData", "loadPeriods", "loadPeriodDivisions", "loadAddedAssessments", "saveAddedAssessments", "loadCompletedTasks", "allAssessments", "assessmentsFetchDone", "loadAssessments", "isAssessmentVisibleForPeriod", "window"]) delete globalThis[name];
+  vi.mocked(Date.now).mockRestore();
 });
 
 describe("suggested assessments", () => {
@@ -61,7 +85,7 @@ describe("suggested assessments", () => {
   });
 
   it("writes nothing signed out", () => {
-    globalThis.currentUid = null;
+    app.uid = null;
     logSuggestedAssessment("2026-10-12", "English (10)", "Summative");
     unlogSuggestedAssessment("2026-10-12", "English (10)", "Summative");
     expect(writes).toEqual([]);
@@ -75,16 +99,16 @@ describe("dropAcceptedSuggestions", () => {
       { id: "mine2", date: "2026-10-13", courseName: "Geometry", type: "Formative" },
     ];
     appData.completedTasks = [{ id: "mine1", completedAt: 7 }];
-    globalThis.allAssessments = [{ id: "s1", date: "2026-10-12", courseName: "English (10)", type: "In-Class" }];
+    app.assessments = [{ id: "s1", date: "2026-10-12", courseName: "English (10)", type: "In-Class" }];
     dropAcceptedSuggestions();
     expect(appData.addedAssessments).toEqual([{ id: "mine2", date: "2026-10-13", courseName: "Geometry", type: "Formative" }]);
     expect(appData.completedTasks).toEqual([{ id: "mine1", completedAt: 7 }, { id: "s1", completedAt: 7 }]);
-    expect(globalThis.window.myCoursesRefreshCalendar).toHaveBeenCalledWith(true, true);
+    expect(redrawCalendar).toHaveBeenCalledWith(true, true);
   });
 
   it("changes nothing with nothing accepted", () => {
     appData.addedAssessments = [{ id: "mine1", date: "2026-10-12", courseName: "English (10)", type: "Summative" }];
     dropAcceptedSuggestions();
-    expect(globalThis.saveAddedAssessments).not.toHaveBeenCalled();
+    expect(saveAddedAssessments).not.toHaveBeenCalled();
   });
 });

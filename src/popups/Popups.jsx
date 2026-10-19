@@ -15,7 +15,7 @@ const KINDS = {
 };
 const SLOT_OF = { settings: "settings", loginKey: "settings", myCourses: "myCourses", gradeProtection: "gradeProtection" };
 
-// store: see store.js. page: the plain scripts' data and helpers (main.jsx).
+// store: see store.js. page: the student's data and the app's helpers (src/app/popupPage.js).
 export function Popups({ store, page }) {
   const popups = useSyncExternalStore(store.subscribe, store.get);
   return popups.map(({ id, kind, open, props }) => {

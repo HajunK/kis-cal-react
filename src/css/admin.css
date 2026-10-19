@@ -1,0 +1,688 @@
+/* What a non-admin sees instead of the page: just this, centered below the
+   tab bar. */
+.admin-not-authorized {
+  margin: 48px 0 0;
+  text-align: center;
+  font-size: 32px;
+  font-weight: var(--fw-class-name);
+  color: var(--color-text-primary);
+}
+
+.admin-not-authorized[hidden] {
+  display: none;
+}
+
+.admin-calendar-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 32px;
+}
+
+.admin-calendar-layout[hidden] {
+  display: none;
+}
+
+.admin-calendar-layout .assessment-calendar-card {
+  position: relative;
+  height: 600px;
+}
+
+/* In the middle of the card while its dates load, over the empty grid. */
+#admin-cal-loading {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Only here: the Add Missing Assessment calendar shares this class at 26px. */
+.admin-calendar-layout .assessment-calendar-day-number--today {
+  width: 30px;
+  height: 30px;
+}
+
+/* Today in the accent blue here, in both themes, rather than the tabs'
+   near-black (or white). A selected day keeps the card-colored circle it
+   gets on the blue (see calendar.css). */
+.admin-calendar-layout .assessment-calendar-day:not(.assessment-calendar-day--selected) .assessment-calendar-day-number--today,
+:root[data-theme="dark"] .admin-calendar-layout .assessment-calendar-day:not(.assessment-calendar-day--selected) .assessment-calendar-day-number--today {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+/* Height matches .assessment-calendar-card explicitly, not just via
+   align-items: stretch, so a long entry list has a bound to scroll against
+   instead of pushing the panel taller. */
+.admin-day-panel {
+  flex: 1;
+  min-width: 320px;
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: calc(20px * var(--squircle-scale));
+  corner-shape: squircle;
+  padding: 24px 32px 32px;
+  box-shadow: var(--shadow-card);
+}
+
+.admin-day-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* As tall as its buttons, so it doesn't change height when a day is
+     picked and they and the title appear. */
+  min-height: 32px;
+  margin-bottom: 16px;
+}
+
+.admin-day-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-schedule-open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-gray-dark);
+  cursor: pointer;
+}
+
+.admin-schedule-open-btn[hidden] {
+  display: none;
+}
+
+.admin-schedule-open-btn:hover {
+  background: var(--color-gray-lighter);
+  color: var(--color-text-primary);
+}
+
+.admin-schedule-open-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.admin-day-panel-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--fw-class-name);
+  color: var(--color-text-primary);
+}
+
+.admin-day-entry-list {
+  list-style: none;
+  margin: 0;
+  /* The bottom padding is the size of the fade, so the last entry can scroll
+     clear of it. */
+  padding: 0 0 32px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Fades out toward the form below, which has no divider above it. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+
+.admin-day-entry-list[hidden] {
+  display: none;
+}
+
+/* A scrollbar that's always there once the list overflows (not the overlay
+   one that hides until you scroll), taking its own room beside the rows
+   instead of lying over their ends. 10px of it, with the 4px thumb inset 3px
+   on each side. */
+.admin-day-entry-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.admin-day-entry-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-day-entry-list::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 5px;
+}
+
+/* Browsers without the ::-webkit-scrollbar parts. */
+@supports not selector(::-webkit-scrollbar) {
+  .admin-day-entry-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-scrollbar-thumb) transparent;
+    scrollbar-gutter: stable;
+  }
+}
+
+/* In the middle of the empty list until a day is picked. */
+.admin-day-select-hint {
+  margin: auto;
+  /* Back to where the middle of the list was before it ran down into the
+     fade's room. */
+  position: relative;
+  top: 6px;
+  font-size: 20px;
+  color: var(--color-gray-dark);
+}
+
+.admin-day-entry-empty {
+  font-size: 14px;
+  color: var(--color-gray-dark);
+}
+
+.admin-day-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.admin-day-entry + .admin-day-entry {
+  border-top: 1px solid var(--color-gray-lighter);
+}
+
+.admin-day-entry-name {
+  flex: 1;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.admin-day-entry-delete {
+  /* The X centered in the button, not sat on a text baseline in it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-gray-dark);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Only the circle shows on hover; the X keeps its gray. */
+.admin-day-entry-delete:hover {
+  background: var(--color-gray-lighter);
+}
+
+.admin-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.admin-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-add-field[hidden] {
+  display: none;
+}
+
+.admin-add-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-gray-dark);
+}
+
+/* An underline rather than a box, like the Calendar Add popup's "Describe the
+   task" field (.add-popup-input): a thin gray line at rest, and on focus a
+   thicker one in the accent that grows out from the middle. */
+.admin-course-field,
+.admin-course-field:focus-within {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.admin-course-field .admin-course-input {
+  box-sizing: border-box;
+  padding: 6px 2px 8px;
+  border-radius: 0;
+  background:
+    linear-gradient(var(--color-accent), var(--color-accent)) bottom center / 0% 2px no-repeat,
+    linear-gradient(var(--color-gray-light), var(--color-gray-light)) bottom / 100% 1px no-repeat;
+  font-size: 20px;
+  transition: background-size 0.2s ease;
+}
+
+.admin-course-field .admin-course-input::placeholder {
+  color: var(--color-gray-dark);
+}
+
+.admin-course-field .admin-course-input:focus {
+  background-size: 100% 2px, 100% 1px;
+}
+
+/* Matches the form's other controls' fixed height; display: flex so the bar
+   stretches when the "Other" input needs room. Stretch, not center, so each
+   option (and its hover pill) fills the bar's height like the sliding thumb
+   does, instead of sitting shorter inside it. */
+#admin-type-toggle {
+  height: 50px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+}
+
+.admin-type-other-input {
+  height: 100%;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 15px;
+}
+
+.admin-type-other-input:focus {
+  outline: none;
+}
+
+.admin-add-submit-btn {
+  height: 50px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-add-submit-btn:hover {
+  opacity: 0.9;
+}
+
+.admin-schedule-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-schedule-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.admin-schedule-row-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+/* Takes the event off this date: the X after its times. */
+.admin-schedule-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-gray-dark);
+  cursor: pointer;
+}
+
+/* Only the circle shows on hover, as on the assessments' X; the X keeps its
+   gray. */
+.admin-schedule-remove-btn:hover {
+  background: var(--color-gray-lighter);
+}
+
+.admin-schedule-remove-btn svg,
+.admin-schedule-add-pill svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* The events the date doesn't have, as hollow pills to add them back. Their
+   own positioned box, so they can slide over when one goes. */
+.admin-schedule-add-pills {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Further from the last row than the dialog's usual 16px between its parts
+   (not while there are no pills, so an empty row adds nothing). */
+.admin-schedule-add-pills:not(:empty) {
+  margin-top: 8px;
+}
+
+.admin-schedule-add-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px 0 10px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--color-gray-light);
+  border-radius: 999px;
+  background: none;
+  color: var(--color-gray-dark);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.admin-schedule-add-pill svg {
+  width: 10px;
+  height: 10px;
+}
+
+.admin-schedule-add-pill:hover {
+  border-color: var(--color-gray-dark);
+  color: var(--color-text-primary);
+}
+
+.admin-schedule-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-schedule-date {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-gray-dark);
+}
+
+.admin-schedule-footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+}
+
+/* Beside Save Schedule, which gives up the width it takes. The slot is the
+   button's width (set in JS) while open and nothing while shut, with the 8px
+   between the two buttons opening along with it. */
+.admin-schedule-reset-slot {
+  flex: none;
+  width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.admin-schedule-reset-slot--open {
+  margin-left: 8px;
+  opacity: 1;
+}
+
+.admin-schedule-reset-slot--animated {
+  transition: width 0.25s ease, margin-left 0.25s ease, opacity 0.2s ease;
+}
+
+.admin-schedule-reset-btn {
+  flex: none;
+  height: 44px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.admin-schedule-reset-btn:hover {
+  background: color-mix(in srgb, var(--color-gray-dark) 12%, var(--color-gray-lighter));
+}
+
+.admin-schedule-row-sep {
+  color: var(--color-gray-dark);
+}
+
+.admin-schedule-time-input {
+  /* Fixed width: a typed value's width shifts slightly ("AM" vs "PM"), which
+     moved the "--" placeholder from box to box. */
+  width: 110px;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-gray-lighter);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* Redundant next to .admin-schedule-open-icon; hidden in WebKit/Blink (Firefox
+   never draws one). */
+.admin-schedule-time-input::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.admin-schedule-time-input:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.admin-schedule-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.admin-schedule-overlay--visible {
+  opacity: 1;
+}
+
+.admin-schedule-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+  max-height: 80vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--color-surface);
+  border-radius: calc(24px * var(--squircle-scale));
+  corner-shape: squircle;
+  padding: 32px;
+  box-shadow: 0 8px 24px var(--color-shadow-popover);
+  opacity: 0;
+  transform: translateY(100vh);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.admin-schedule-dialog::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-schedule-dialog--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* The X a fifth bigger than its old 22px, and the same gray hovered or not.
+   Tucked into the corner, 16px in from the top and right. */
+.admin-schedule-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  /* The X centered in the button, not sat on a text baseline in it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--color-gray-dark);
+  font-size: 26.4px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-schedule-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--fw-class-name);
+  color: var(--color-text-primary);
+}
+
+.admin-schedule-actions {
+  display: flex;
+  margin-top: 8px;
+}
+
+.admin-schedule-save-btn {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-schedule-save-btn:hover {
+  opacity: 0.9;
+}
+
+/* The light fill of a filled Calendar pill, on the days testing blocks fall,
+   joined down each Monday and Friday column into one strip: square corners
+   between days, reaching the height of the grid's row gap below each day
+   but the last. Drawn behind each day (a ::before) rather than as its own
+   background, so a day keeps its usual rounded shape when it's selected or
+   hovered, on top of the strip. */
+:is(#admin-cal-grid, #admin-cal-grid-leaving).admin-cal-grid--testing-block {
+  --block-day-fill: oklch(from color-mix(in oklch, var(--color-dark-blue) 22%, var(--color-surface)) l calc(c * 1.8) h);
+  /* Keeps the strips' z-index: -1 above the card's background. */
+  isolation: isolate;
+}
+
+/* Hovered inside the strip, a day darkens the strip's own blue rather than
+   turning the usual gray, which looked out of place on it. */
+:is(#admin-cal-grid, #admin-cal-grid-leaving).admin-cal-grid--testing-block .assessment-calendar-day--block-day:hover:not(.assessment-calendar-day--selected) {
+  background: color-mix(in oklch, var(--block-day-fill), var(--color-dark-blue) 12%);
+}
+
+:is(#admin-cal-grid, #admin-cal-grid-leaving).admin-cal-grid--testing-block .assessment-calendar-day--block-day::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -6px;
+  z-index: -1;
+  background: var(--block-day-fill);
+  pointer-events: none;
+}
+
+:is(#admin-cal-grid, #admin-cal-grid-leaving).admin-cal-grid--testing-block .assessment-calendar-day--block-day-first::before {
+  border-top-left-radius: calc(10px * var(--squircle-scale));
+  border-top-right-radius: calc(10px * var(--squircle-scale));
+  corner-shape: squircle;
+}
+
+:is(#admin-cal-grid, #admin-cal-grid-leaving).admin-cal-grid--testing-block .assessment-calendar-day--block-day-last::before {
+  bottom: 0;
+  border-bottom-left-radius: calc(10px * var(--squircle-scale));
+  border-bottom-right-radius: calc(10px * var(--squircle-scale));
+  corner-shape: squircle;
+}
+
+/* The month's arrows: the Domain date picker's chevrons. */
+.assessment-calendar-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.assessment-calendar-nav-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Holds the days as they slide between months, clipped only while they do. */
+.admin-cal-days-window {
+  position: relative;
+}
+
+.admin-cal-days-window--sliding {
+  overflow: hidden;
+}
+
+/* The outgoing month, laid over the incoming one while it slides away. */
+.admin-cal-grid--leaving {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}

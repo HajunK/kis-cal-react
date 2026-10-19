@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { hydrateRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { removeBlankText } from "../legacy/page.js";
 import { GpaPage } from "./GpaPage.jsx";
 
 // Stands in for animateNumberChange: records each call and shows the text.
@@ -40,32 +36,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("hydrating gpa.html", () => {
-  it("takes over the page's own markup without rebuilding it", async () => {
-    const html = readFileSync(resolve(process.cwd(), "gpa.html"), "utf8");
-    const start = html.indexOf('<div class="page-content" id="gpa-root">');
-    const end = html.indexOf('<p class="page-footer">');
-    document.body.innerHTML = html.slice(start, end);
-    const container = document.getElementById("gpa-root");
-    removeBlankText(container);
+describe("before the data is ready", () => {
+  it("draws the empty tab, then fills in the same markup", () => {
+    const { container, rerender } = render(<GpaPage page={fakePage({ ready: false })} />);
     const layout = container.querySelector(".gpa-layout");
-    const errors = [];
-    const mismatch = vi.spyOn(console, "error").mockImplementation((...args) => errors.push(args.join(" ")));
-
-    let root;
-    await act(async () => {
-      root = hydrateRoot(container, <GpaPage page={fakePage({ ready: false })} />, {
-        onRecoverableError: (error) => errors.push(String(error)),
-      });
-    });
-    expect(errors).toEqual([]);
-    expect(container.querySelector(".gpa-layout")).toBe(layout);
-
-    await act(async () => root.render(<GpaPage page={fakePage()} />));
+    expect(rows()).toHaveLength(0);
+    expect(value("gpa-unweighted")).toBe("-");
+    rerender(<GpaPage page={fakePage()} />);
     expect(container.querySelector(".gpa-layout")).toBe(layout);
     expect(rows()).toHaveLength(3);
-    mismatch.mockRestore();
-    await act(async () => root.unmount());
   });
 });
 

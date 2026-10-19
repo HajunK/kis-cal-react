@@ -1,4 +1,3 @@
-/* global attachHoverTooltip, openMyCoursesModal, ROLL_DURATION_MS */
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { fromISODate } from "../core/dates.js";
@@ -41,6 +40,9 @@ import {
 } from "./motion.js";
 import { toggleScoreDatePicker } from "./ScoreDatePicker.jsx";
 import { attachScoreScrollBlur, attachScoreScrollThumb, linkScoreListScroll } from "./scoreLists.js";
+import { openMyCoursesModal } from "../popups/popupStore.js";
+import { formatPreferredDate, getPreferences } from "../shell/preferences.js";
+import { ROLL_DURATION_MS, attachHoverTooltip } from "../shell/ui.js";
 
 // Label clicks on the icon focus the input too; mousedown, which always comes
 // first, records which was clicked, so the whole value is selected.
@@ -83,7 +85,7 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
 
   const ctxFor = (fx, mount = false) => {
     const ctx = {
-      prefs: () => window.getPreferences(),
+      prefs: () => getPreferences(),
       focused: (box, row) => {
         const el = input(box, row);
         return Boolean(el) && document.activeElement === el;
@@ -425,7 +427,7 @@ function ScoreRow({ cell, on }) {
             Right after the input, which the swap relies on. */}
         <span className="score-original">{cell.original}</span>
         <span className="score-date-label" data-iso-date={cell.date}>
-          {cell.date ? window.formatPreferredDate(fromISODate(cell.date)) : ""}
+          {cell.date ? formatPreferredDate(fromISODate(cell.date)) : ""}
         </span>
         <button type="button" className="score-date-btn" aria-label="Show date" onMouseDown={on.onMouseDownDate}>
           <img className="score-date-icon" src={uiIcon("date.png")} alt="" />

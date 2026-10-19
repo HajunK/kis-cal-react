@@ -1,6 +1,6 @@
 // The Domain tab's page-level rules, from domain.js: which cards show, the
-// upcoming-assessment label, the date picker's school year and month grid,
-// and the posts' order.
+// upcoming-assessment label, and the date picker's school year and month
+// grid.
 
 import { effectiveCourseName, findCourseCatalogEntry } from "../core/catalog.js";
 import { toISODate } from "../core/dates.js";
@@ -100,9 +100,4 @@ export function pickerMonth(displayedMonth, bounds, today = new Date()) {
     atEnd: sameMonth(displayedMonth, bounds.end),
     days,
   };
-}
-
-// Newest first.
-export function sortPosts(posts) {
-  return posts.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }

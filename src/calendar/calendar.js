@@ -1,7 +1,3 @@
-/* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, loadPeriods, loadAddedAssessments, saveAddedAssessments, saveCompletedTasks,
-   assessmentsLoaded, dayTypesLoaded, assessmentsForCourses, assessmentStillUpcoming, assessmentEndsAt, loadAssessmentData,
-   loadCompletedTasks, allDayTypes */
-
 // The Calendar's month grid and Upcoming list, and the render that keeps them
 // (and the Courses view) in step with the user's courses and the school
 // calendar. Carried over from my-courses.js's initAssessmentCalendar
@@ -27,6 +23,20 @@ import {
 import { ICON_CHEVRON_DOWN } from "./icons.js";
 import { CAL_WEEKDAY_LABELS, assessmentCategory, latestAugustFirst, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
 import { animatePillChanges, buildDayCell, fitName, pillListGap, renderedPillsByDate } from "./pills.js";
+import { loadAddedAssessments, loadCompletedTasks, loadPeriods, saveAddedAssessments, saveCompletedTasks } from "../shell/data.js";
+import { getPreferences } from "../shell/preferences.js";
+import {
+  allDayTypes,
+  assessmentEndsAt,
+  assessmentStillUpcoming,
+  assessmentsForCourses,
+  assessmentsLoaded,
+  dayTypesLoaded,
+  loadAssessmentData,
+  loadPeriodTimes,
+  periodTimesLoaded,
+} from "../shell/school.js";
+import { animateNumberChange, hideHoverTooltip, hideToast, showToast } from "../shell/ui.js";
 
 const CALENDAR_SCROLL_SETTLE_MS = 150;
 
@@ -44,7 +54,7 @@ const UPCOMING_COUNTDOWN_MS = 12 * 60 * 60 * 1000;
 
 // Returns render so other code (a period being typed) can refresh it; null
 // without the calendar markup.
-export function createAssessmentCalendar({ showColorLegend, hiddenCategories, viewMode }) {
+export function createAssessmentCalendar({ showColorLegend, hiddenCategories, viewMode, signal }) {
   const cardEl = document.getElementById("my-courses-calendar-card");
   const weeksContainer = document.getElementById("assessment-cal-weeks");
   if (!weeksContainer) return null;
@@ -116,6 +126,28 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   }
 
   const CALENDAR_REVEAL_MS = 300;
+
+  // The rise every tab's content arrives with (page-enter in base.css). The
+  // first view shown lifts the whole calendar, its card with it; after that
+  // (switching between Calendar and Courses), just the view coming in, as
+  // before. Not on the card itself through CSS: its loading spinner is pinned
+  // to the window and a moving card would carry it off.
+  const calendarBox = weeksContainer && weeksContainer.parentElement;
+  let calendarEntered = false;
+  function rise(el) {
+    if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], {
+      duration: 320,
+      easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
+      fill: "backwards",
+    });
+  }
+  function showView(view) {
+    if (!view.hidden) return;
+    view.hidden = false;
+    rise(calendarEntered ? view : calendarBox);
+    calendarEntered = true;
+  }
 
   // Never on page load, even for an account with courses.
   function revealCalendarCard(animate) {
@@ -200,7 +232,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
         // Not when the grid was just switched to; its old pills are out of
         // date.
         const animateClassPills = !classGrid.hidden && classGrid.childElementCount > 0;
-        classGrid.hidden = false;
+        showView(classGrid);
         renderClassGrid(classGrid, matchingEntries, matchEntries, resolvedNames, courseColors, handlePillContextMenu, animateClassPills);
         return;
       }
@@ -221,7 +253,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     if (weeksContainer.hidden && weeksContainer.childElementCount > 0 && weeksSignature === previousWeeksSignature) {
       const pastWeeks = Math.round((startOfWeek(new Date()) - startOfWeek(latestAugustFirst())) / (7 * 86400000));
       loadingEl.hidden = true;
-      weeksContainer.hidden = false;
+      showView(weeksContainer);
       weeksContainer.scrollTop = weekRowHeight() * pastWeeks;
       markTopWeek();
       return;
@@ -275,7 +307,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     // Before the pill animations, which measure heights and can't in a hidden
     // grid.
     loadingEl.hidden = true;
-    weeksContainer.hidden = false;
+    showView(weeksContainer);
     weeksContainer.scrollTop = openOnThisWeek ? weekRowHeight() * pastWeeks : scrollTop;
     markTopWeek();
 
@@ -480,7 +512,10 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     );
     if ((passed || ended) && lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
   }
-  if (upcomingList) setInterval(tickUpcomingCountdowns, 1000);
+  if (upcomingList) {
+    const ticker = setInterval(tickUpcomingCountdowns, 1000);
+    signal.addEventListener("abort", () => clearInterval(ticker));
+  }
 
   // done: an item in the Completed section, whose ring un-checks it.
   function buildUpcomingItem(entry, courseLabel, color, periodIndex, overdue, done) {
@@ -646,18 +681,26 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   // here too. Not for the view, which the toggle redraws itself: drawing here
   // as well built the Courses grid twice per switch.
   const drawnPreferences = () => {
-    const { calendarView, ...rest } = window.getPreferences();
+    const { calendarView, ...rest } = getPreferences();
     return JSON.stringify(rest);
   };
   let lastPreferences = drawnPreferences();
-  window.addEventListener("app:preferences-changed", () => {
-    const preferences = drawnPreferences();
-    if (preferences === lastPreferences) return;
-    lastPreferences = preferences;
-    render();
-  });
+  window.addEventListener(
+    "app:preferences-changed",
+    () => {
+      const preferences = drawnPreferences();
+      if (preferences === lastPreferences) return;
+      lastPreferences = preferences;
+      render();
+    },
+    { signal }
+  );
 
-  loadAssessmentData(() => render());
+  // Not once the tab is left.
+  loadAssessmentData(() => !signal.aborted && render());
+  // Upcoming's due times and countdowns need the bell schedule; on a first
+  // visit, with none cached, it can arrive after the first draw.
+  if (!periodTimesLoaded) loadPeriodTimes(() => !signal.aborted && render());
 
   return render;
 }
