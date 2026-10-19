@@ -42,7 +42,7 @@ export const legacyPage = {
   },
 
   // My Courses' edits shown live on the tab underneath: the Calendar
-  // (my-courses.js) and Domain (domain.js), when it's one of those.
+  // (src/calendar) and Domain (src/domain), when it's one of those.
   refreshCalendar: () => {
     if (typeof myCoursesRefreshCalendar !== "undefined" && myCoursesRefreshCalendar) myCoursesRefreshCalendar(true, true);
   },

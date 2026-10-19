@@ -35,6 +35,9 @@ src/admin/                                The Assessments admin tab (calendar, A
 src/calendar/                             The Calendar tab: React page and side panel (CalendarPage.jsx), its logic (model.js, tested),
                                             and the grids, Upcoming list and Add popup (calendar.js, classGrid.js, addPopup.js, pills.js),
                                             carried over from my-courses.js with their motion unchanged; globals.js serves Domain and GPA
+src/domain/                               The Domain tab, in React: the cards' row and posts (DomainPage.jsx), each card (ClassCard.jsx),
+                                            its scores and rules (cardState.js, tested), the date picker; motion.js, scoreLists.js,
+                                            pageScroll.js and linkTip.js keep domain.js's animations and scrolling unchanged
 src/gpa/                                  The GPA tab, in React: hydrates gpa.html's own markup; badgeMotion.js keeps the old animations
 src/popups/                               The account menu's popups (Settings, Login Key, My Courses) and Learn More, in React, on every page
 src/legacy/page.js                        React's handle on the plain scripts' data (appData, pushDataToCloud...)

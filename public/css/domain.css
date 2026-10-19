@@ -1,3 +1,10 @@
+/* The cards' row, scrollbar, arrows and posts are drawn into this (see
+   src/domain/main.jsx); it adds no box of its own, so they're laid out as the
+   body's children, as before. */
+#domain-root {
+  display: contents;
+}
+
 /* Pinned to the middle of the window while the cards load, rather than
    taking up the page's height (which let it scroll, spinner and all). */
 .domain-loading {

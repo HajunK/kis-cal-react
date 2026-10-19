@@ -108,23 +108,10 @@
   <div class="domain-loading" id="domain-loading">
     <span class="assessment-calendar-spinner"></span>
   </div>
-  <div class="classes-container" data-dynamic="true"></div>
-  <div class="classes-scrollbar" aria-hidden="true"><div class="classes-scrollbar-thumb"></div></div>
-
-  <!-- Under the cards' right end: scroll them one card back or forward (see
-       initCardScrollButtons in domain.js). Hidden while they all fit. -->
-  <div class="domain-card-nav" id="domain-card-nav" hidden>
-    <button type="button" class="domain-card-nav-btn" id="domain-card-prev" aria-label="Previous class">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.5L6.5 10l5.5 5.5" /></svg>
-    </button>
-    <button type="button" class="domain-card-nav-btn" id="domain-card-next" aria-label="Next class">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4.5l5.5 5.5L8 15.5" /></svg>
-    </button>
-  </div>
-
-  <!-- Admin-authored posts (see Posts admin page) — hidden until there's
-       actually something to show. -->
-  <div class="domain-posts" id="domain-posts" hidden></div>
+  <!-- The cards' row, its scrollbar and arrows, and the admins' posts, drawn
+       by React (src/domain). display: contents, so they're laid out as the
+       body's own children. -->
+  <div id="domain-root"></div>
 
   <p class="page-footer">
     Only you can see your grades.
@@ -141,6 +128,9 @@
   <!-- The account menu's popups (Settings, Login Key, My Courses) and Learn
        More, in React (src/popups/main.jsx). -->
   <script type="module" src="/src/popups/main.jsx"></script>
+  <!-- The Domain tab itself, in React (src/domain/main.jsx); boot.js starts
+       it once it has the user's data. -->
+  <script type="module" src="/src/domain/main.jsx"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -154,7 +144,6 @@
   <script defer src="/js/vendor/qrcode-generator.js"></script>
   <script defer src="/js/shared.js"></script>
   <script defer src="/js/assessments-shared.js"></script>
-  <script defer src="/js/domain.js"></script>
   <script defer src="/js/class-countdown.js"></script>
   <script defer src="/js/boot.js"></script>
 </body>

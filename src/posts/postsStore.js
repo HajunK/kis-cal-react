@@ -1,5 +1,5 @@
 // The posts collection. Each doc is { title, body, createdAt, linkUrl? }:
-// the shape Domain's posts (fetchDomainPosts in domain.js) read, and what
+// the shape Domain's posts (fetchDomainPosts in src/domain/main.jsx) read, and what
 // every existing post has, so it mustn't change. db is a Firestore instance.
 
 const POSTS = "posts";
