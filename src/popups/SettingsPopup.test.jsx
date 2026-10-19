@@ -16,6 +16,17 @@ vi.mock("../shell/preferences.js", () => ({
 }));
 const { setPreference } = await import("../shell/preferences.js");
 
+// Suggestion alerts (src/shell/notifications.js): which browser calls would be
+// made, with the browser's own permission and push left out of it.
+const alerts = vi.hoisted(() => ({ on: false }));
+vi.mock("../shell/notifications.js", () => ({
+  alertsSupported: () => true,
+  alertsOn: () => alerts.on,
+  turnOnAlerts: vi.fn(async () => {}),
+  turnOffAlerts: vi.fn(async () => {}),
+}));
+const { turnOnAlerts, turnOffAlerts } = await import("../shell/notifications.js");
+
 beforeEach(() => {
   store.prefs = { appearance: "system", dateFormat: "monthDay", privacyBlurMode: "never", showBreakdown: true, showUpcomingAssessments: false, replaceFormativesByDefault: true, hideAdminTabs: false };
   setPreference.mockClear();
@@ -81,6 +92,35 @@ describe("SettingsPopup", () => {
     cleanup();
     render(<SettingsPopup page={fakePage({ uid: "u1", email: "hjkim29@kis.ac" })} />);
     expect(screen.getByText("Hide Admins Tabs")).toBeTruthy();
+  });
+
+  it("lets only admins switch suggestion alerts on and off", async () => {
+    render(<SettingsPopup page={fakePage()} />);
+    expect(screen.queryByText("Notify me of new suggestions")).toBe(null);
+    cleanup();
+
+    const admin = { uid: "u1", email: "hjkim29@kis.ac" };
+    const page = fakePage(admin);
+    render(<SettingsPopup page={page} />);
+    const box = () => document.querySelector('input[data-pref="suggestionAlerts"]');
+    expect(box().checked).toBe(false);
+    fireEvent.click(box());
+    expect(turnOnAlerts).toHaveBeenCalledWith(admin);
+    expect(box().checked).toBe(true);
+    await act(async () => {});
+    fireEvent.click(box());
+    expect(turnOffAlerts).toHaveBeenCalled();
+    expect(box().checked).toBe(false);
+  });
+
+  it("switches itself back off, saying why, when the browser won't allow alerts", async () => {
+    turnOnAlerts.mockRejectedValueOnce(new Error("denied"));
+    const page = fakePage({ uid: "u1", email: "hjkim29@kis.ac" });
+    render(<SettingsPopup page={page} />);
+    fireEvent.click(document.querySelector('input[data-pref="suggestionAlerts"]'));
+    await act(async () => {});
+    expect(document.querySelector('input[data-pref="suggestionAlerts"]').checked).toBe(false);
+    expect(page.toasts).toEqual(["Allow notifications for this site in your browser's settings first."]);
   });
 
   it("deletes all data only once confirmed", async () => {

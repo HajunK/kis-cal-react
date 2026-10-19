@@ -160,6 +160,13 @@
   color: var(--color-accent);
 }
 
+/* In dark mode the text stays white, on the same highlight (the keyboard's
+   highlighted item looks as a hovered one does). */
+:root[data-theme="dark"] .schedule-dropdown-item:hover,
+:root[data-theme="dark"] .schedule-dropdown-item--highlighted {
+  color: var(--color-text-primary);
+}
+
 .schedule-dropdown-item--highlighted::after,
 .schedule-dropdown:not(:has(.schedule-dropdown-item--highlighted)) .schedule-dropdown-item:first-child::after {
   content: "Enter";

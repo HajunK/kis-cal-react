@@ -4,6 +4,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog.jsx";
 import { SegmentedControl } from "../ui/SegmentedControl.jsx";
 import { ToggleSwitch } from "../ui/ToggleSwitch.jsx";
 import { deleteAccount, deleteAllData } from "./accountActions.js";
+import { alertsOn, alertsSupported, turnOffAlerts, turnOnAlerts } from "../shell/notifications.js";
 import { formatPreferredDate, getPreferences, setPreference } from "../shell/preferences.js";
 
 // getPreferences, kept current as they change here or arrive from
@@ -34,6 +35,35 @@ const TOGGLES = [
   { pref: "showUpcomingAssessments", label: "Display upcoming assessments" },
   { pref: "replaceFormativesByDefault", label: "Replace formatives by default" },
 ];
+
+// An admin's own switch for Mac notifications of new suggestions. Per browser
+// rather than per account (a preference would follow the account to every
+// device): it adds or removes this browser on the list the Cloud Function
+// sends to (see src/shell/notifications.js).
+function SuggestionAlertsRow({ page }) {
+  const [on, setOn] = useState(() => alertsOn());
+  const change = (checked) => {
+    setOn(checked);
+    if (!checked) {
+      turnOffAlerts().catch((error) => console.error("Couldn't turn off suggestion alerts:", error));
+      return;
+    }
+    turnOnAlerts(page.currentUser()).catch((error) => {
+      setOn(false);
+      if (error.message === "denied") page.toast("Allow notifications for this site in your browser's settings first.");
+      else {
+        console.error("Couldn't turn on suggestion alerts:", error);
+        page.toast("Couldn't turn on alerts. Please try again.");
+      }
+    });
+  };
+  return (
+    <div className="settings-row">
+      <span className="settings-label">Notify me of new suggestions</span>
+      <ToggleSwitch className="settings-toggle" data-pref="suggestionAlerts" checked={on} onChange={change} />
+    </div>
+  );
+}
 
 // The Settings card, inside its popup. page: see main.jsx.
 export function SettingsPopup({ page }) {
@@ -123,6 +153,7 @@ export function SettingsPopup({ page }) {
         <>
           <div className="settings-divider" />
           {toggle("hideAdminTabs", "Hide Admins Tabs")}
+          {alertsSupported() && <SuggestionAlertsRow page={page} />}
         </>
       )}
 

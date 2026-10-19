@@ -55,6 +55,7 @@ src/popups/                               The account menu's popups (Settings, L
 src/ui/                                   Shared React components: Modal, ConfirmDialog, Toast, SegmentedControl, ToggleSwitch
 src/test/fakeFirebase.js                  In-memory Firestore and Auth for tests; records every write
 src/css/                                  The stylesheets, imported by src/app/main.jsx; Vite bundles them into one minified, hashed file
+functions/                                The Cloud Function that sends suggestion alerts (index.js; notification.js is tested)
 public/                                   Copied into the build unchanged: fonts/, icons/, grade-icons/, js/vendor/ (QR code libraries)
 firebase.json, firestore.rules            Hosting config and the security rules (the real admin gate)
 ```
@@ -75,3 +76,24 @@ reload, as they clear this device's cached preferences too.
 - `suggested`: assessments students added that the school calendar is missing.
 - `meta/cacheVersions`: when each school-wide collection last changed, so pages
   only refetch what changed.
+
+## Suggestion alerts (Mac notifications for admins)
+
+When a student suggests an assessment, every admin browser that has switched on
+Settings > "Notify me of new suggestions" gets a push, even with the site closed.
+
+- The switch (src/shell/notifications.js) asks the browser for permission and
+  lists the browser in `adminPushTokens` (public/firebase-messaging-sw.js shows
+  the alert while no tab is open).
+- functions/index.js runs when a document is created in `suggested`, and sends
+  to every listed device.
+- firestore.rules lets only an admin add or remove their own device, and lets
+  no browser read the list.
+
+Turning it on for the first time needs the project on Firebase's pay-as-you-go
+(Blaze) plan, then:
+
+```
+cd functions && npm install && cd ..
+firebase deploy --only functions,firestore:rules,hosting
+```

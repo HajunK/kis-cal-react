@@ -29,6 +29,6 @@ function firebaseRedirects() {
 export default defineConfig({
   plugins: [react(), firebaseRedirects()],
   test: {
-    include: ["src/**/*.test.{js,jsx}"],
+    include: ["src/**/*.test.{js,jsx}", "functions/**/*.test.js"],
   },
 });

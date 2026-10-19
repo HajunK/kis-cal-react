@@ -55,6 +55,10 @@
   color: var(--color-gray-dark);
   text-decoration: none;
   white-space: nowrap;
+  /* Names to click, not to select (a double-click or a drag across the bar
+     doesn't highlight them). */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .tab:hover {
