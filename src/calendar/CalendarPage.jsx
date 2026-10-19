@@ -68,8 +68,8 @@ export function CalendarPage() {
     viewModeRef.current = mode;
     flushSync(() => setViewMode(mode));
     viewToggleRef.current.place(true);
-    window.setPreference("calendarView", mode);
     if (window.myCoursesRefreshCalendar) window.myCoursesRefreshCalendar(false);
+    window.setPreference("calendarView", mode);
   };
 
   return (
@@ -195,8 +195,14 @@ function ViewToggle({ handleRef, mode, onPick }) {
           className={`segmented-option${value === mode ? " segmented-option--active" : ""}`}
           data-value={value}
           ref={(el) => (optionRefs.current[value] = el)}
+          // A mouse switches as the button goes down, not when it comes back
+          // up. Touch waits for the tap (a press may start a scroll), and
+          // the keyboard's Enter or Space arrives as a click.
+          onPointerDown={(event) => {
+            if (event.pointerType !== "touch" && event.button === 0 && value !== modeRef.current) onPick(value);
+          }}
           onClick={() => {
-            if (value !== mode) onPick(value);
+            if (value !== modeRef.current) onPick(value);
           }}
         >
           {label}

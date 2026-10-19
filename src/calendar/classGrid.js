@@ -1,4 +1,4 @@
-/* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, loadPeriods, allDayTypes */
+/* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, loadPeriods, loadCompletedTasks, allDayTypes */
 
 // The Courses view: a row per course, a column per day, laid out like a
 // school's assessment spreadsheet. Carried over from my-courses.js unchanged
@@ -52,6 +52,25 @@ function classGridPill(entry, resolvedNames, onContextMenu, courseColors) {
   return pill;
 }
 
+// A day's cell, empty, cloned for each course and day: far quicker than
+// building hundreds of them (and parsing the + icon) one by one.
+function classCellTemplate() {
+  const cell = document.createElement("div");
+  cell.className = "class-grid-cell";
+  // So a busy day scrolls instead of stretching the row.
+  const pills = cell.appendChild(document.createElement("div"));
+  pills.className = "class-grid-cell-pills";
+  // For when pills fill the cell and leave nowhere to click. Its click
+  // reaches the grid's own handler.
+  const add = cell.appendChild(document.createElement("button"));
+  add.type = "button";
+  add.className = "class-grid-cell-add";
+  add.setAttribute("aria-label", "Add to calendar");
+  add.hidden = true;
+  add.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" /></svg>';
+  return cell;
+}
+
 const CLASS_GRID_MIN_ROW_PX = 72;
 
 // The course rows share the grid's height, at least 72px each. In whole
@@ -94,6 +113,27 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
   const today = toISODate(new Date());
 
   const firstBuild = grid.childElementCount === 0;
+  // Everything the grid is drawn from. When none of it changed (switching
+  // back from the Calendar view, say), the grid already shows it, so it's only
+  // refitted rather than rebuilt.
+  const signature = JSON.stringify([
+    entries,
+    matchEntries,
+    [...resolvedNames],
+    [...courseColors],
+    [...courseColorAssignments()],
+    periods,
+    today,
+    allDayTypes,
+    loadCompletedTasks(),
+  ]);
+  if (!firstBuild && grid._signature === signature) {
+    sizeClassGridRows(grid);
+    grid._showCornerMonth();
+    updateClassCellAdds(grid);
+    return;
+  }
+  grid._signature = signature;
   const scrollLeft = grid.scrollLeft;
   const scrollTop = grid.scrollTop;
   const pillsBefore = animatePills ? renderedPillsByDate(grid, CLASS_GRID_PILL_CELLS) : null;
@@ -184,6 +224,8 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
   });
 
   const colors = courseColorAssignments();
+  const isoDays = days.map(toISODate);
+  const cellTemplate = classCellTemplate();
   courses.forEach((course) => {
     const name = grid.appendChild(document.createElement("div"));
     name.className = "class-grid-course";
@@ -195,24 +237,13 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
     label.textContent = course;
     fitName(label, label, course, shortCourseName(course));
 
-    days.forEach((date) => {
-      const iso = toISODate(date);
-      const cell = grid.appendChild(document.createElement("div"));
-      cell.className = "class-grid-cell";
+    days.forEach((date, dayIndex) => {
+      const iso = isoDays[dayIndex];
+      const cell = grid.appendChild(cellTemplate.cloneNode(true));
       if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("class-grid-cell--weekend");
       cell.dataset.iso = iso;
       cell.dataset.course = course;
-      // So a busy day scrolls instead of stretching the row.
-      const pills = cell.appendChild(document.createElement("div"));
-      pills.className = "class-grid-cell-pills";
-      // For when pills fill the cell and leave nowhere to click. Its click
-      // reaches the grid's own handler.
-      const add = cell.appendChild(document.createElement("button"));
-      add.type = "button";
-      add.className = "class-grid-cell-add";
-      add.setAttribute("aria-label", "Add to calendar");
-      add.hidden = true;
-      add.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" /></svg>';
+      const pills = cell.firstChild;
       (byCell.get(`${course}|${iso}`) || []).forEach((entry) =>
         pills.appendChild(classGridPill(entry, resolvedNames, onContextMenu, courseColors))
       );
@@ -237,21 +268,23 @@ const CLASS_CELL_MIN_FREE_PX = 20;
 
 // Measured with the + hidden, since showing it shortens the list and would sway
 // the next check.
-function updateClassCellAdd(cell) {
-  const list = cell.querySelector(".class-grid-cell-pills");
-  const add = cell.querySelector(".class-grid-cell-add");
-  if (!list || !add) return;
-  const last = list.lastElementChild;
-  if (!last) {
-    add.hidden = true;
-    return;
-  }
-  add.hidden = true;
-  const paddingBottom = parseFloat(getComputedStyle(list).paddingBottom) || 0;
-  const used = last.offsetTop - list.offsetTop + last.offsetHeight;
-  add.hidden = list.clientHeight - paddingBottom - used >= CLASS_CELL_MIN_FREE_PX;
-}
-
+// Every + is hidden first, then every cell measured, then the +s set: one
+// layout for the whole grid, rather than one per cell.
 function updateClassCellAdds(grid) {
-  grid.querySelectorAll(".class-grid-cell").forEach(updateClassCellAdd);
+  const filled = [];
+  grid.querySelectorAll(".class-grid-cell").forEach((cell) => {
+    const list = cell.querySelector(".class-grid-cell-pills");
+    const add = cell.querySelector(".class-grid-cell-add");
+    if (!list || !add) return;
+    add.hidden = true;
+    if (list.lastElementChild) filled.push({ list, add });
+  });
+  filled.forEach((cell) => {
+    const { list } = cell;
+    const last = list.lastElementChild;
+    const paddingBottom = parseFloat(getComputedStyle(list).paddingBottom) || 0;
+    const used = last.offsetTop - list.offsetTop + last.offsetHeight;
+    cell.roomy = list.clientHeight - paddingBottom - used >= CLASS_CELL_MIN_FREE_PX;
+  });
+  filled.forEach(({ add, roomy }) => (add.hidden = roomy));
 }

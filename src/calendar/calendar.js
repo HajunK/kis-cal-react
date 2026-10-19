@@ -1,5 +1,6 @@
 /* global attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, hideToast, animateNumberChange, uiIconPath, loadPeriods, loadAddedAssessments, saveAddedAssessments, saveCompletedTasks,
-   assessmentsLoaded, dayTypesLoaded, assessmentsForCourses, assessmentStillUpcoming, assessmentEndsAt, loadAssessmentData */
+   assessmentsLoaded, dayTypesLoaded, assessmentsForCourses, assessmentStillUpcoming, assessmentEndsAt, loadAssessmentData,
+   loadCompletedTasks, allDayTypes */
 
 // The Calendar's month grid and Upcoming list, and the render that keeps them
 // (and the Courses view) in step with the user's courses and the school
@@ -89,6 +90,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   // So a render that changes nothing can be skipped.
   let previousPillIds = new Set();
   let previousMatchNamesKey = "";
+  let previousWeeksSignature = "";
   // Nothing should animate in just from opening the tab.
   let calendarSettled = false;
   // Kept fresh each render rather than threaded through the whole pill-building
@@ -211,6 +213,20 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
         currentPillIds.size === previousPillIds.size && [...currentPillIds].every((id) => previousPillIds.has(id));
       if (unchanged) return;
     }
+
+    // Switching back from the Courses view with nothing changed: the weeks
+    // are already built, so they're only shown again, on this week as a
+    // rebuild would open.
+    const weeksSignature = JSON.stringify([matchNamesKey, matchingEntries, allDayTypes, loadCompletedTasks(), todayISODate()]);
+    if (weeksContainer.hidden && weeksContainer.childElementCount > 0 && weeksSignature === previousWeeksSignature) {
+      const pastWeeks = Math.round((startOfWeek(new Date()) - startOfWeek(latestAugustFirst())) / (7 * 86400000));
+      loadingEl.hidden = true;
+      weeksContainer.hidden = false;
+      weeksContainer.scrollTop = weekRowHeight() * pastWeeks;
+      markTopWeek();
+      return;
+    }
+    previousWeeksSignature = weeksSignature;
 
     const entriesByDate = {};
     matchingEntries.forEach((entry) => {
@@ -627,8 +643,19 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   }
 
   // Course colors are synced preferences, so a pick on another device arrives
-  // here too.
-  window.addEventListener("app:preferences-changed", () => render());
+  // here too. Not for the view, which the toggle redraws itself: drawing here
+  // as well built the Courses grid twice per switch.
+  const drawnPreferences = () => {
+    const { calendarView, ...rest } = window.getPreferences();
+    return JSON.stringify(rest);
+  };
+  let lastPreferences = drawnPreferences();
+  window.addEventListener("app:preferences-changed", () => {
+    const preferences = drawnPreferences();
+    if (preferences === lastPreferences) return;
+    lastPreferences = preferences;
+    render();
+  });
 
   loadAssessmentData(() => render());
 
