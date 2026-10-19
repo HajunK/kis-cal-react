@@ -1,119 +1,91 @@
-// Suggestion alerts for admins: a push to this Mac when a student suggests an
-// assessment, even with no KIS Cal tab open. The Cloud Function
-// (functions/index.js) sends it to every device listed in adminPushTokens; this
-// is how a device gets on or off that list, and how it shows an alert while a
-// tab is open (when Firebase Messaging leaves that to the page).
-//
-// Firebase Messaging's script is fetched only when it's needed here, so it
-// costs nothing for anyone who never turns alerts on.
+// Suggestion alerts for admins: a notification on this Mac when a student
+// suggests an assessment, while a KIS Cal tab is open (in any tab of the
+// browser, in the background or not). It watches the same `suggested` list the
+// Assessments tab shows, which anyone may read, so nothing about the project
+// needs to change. Per browser: it's switched on in Settings, and the choice is
+// kept on this device only.
 import { firestore, hasFirebase } from "./firebase.js";
 
-const MESSAGING_SCRIPT = "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js";
-const WORKER = "/firebase-messaging-sw.js";
-// This device's registration, kept so it can be taken off the list later. Per
-// browser, as the registration is.
-const TOKEN_KEY = "suggestionAlertToken";
-const DEVICES = "adminPushTokens";
+const FLAG = "suggestionAlerts";
 
 export function alertsSupported() {
-  return typeof Notification !== "undefined" && typeof navigator !== "undefined" && "serviceWorker" in navigator && typeof window !== "undefined" && "PushManager" in window;
+  return typeof Notification !== "undefined";
 }
-
-// The browser's permission for this site was refused, which only its own
-// settings can undo.
-export const alertsBlocked = () => alertsSupported() && Notification.permission === "denied";
 
 export function alertsOn() {
   try {
-    return alertsSupported() && Notification.permission === "granted" && Boolean(localStorage.getItem(TOKEN_KEY));
+    return alertsSupported() && Notification.permission === "granted" && localStorage.getItem(FLAG) === "on";
   } catch {
     return false;
   }
 }
 
-let loading = null;
-function loadMessaging() {
-  if (typeof window.firebase?.messaging === "function") return Promise.resolve();
-  if (loading) return loading;
-  loading = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = MESSAGING_SCRIPT;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      loading = null;
-      reject(new Error("Couldn't load Firebase Messaging"));
-    };
-    document.head.appendChild(script);
+function show(suggestion, id) {
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(suggestion.date || "")
+    ? new Date(`${suggestion.date}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : suggestion.date || "";
+  const alert = new Notification("New suggestion", {
+    body: [suggestion.courseName, suggestion.type, when].filter(Boolean).join(" · "),
+    icon: "/icons/logos/page-icon.png",
+    tag: `suggestion-${id}`,
   });
-  return loading;
-}
-
-// This browser's registration with Firebase Messaging, made if it has none.
-async function registrationToken() {
-  await loadMessaging();
-  const registration = await navigator.serviceWorker.register(WORKER);
-  await navigator.serviceWorker.ready;
-  return window.firebase.messaging().getToken({ serviceWorkerRegistration: registration });
-}
-
-const saveDevice = (token, user) =>
-  firestore()
-    .collection(DEVICES)
-    .doc(token)
-    .set({ uid: user.uid, email: user.email, origin: location.origin, createdAt: Date.now() });
-
-const forgetDevice = (token) => firestore().collection(DEVICES).doc(token).delete();
-
-// Asks the browser for permission (so call it from a click), then adds this
-// device to the list. Rejects with "unsupported", "denied" or the error.
-export async function turnOnAlerts(user) {
-  if (!alertsSupported() || !hasFirebase() || !user) throw new Error("unsupported");
-  if ((await Notification.requestPermission()) !== "granted") throw new Error("denied");
-  const token = await registrationToken();
-  await saveDevice(token, user);
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export async function turnOffAlerts() {
-  const token = localStorage.getItem(TOKEN_KEY);
-  localStorage.removeItem(TOKEN_KEY);
-  if (token && hasFirebase()) await forgetDevice(token).catch(() => {});
-  try {
-    await loadMessaging();
-    await window.firebase.messaging().deleteToken();
-  } catch {
-    // Already gone, or never made.
-  }
-}
-
-// Each visit of an admin whose device has alerts on: a registration the browser
-// has renewed replaces the old one on the list, and an alert that arrives while
-// a KIS Cal tab is open (which Firebase Messaging leaves to the page to show)
-// is shown. Returns nothing; errors are only logged, as this is in the
-// background.
-export async function keepAlertsCurrent(user) {
-  if (!alertsOn() || !hasFirebase() || !user) return;
-  try {
-    const token = await registrationToken();
-    const saved = localStorage.getItem(TOKEN_KEY);
-    if (token !== saved) {
-      await saveDevice(token, user);
-      localStorage.setItem(TOKEN_KEY, token);
-      if (saved) await forgetDevice(saved).catch(() => {});
+  // Brings this tab forward, on the Assessments tab.
+  alert.onclick = () => {
+    window.focus();
+    if (location.pathname !== "/assessments") {
+      history.pushState(null, "", "/assessments");
+      window.dispatchEvent(new PopStateEvent("popstate"));
     }
-    window.firebase.messaging().onMessage((payload) => {
-      const { title = "New suggestion", body = "" } = payload.notification || {};
-      const alert = new Notification(title, { body, icon: "/icons/logos/page-icon.png", tag: "kiscal-suggestion" });
-      alert.onclick = () => {
-        window.focus();
-        if (location.pathname !== "/assessments") {
-          history.pushState(null, "", "/assessments");
-          window.dispatchEvent(new PopStateEvent("popstate"));
+    alert.close();
+  };
+}
+
+let stopWatching = null;
+
+// Watches for suggestions added from now on, if alerts are on here. What's
+// already in the list when it starts is not announced, nor is anything the
+// list gives from this device's own copy before the server has answered.
+export function startSuggestionAlerts() {
+  if (stopWatching || !alertsOn() || !hasFirebase()) return;
+  let seen = null;
+  stopWatching = firestore()
+    .collection("suggested")
+    .onSnapshot(
+      (snapshot) => {
+        if (snapshot.metadata?.fromCache) return;
+        const ids = new Set(snapshot.docs.map((doc) => doc.id));
+        if (seen === null) {
+          seen = ids;
+          return;
         }
-        alert.close();
-      };
-    });
-  } catch (error) {
-    console.error("Suggestion alerts:", error);
-  }
+        // A suggestion that's accepted or declined leaves the list, so the
+        // same one suggested again later is announced again.
+        seen = new Set([...seen].filter((id) => ids.has(id)));
+        snapshot.docs.forEach((doc) => {
+          if (seen.has(doc.id)) return;
+          seen.add(doc.id);
+          show(doc.data(), doc.id);
+        });
+      },
+      (error) => console.error("Suggestion alerts:", error)
+    );
+}
+
+export function stopSuggestionAlerts() {
+  if (stopWatching) stopWatching();
+  stopWatching = null;
+}
+
+// Asks the browser for permission (so call it from a click), then starts.
+// Rejects with "unsupported" or "denied".
+export async function turnOnAlerts() {
+  if (!alertsSupported()) throw new Error("unsupported");
+  if ((await Notification.requestPermission()) !== "granted") throw new Error("denied");
+  localStorage.setItem(FLAG, "on");
+  startSuggestionAlerts();
+}
+
+export function turnOffAlerts() {
+  localStorage.removeItem(FLAG);
+  stopSuggestionAlerts();
 }

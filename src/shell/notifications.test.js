@@ -1,111 +1,133 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeFirestore } from "../test/fakeFirebase.js";
-import { alertsBlocked, alertsOn, alertsSupported, keepAlertsCurrent, turnOffAlerts, turnOnAlerts } from "./notifications.js";
+import { alertsOn, alertsSupported, startSuggestionAlerts, stopSuggestionAlerts, turnOffAlerts, turnOnAlerts } from "./notifications.js";
 
-const USER = { uid: "u1", email: "hajunk105@gmail.com" };
+// A `suggested` list the test can change, delivered the way Firestore does:
+// to whoever's listening, each time it changes.
+let listeners;
+let list;
+let unsubscribed;
+const deliver = (fromCache = false) =>
+  listeners.forEach((next) =>
+    next({ metadata: { fromCache }, docs: Object.entries(list).map(([id, value]) => ({ id, data: () => structuredClone(value) })) })
+  );
 
-let db;
-let messaging;
 let permission;
+let shown;
 
 beforeEach(() => {
   localStorage.clear();
-  db = fakeFirestore({});
-  permission = "default";
-  messaging = {
-    getToken: vi.fn(async () => "token-1"),
-    deleteToken: vi.fn(async () => true),
-    onMessage: vi.fn(),
-  };
+  listeners = [];
+  list = { old1: { courseName: "Chemistry", type: "Formative", date: "2026-10-01", emails: ["a@kis.ac"] } };
+  unsubscribed = 0;
   window.firebase = {
     apps: [{}],
-    firestore: Object.assign(() => db, {}),
-    messaging: () => messaging,
+    firestore: () => ({
+      collection: (name) => {
+        expect(name).toBe("suggested");
+        return {
+          onSnapshot(next) {
+            listeners.push(next);
+            return () => {
+              unsubscribed++;
+              listeners = listeners.filter((l) => l !== next);
+            };
+          },
+        };
+      },
+    }),
   };
+  permission = "default";
+  shown = [];
   class FakeNotification {
     constructor(title, options) {
-      FakeNotification.shown.push({ title, options });
+      shown.push({ title, options });
     }
     close() {}
+    static get permission() {
+      return permission;
+    }
     static requestPermission = vi.fn(async () => {
-      FakeNotification.permission = permission === "default" ? "granted" : permission;
-      return FakeNotification.permission;
+      if (permission === "default") permission = "granted";
+      return permission;
     });
-    static shown = [];
-    static permission = "default";
   }
-  FakeNotification.permission = "default";
-  window.Notification = FakeNotification;
   globalThis.Notification = FakeNotification;
-  window.PushManager = function PushManager() {};
-  Object.defineProperty(navigator, "serviceWorker", {
-    configurable: true,
-    value: { register: vi.fn(async () => ({ scope: "/" })), ready: Promise.resolve({}) },
-  });
+  window.Notification = FakeNotification;
 });
 
 afterEach(() => {
+  stopSuggestionAlerts();
   delete window.firebase;
-  delete window.PushManager;
 });
 
 describe("suggestion alerts", () => {
-  it("is available here, and starts off", () => {
+  it("is available, and off until it's turned on", () => {
     expect(alertsSupported()).toBe(true);
     expect(alertsOn()).toBe(false);
-    expect(alertsBlocked()).toBe(false);
+    startSuggestionAlerts();
+    expect(listeners).toHaveLength(0);
   });
 
-  it("turning on asks permission, registers the worker and lists this device with its own site", async () => {
-    await turnOnAlerts(USER);
-    expect(navigator.serviceWorker.register).toHaveBeenCalledWith("/firebase-messaging-sw.js");
-    expect(db.writes).toEqual([
-      {
-        op: "set",
-        collection: "adminPushTokens",
-        id: "token-1",
-        value: { uid: "u1", email: "hajunk105@gmail.com", origin: location.origin, createdAt: expect.any(Number) },
-      },
-    ]);
+  it("announces a suggestion added after it starts, but not what was already listed", async () => {
+    await turnOnAlerts();
     expect(alertsOn()).toBe(true);
-  });
+    expect(listeners).toHaveLength(1);
 
-  it("lists nothing when the browser says no", async () => {
-    permission = "denied";
-    await expect(turnOnAlerts(USER)).rejects.toThrow("denied");
-    expect(db.writes).toEqual([]);
-    expect(alertsOn()).toBe(false);
-    expect(alertsBlocked()).toBe(true);
-  });
+    deliver(); // the list as it is now
+    expect(shown).toEqual([]);
 
-  it("turning off takes this device off the list and forgets its registration", async () => {
-    await turnOnAlerts(USER);
-    db.writes.length = 0;
-    await turnOffAlerts();
-    expect(db.writes).toEqual([{ op: "delete", collection: "adminPushTokens", id: "token-1" }]);
-    expect(messaging.deleteToken).toHaveBeenCalled();
-    expect(alertsOn()).toBe(false);
-  });
-
-  it("does nothing on a device that hasn't turned it on", async () => {
-    await keepAlertsCurrent(USER);
-    expect(messaging.getToken).not.toHaveBeenCalled();
-    expect(db.writes).toEqual([]);
-  });
-
-  it("swaps in a registration the browser has renewed, and shows alerts that arrive with a tab open", async () => {
-    await turnOnAlerts(USER);
-    db.writes.length = 0;
-    messaging.getToken.mockResolvedValue("token-2");
-    await keepAlertsCurrent(USER);
-    expect(db.writes.map(({ op, id }) => `${op} ${id}`)).toEqual(["set token-2", "delete token-1"]);
-    expect(localStorage.getItem("suggestionAlertToken")).toBe("token-2");
-
-    const [handler] = messaging.onMessage.mock.calls[0];
-    handler({ notification: { title: "New suggestion", body: "AP Biology · Summative · Oct 2" } });
-    expect(Notification.shown).toEqual([
-      { title: "New suggestion", options: expect.objectContaining({ body: "AP Biology · Summative · Oct 2" }) },
+    list.new1 = { courseName: "AP Biology", type: "Summative", date: "2026-10-02", emails: ["kim@kis.ac"] };
+    deliver();
+    expect(shown).toEqual([
+      { title: "New suggestion", options: expect.objectContaining({ body: "AP Biology · Summative · Oct 2", tag: "suggestion-new1" }) },
     ]);
+    // Who suggested it isn't in the alert.
+    expect(JSON.stringify(shown)).not.toContain("kim@kis.ac");
+
+    deliver(); // the same list again: nothing new
+    expect(shown).toHaveLength(1);
+  });
+
+  it("ignores the copy this device kept until the server's own arrives", async () => {
+    await turnOnAlerts();
+    deliver(true);
+    list.late = { courseName: "Geometry", type: "Reassessment", date: "2026-10-05", emails: ["x@kis.ac"] };
+    deliver(true);
+    expect(shown).toEqual([]);
+    deliver(false); // the server's list: the baseline, so even `late` isn't announced
+    expect(shown).toEqual([]);
+  });
+
+  it("announces a suggestion again after it has gone from the list and come back", async () => {
+    await turnOnAlerts();
+    deliver();
+    list.again = { courseName: "Spanish", type: "Summative", date: "2026-10-06", emails: ["x@kis.ac"] };
+    deliver();
+    delete list.again;
+    deliver();
+    list.again = { courseName: "Spanish", type: "Summative", date: "2026-10-06", emails: ["y@kis.ac"] };
+    deliver();
+    expect(shown.map((n) => n.options.tag)).toEqual(["suggestion-again", "suggestion-again"]);
+  });
+
+  it("turning off stops watching, and the browser refusing leaves it off", async () => {
+    await turnOnAlerts();
+    turnOffAlerts();
+    expect(unsubscribed).toBe(1);
+    expect(alertsOn()).toBe(false);
+
+    permission = "denied";
+    await expect(turnOnAlerts()).rejects.toThrow("denied");
+    expect(alertsOn()).toBe(false);
+    expect(listeners).toHaveLength(0);
+  });
+
+  it("picks up again on the next visit once it was turned on", async () => {
+    await turnOnAlerts();
+    stopSuggestionAlerts(); // the page closed
+    expect(listeners).toHaveLength(0);
+    startSuggestionAlerts(); // the next visit
+    expect(listeners).toHaveLength(1);
   });
 });

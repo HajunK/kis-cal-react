@@ -36,19 +36,19 @@ const TOGGLES = [
   { pref: "replaceFormativesByDefault", label: "Replace formatives by default" },
 ];
 
-// An admin's own switch for Mac notifications of new suggestions. Per browser
-// rather than per account (a preference would follow the account to every
-// device): it adds or removes this browser on the list the Cloud Function
-// sends to (see src/shell/notifications.js).
+// An admin's own switch for Mac notifications of new suggestions, while KIS
+// Cal is open in this browser. Per browser rather than per account (a
+// preference would follow the account to every device); see
+// src/shell/notifications.js.
 function SuggestionAlertsRow({ page }) {
   const [on, setOn] = useState(() => alertsOn());
   const change = (checked) => {
     setOn(checked);
     if (!checked) {
-      turnOffAlerts().catch((error) => console.error("Couldn't turn off suggestion alerts:", error));
+      turnOffAlerts();
       return;
     }
-    turnOnAlerts(page.currentUser()).catch((error) => {
+    turnOnAlerts().catch((error) => {
       setOn(false);
       if (error.message === "denied") page.toast("Allow notifications for this site in your browser's settings first.");
       else {

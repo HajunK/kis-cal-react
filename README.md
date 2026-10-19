@@ -55,7 +55,6 @@ src/popups/                               The account menu's popups (Settings, L
 src/ui/                                   Shared React components: Modal, ConfirmDialog, Toast, SegmentedControl, ToggleSwitch
 src/test/fakeFirebase.js                  In-memory Firestore and Auth for tests; records every write
 src/css/                                  The stylesheets, imported by src/app/main.jsx; Vite bundles them into one minified, hashed file
-functions/                                The Cloud Function that sends suggestion alerts (index.js; notification.js is tested)
 public/                                   Copied into the build unchanged: fonts/, icons/, grade-icons/, js/vendor/ (QR code libraries)
 firebase.json, firestore.rules            Hosting config and the security rules (the real admin gate)
 ```
@@ -79,21 +78,11 @@ reload, as they clear this device's cached preferences too.
 
 ## Suggestion alerts (Mac notifications for admins)
 
-When a student suggests an assessment, every admin browser that has switched on
-Settings > "Notify me of new suggestions" gets a push, even with the site closed.
+An admin who switches on Settings > "Notify me of new suggestions" gets a
+notification on their Mac when a student suggests an assessment, while KIS Cal is
+open in that browser (any tab, in the background too; nothing when the browser or
+the site is closed).
 
-- The switch (src/shell/notifications.js) asks the browser for permission and
-  lists the browser in `adminPushTokens` (public/firebase-messaging-sw.js shows
-  the alert while no tab is open).
-- functions/index.js runs when a document is created in `suggested`, and sends
-  to every listed device.
-- firestore.rules lets only an admin add or remove their own device, and lets
-  no browser read the list.
-
-Turning it on for the first time needs the project on Firebase's pay-as-you-go
-(Blaze) plan, then:
-
-```
-cd functions && npm install && cd ..
-firebase deploy --only functions,firestore:rules,hosting
-```
+It watches the `suggested` list the Assessments tab already reads (anyone may read
+it), so there's nothing to deploy: no function, no rules change. The choice is
+kept per browser. The code is src/shell/notifications.js.

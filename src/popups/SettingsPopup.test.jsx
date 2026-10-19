@@ -23,7 +23,7 @@ vi.mock("../shell/notifications.js", () => ({
   alertsSupported: () => true,
   alertsOn: () => alerts.on,
   turnOnAlerts: vi.fn(async () => {}),
-  turnOffAlerts: vi.fn(async () => {}),
+  turnOffAlerts: vi.fn(),
 }));
 const { turnOnAlerts, turnOffAlerts } = await import("../shell/notifications.js");
 
@@ -105,7 +105,7 @@ describe("SettingsPopup", () => {
     const box = () => document.querySelector('input[data-pref="suggestionAlerts"]');
     expect(box().checked).toBe(false);
     fireEvent.click(box());
-    expect(turnOnAlerts).toHaveBeenCalledWith(admin);
+    expect(turnOnAlerts).toHaveBeenCalled();
     expect(box().checked).toBe(true);
     await act(async () => {});
     fireEvent.click(box());

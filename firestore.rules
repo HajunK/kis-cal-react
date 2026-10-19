@@ -76,24 +76,6 @@ service cloud.firestore {
         && (resource.data.emails.size() <= 1 || isAdmin());
     }
 
-    // The devices admins have switched suggestion alerts on for (Settings): one
-    // document per browser, named by its push token, written by that admin's
-    // own browser and read only by the notifyAdminsOfSuggestion function
-    // (functions/index.js), which isn't bound by these rules. So nothing here
-    // can be read from a browser, and only an admin can add or remove one, and
-    // only under their own account.
-    match /adminPushTokens/{token} {
-      allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly(['uid', 'email', 'origin', 'createdAt'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.origin is string
-        && request.resource.data.origin.matches('https://[^/]+')
-        && request.resource.data.createdAt is number;
-      allow delete: if isAdmin();
-      allow read: if false;
-    }
-
     // Admin-authored posts/announcements shown on Domain, below the class
     // cards — always visible to every signed-in student, no per-user
     // dismiss. Same public-read/admin-write rule as assessments above.

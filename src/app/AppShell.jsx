@@ -4,8 +4,8 @@ import { DomainRoute } from "../domain/DomainRoute.jsx";
 import { Popups } from "../popups/Popups.jsx";
 import { popupStore } from "../popups/popupStore.js";
 import { sessionStore } from "../shell/data.js";
-import { firebaseAuth, hasFirebase } from "../shell/firebase.js";
-import { keepAlertsCurrent } from "../shell/notifications.js";
+import { hasFirebase } from "../shell/firebase.js";
+import { startSuggestionAlerts, stopSuggestionAlerts } from "../shell/notifications.js";
 import { switchToInter } from "../shell/inter.js";
 import { getPreferences, subscribePreferences } from "../shell/preferences.js";
 import { sessionState } from "../shell/session.js";
@@ -74,17 +74,12 @@ export function AppShell({ firebaseReady, demo }) {
     return () => clearTimeout(timer);
   }, [route, admin]);
 
-  // An admin's device that has suggestion alerts on keeps its registration
-  // current and shows alerts that arrive while a tab is open, once the page is up.
+  // An admin's browser that has suggestion alerts on watches for new
+  // suggestions while the app is open.
   useEffect(() => {
     if (!admin || !hasFirebase()) return undefined;
-    const run = () => keepAlertsCurrent(firebaseAuth().currentUser);
-    if (typeof requestIdleCallback === "function") {
-      const handle = requestIdleCallback(run, { timeout: 6000 });
-      return () => cancelIdleCallback(handle);
-    }
-    const timer = setTimeout(run, 2500);
-    return () => clearTimeout(timer);
+    startSuggestionAlerts();
+    return stopSuggestionAlerts;
   }, [admin]);
 
   const page = useMemo(() => popupPage(studentTab), [studentTab]);
