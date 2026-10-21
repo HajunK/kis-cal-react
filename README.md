@@ -94,12 +94,20 @@ Study guides for test prep, in `guides/`: plain static files (no build step) on
 their own Firebase Hosting site (`kiscal-guides`, also kiscal-guides.web.app);
 firebase.json lists it beside the app's site.
 
-- `index.html` + `js/home.js`: search, subject chips, a grid of guide cards, a
-  "Recently viewed" row. `guide.html` + `js/guide.js`: one guide, at `/g/<id>`.
-- Guides are Firestore documents in `guides` (published ones readable by anyone,
-  drafts and all writes admin-only); their pictures are in Cloud Storage under
-  `guides/<id>/`. firestore.rules and storage.rules are the real gate;
-  `ADMIN_EMAILS` in `js/config.js` only shows or hides the controls.
+- A guide's address is its key: `guides.kiscal.app/biology` is the guide whose
+  key is `biology`. Hosting sends any address that isn't one of the site's own
+  files to `guide.html`, which reads the key from the address. A key is required
+  when a guide is made, is lowercase letters, numbers and single hyphens (2 to
+  40 characters), can't be one of the names the site uses (`RESERVED_KEYS` in
+  `js/guides.js`, repeated in firestore.rules), must be new, and can't be
+  changed afterwards.
+- `index.html` + `js/home.js`: search (title, course, test or key), a sort, a
+  grid of guide cards, a "Recently viewed" row. `guide.html` + `js/guide.js`: one
+  guide.
+- Guides are Firestore documents in `guides`, named by their key (published ones
+  readable by anyone, drafts and all writes admin-only); their pictures are in
+  Cloud Storage under `guides/<key>/`. firestore.rules and storage.rules are the
+  real gate; `ADMIN_EMAILS` in `js/config.js` only shows or hides the controls.
 - An admin signs in with Google (the "Admin sign in" link at the bottom), then
   gets New guide and Edit buttons. The editor shrinks pictures in the browser
   (a 16:9 card picture, body pictures up to 1600 px) and uploads them from there.
@@ -114,8 +122,8 @@ Before the editor can save anything (once):
 3. `firebase deploy --only firestore:rules,storage`. This replaces the live
    rules with the ones in this repo, so check them first.
 
-Run it locally with `firebase emulators:start --only hosting` (the `/g/<id>`
-addresses need Hosting's rewrite; a plain file server only serves the home page).
-Deploy just this site with `firebase deploy --only hosting:kiscal-guides`, and
-the app's with `firebase deploy --only hosting:kisj-grade-calculator`. A plain
+Run it locally with `firebase emulators:start --only hosting` (guide addresses
+like `/biology` need Hosting's rewrite; a plain file server only serves the home
+page). Deploy just this site with `firebase deploy --only hosting:kiscal-guides`,
+and the app's with `firebase deploy --only hosting:kisj-grade-calculator`. A plain
 `firebase deploy --only hosting` publishes both.

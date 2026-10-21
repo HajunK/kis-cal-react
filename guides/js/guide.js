@@ -1,18 +1,18 @@
 // One guide: its title, where it belongs, its picture and its text.
-import { subjectLabel } from "./config.js";
 import { loadGuide } from "./data.js";
 import { openEditor } from "./editor.js";
-import { minutesLabel, updatedLabel, withRecent } from "./guides.js";
+import { keyProblem, minutesLabel, normalizeKey, updatedLabel, withRecent } from "./guides.js";
 import { renderMarkdown } from "./markdown.js";
 import { maybeAdmin, watchAdmin } from "./session.js";
 
 const $ = (id) => document.getElementById(id);
 const RECENT_KEY = "guidesRecent";
 
-// /g/<id> (the site's rewrite), or guide.html?id=<id>.
+// The key is the address: guides.kiscal.app/<key> (the site's rewrite sends any
+// address without a file of its own to this page).
 const idFromAddress = () => {
-  const path = /^\/g\/([^/]+)/.exec(location.pathname);
-  return path ? decodeURIComponent(path[1]) : new URLSearchParams(location.search).get("id");
+  const key = normalizeKey(decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g, "")));
+  return keyProblem(key) ? null : key;
 };
 
 const id = idFromAddress();
@@ -41,7 +41,7 @@ function render() {
   const title = Object.assign(document.createElement("h1"), { textContent: guide.title });
   const meta = Object.assign(document.createElement("p"), {
     className: "meta",
-    textContent: [guide.course, guide.test, subjectLabel(guide.subject), minutesLabel(guide.minutes), updatedLabel(guide.updatedAt)].filter(Boolean).join(" · "),
+    textContent: [guide.course, guide.test, minutesLabel(guide.minutes), updatedLabel(guide.updatedAt)].filter(Boolean).join(" · "),
   });
   const parts = [title, meta];
   if (!guide.published) {

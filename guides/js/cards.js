@@ -1,6 +1,5 @@
 // A guide's card, built with DOM calls (never from strings) so a title can't
 // bring in markup.
-import { subjectLabel } from "./config.js";
 import { minutesLabel } from "./guides.js";
 
 const el = (tag, className, text) => {
@@ -22,11 +21,9 @@ export const initialsOf = (course) =>
 export function guideCard(guide, { admin = false, onEdit = () => {} } = {}) {
   const card = el("li", "card");
   const link = el("a", "card-link");
-  link.href = `/g/${encodeURIComponent(guide.id)}`;
+  link.href = `/${encodeURIComponent(guide.id)}`;
 
   const thumb = el("div", "thumb");
-  thumb.style.setProperty("--subject-bg", `var(--${guide.subject || "other"}-bg)`);
-  thumb.style.setProperty("--subject-ink", `var(--${guide.subject || "other"}-ink)`);
   if (guide.thumbnailUrl) {
     const image = el("img");
     image.src = guide.thumbnailUrl;
@@ -35,7 +32,7 @@ export function guideCard(guide, { admin = false, onEdit = () => {} } = {}) {
     image.decoding = "async";
     thumb.append(image);
   } else {
-    thumb.append(el("span", "thumb-initials", initialsOf(guide.course) || subjectLabel(guide.subject)[0]));
+    thumb.append(el("span", "thumb-initials", initialsOf(guide.course) || initialsOf(guide.title)));
   }
   const minutes = minutesLabel(guide.minutes);
   if (minutes) thumb.append(el("span", "badge", minutes));

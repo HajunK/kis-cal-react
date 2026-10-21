@@ -470,6 +470,10 @@ body > .class-countdown-pill {
   align-items: center;
   gap: 8px;
   margin: 0;
+  /* The day's name and type can't be selected (a double-click on them
+     highlights nothing). */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* The pill's contents where the pill was, blurring away as it opens (see

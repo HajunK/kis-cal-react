@@ -16,14 +16,3 @@ export const FIREBASE_VERSION = "10.12.2";
 // ADMIN_EMAILS in src/core/admins.js).
 export const ADMIN_EMAILS = ["hajunk105@gmail.com", "hjkim29@kis.ac"];
 export const isAdminEmail = (email) => Boolean(email) && ADMIN_EMAILS.includes(email);
-
-// Each guide belongs to one subject, which gives its card its color.
-export const SUBJECTS = [
-  { id: "math", label: "Math" },
-  { id: "science", label: "Science" },
-  { id: "english", label: "English" },
-  { id: "languages", label: "Languages" },
-  { id: "social", label: "Social studies" },
-  { id: "other", label: "Other" },
-];
-export const subjectLabel = (id) => (SUBJECTS.find((subject) => subject.id === id) || SUBJECTS[SUBJECTS.length - 1]).label;

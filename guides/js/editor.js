@@ -1,8 +1,7 @@
 // The admin's editor for one guide, in a dialog: its details, a picture for its
 // card, and its text (Markdown) with pictures that go up to Storage from here.
-import { SUBJECTS } from "./config.js";
-import { deleteGuide, deleteImages, saveGuide, uploadImage } from "./data.js";
-import { newGuideId } from "./guides.js";
+import { deleteGuide, deleteImages, loadGuide, saveGuide, uploadImage } from "./data.js";
+import { keyProblem, normalizeKey } from "./guides.js";
 import { prepareBodyImage, prepareThumbnail } from "./images.js";
 
 const KNOWN_ERRORS = [
@@ -24,15 +23,17 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
   dialog.innerHTML = `
     <form novalidate>
       <h2></h2>
+      <div class="field">
+        <label for="ed-key">Key</label>
+        <div class="key-input"><span aria-hidden="true">guides.kiscal.app/</span><input id="ed-key" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="biology" /></div>
+        <p class="hint" data-key-hint></p>
+      </div>
       <div class="field"><label for="ed-title">Title</label><input id="ed-title" type="text" maxlength="120" autocomplete="off" /></div>
       <div class="row">
         <div class="field"><label for="ed-course">Course</label><input id="ed-course" type="text" maxlength="60" autocomplete="off" placeholder="AP Biology" /></div>
         <div class="field"><label for="ed-test">Test</label><input id="ed-test" type="text" maxlength="60" autocomplete="off" placeholder="Unit 3 test" /></div>
       </div>
-      <div class="row">
-        <div class="field"><label for="ed-subject">Subject</label><select id="ed-subject"></select></div>
-        <div class="field"><label for="ed-minutes">Read time (minutes)</label><input id="ed-minutes" type="number" min="0" max="240" step="1" /></div>
-      </div>
+      <div class="field"><label for="ed-minutes">Read time (minutes)</label><input id="ed-minutes" type="number" min="0" max="240" step="1" /></div>
       <div class="field">
         <span class="label">Card picture</span>
         <div class="thumb-picker">
@@ -41,7 +42,7 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
             <input id="ed-thumb" type="file" accept="image/*" hidden />
             <button type="button" class="button" data-pick-thumb>Choose picture</button>
             <button type="button" class="button button--danger" data-remove-thumb hidden>Remove</button>
-            <p class="hint">Shown at 16:9, so the middle of the picture is kept. Without one the card gets its subject's color.</p>
+            <p class="hint">Shown at 16:9, so the middle of the picture is kept. Without one the card shows a plain tile with the course's initials.</p>
           </div>
         </div>
       </div>
@@ -66,20 +67,21 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
   const $ = (selector) => dialog.querySelector(selector);
 
   $("h2").textContent = guide ? "Edit guide" : "New guide";
-  $("#ed-subject").replaceChildren(
-    ...SUBJECTS.map((subject) => Object.assign(document.createElement("option"), { value: subject.id, textContent: subject.label }))
-  );
+  // A guide's key is its address and can't change once it exists.
+  $("#ed-key").value = guide?.id || "";
+  $("#ed-key").disabled = Boolean(guide);
+  $("[data-key-hint]").textContent = guide
+    ? "The key is the guide's address and can't be changed."
+    : "The guide's address: lowercase letters, numbers and hyphens, like ap-bio-unit-3. It can't be changed later.";
   $("#ed-title").value = guide?.title || "";
   $("#ed-course").value = guide?.course || "";
   $("#ed-test").value = guide?.test || "";
-  $("#ed-subject").value = guide?.subject || SUBJECTS[0].id;
   $("#ed-minutes").value = guide?.minutes || "";
   $("#ed-body").value = guide?.body || "";
   $("#ed-published").checked = guide ? Boolean(guide.published) : false;
   $("[data-delete]").hidden = !guide;
 
-  let id = guide?.id || null;
-  const ensureId = () => id || (id = newGuideId($("#ed-title").value));
+  const keyOf = () => (guide ? guide.id : normalizeKey($("#ed-key").value));
   let pendingThumb = null; // a picked picture, not yet uploaded
   let removeThumb = false;
   let previewUrl = null;
@@ -99,6 +101,14 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
     console.error("Guides editor:", error);
     $(".error").textContent = friendly(error);
   };
+
+  // The key is lowercase, so it's shown that way as it's typed.
+  $("#ed-key").addEventListener("input", (event) => {
+    const field = event.target;
+    const at = field.selectionStart;
+    field.value = field.value.toLowerCase();
+    field.setSelectionRange(at, at);
+  });
 
   $("[data-pick-thumb]").addEventListener("click", () => $("#ed-thumb").click());
   $("#ed-thumb").addEventListener("change", async (event) => {
@@ -127,10 +137,17 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
     const file = event.target.files[0];
     event.target.value = "";
     if (!file) return;
+    const problem = guide ? null : keyProblem($("#ed-key").value);
+    if (problem) {
+      // Its pictures are kept under the key, so it comes first.
+      $(".error").textContent = `Set the key before adding images. ${problem}`;
+      $("#ed-key").focus();
+      return;
+    }
     $(".error").textContent = "";
     setBusy(true);
     try {
-      const image = await uploadImage(ensureId(), await prepareBodyImage(file), "img");
+      const image = await uploadImage(keyOf(), await prepareBodyImage(file), "img");
       sessionImages.push(image.path);
       const body = $("#ed-body");
       const at = body.selectionStart ?? body.value.length;
@@ -170,6 +187,12 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
 
   $("form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const problem = guide ? null : keyProblem($("#ed-key").value);
+    if (problem) {
+      $(".error").textContent = problem;
+      $("#ed-key").focus();
+      return;
+    }
     const title = $("#ed-title").value.trim();
     const course = $("#ed-course").value.trim();
     if (!title || !course) {
@@ -179,7 +202,14 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
     $(".error").textContent = "";
     setBusy(true);
     try {
-      ensureId();
+      const id = keyOf();
+      // A new guide can't take a key another guide already has.
+      if (!guide && (await loadGuide(id))) {
+        $(".error").textContent = `A guide with the key "${id}" already exists. Choose another key.`;
+        setBusy(false);
+        $("#ed-key").focus();
+        return;
+      }
       let { thumbnailUrl = "", thumbnailPath = "" } = guide || {};
       const unused = [];
       if (pendingThumb || removeThumb) {
@@ -202,7 +232,6 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
         title,
         course,
         test: $("#ed-test").value.trim(),
-        subject: $("#ed-subject").value,
         minutes: Math.max(0, Math.round(Number($("#ed-minutes").value) || 0)),
         body,
         published: $("#ed-published").checked,

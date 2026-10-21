@@ -24,19 +24,9 @@
   --accent-soft: #e8eefa; /* a light wash of the accent: highlights, hovers */
   --danger: #a32d2d; /* errors and delete */
 
-  /* One tint and ink per subject, for the thumbnail behind a title. */
-  --math-bg: #e6f1fb;
-  --math-ink: #0c447c;
-  --science-bg: #e1f5ee;
-  --science-ink: #085041;
-  --english-bg: #faece7;
-  --english-ink: #712b13;
-  --languages-bg: #eeedfe;
-  --languages-ink: #3c3489;
-  --social-bg: #faeeda;
-  --social-ink: #633806;
-  --other-bg: #f1efe8;
-  --other-ink: #444441;
+  /* The tile a card shows when its guide has no picture. */
+  --tile-bg: #f1efe8;
+  --tile-ink: #444441;
 
   --radius: 12px;
   --page-pad: 24px;
@@ -191,58 +181,6 @@ textarea {
   cursor: default;
 }
 
-/* Subject chips and sorting */
-.filters {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 14px var(--page-pad) 4px;
-}
-
-.chips {
-  display: flex;
-  flex: 1;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.chips::-webkit-scrollbar {
-  display: none;
-}
-
-.chip {
-  flex: none;
-  padding: 6px 14px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--chip);
-  font-size: 14px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.chip:hover {
-  background: var(--border);
-}
-
-.chip[aria-pressed="true"] {
-  background: var(--text);
-  color: var(--background);
-}
-
-.sort {
-  flex: none;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: 14px;
-}
-
 /* The grid of guides */
 main {
   max-width: 1400px;
@@ -256,17 +194,35 @@ main {
   font-weight: 600;
 }
 
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+}
+
 .count {
-  margin: 16px 0 0;
+  margin: 0;
   font-size: 14px;
   color: var(--muted);
+}
+
+.sort {
+  flex: none;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 14px;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 24px 16px;
-  margin-top: 16px;
+  margin-top: 12px;
   padding: 0;
   list-style: none;
 }
@@ -285,8 +241,8 @@ main {
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: var(--radius);
-  background: var(--subject-bg, var(--other-bg));
-  color: var(--subject-ink, var(--other-ink));
+  background: var(--tile-bg);
+  color: var(--tile-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -606,6 +562,37 @@ dialog.editor::backdrop {
 
 .row .field {
   flex: 1;
+}
+
+.key-input {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.key-input:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field .key-input input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text);
+}
+
+.field .key-input input[type="text"]:disabled {
+  color: var(--muted);
 }
 
 .thumb-picker {

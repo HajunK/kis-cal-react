@@ -148,7 +148,7 @@
       ],
       "rewrites": [
         {
-          "source": "/g/**",
+          "source": "**",
           "destination": "/guide.html"
         }
       ]

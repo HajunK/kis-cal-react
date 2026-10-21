@@ -28,21 +28,19 @@
     </div>
   </header>
 
-  <div class="filters">
-    <div class="chips" id="chips" role="group" aria-label="Subjects"></div>
-    <label class="sr-only" for="sort">Sort guides</label>
-    <select class="sort" id="sort">
-      <option value="newest">Newest</option>
-      <option value="az">A to Z</option>
-    </select>
-  </div>
-
   <main>
     <section id="recent" hidden>
       <h2 class="section-title">Recently viewed</h2>
       <ul class="grid" id="recent-grid"></ul>
     </section>
-    <p class="count" id="count" aria-live="polite"></p>
+    <div class="toolbar">
+      <p class="count" id="count" aria-live="polite"></p>
+      <label class="sr-only" for="sort">Sort guides</label>
+      <select class="sort" id="sort">
+        <option value="newest">Newest</option>
+        <option value="az">A to Z</option>
+      </select>
+    </div>
     <ul class="grid" id="grid"></ul>
     <div class="message" id="message" hidden></div>
   </main>

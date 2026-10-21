@@ -1,17 +1,16 @@
-// The guides home: search, subject chips, a grid of guide cards, a row of the
+// The guides home: search, a grid of guide cards, a row of the
 // ones you opened lately, and (for admins) the controls to make and change them.
-import { subjectLabel } from "./config.js";
 import { guideCard, skeletonCard } from "./cards.js";
 import { loadGuides } from "./data.js";
 import { openEditor } from "./editor.js";
-import { subjectsIn, visibleGuides } from "./guides.js";
+import { visibleGuides } from "./guides.js";
 import { maybeAdmin, signIn, signOut, watchAdmin } from "./session.js";
 
 const $ = (id) => document.getElementById(id);
 const RECENT_KEY = "guidesRecent";
 
 const params = new URLSearchParams(location.search);
-const state = { query: params.get("q") || "", subject: params.get("s") || "all", sort: params.get("o") === "az" ? "az" : "newest" };
+const state = { query: params.get("q") || "", sort: params.get("o") === "az" ? "az" : "newest" };
 let guides = [];
 let admin = false;
 let loaded = false;
@@ -28,7 +27,6 @@ function recentIds() {
 function syncUrl() {
   const next = new URLSearchParams();
   if (state.query) next.set("q", state.query);
-  if (state.subject !== "all") next.set("s", state.subject);
   if (state.sort !== "newest") next.set("o", state.sort);
   const text = next.toString();
   history.replaceState(null, "", text ? `?${text}` : location.pathname);
@@ -40,36 +38,15 @@ function showMessage(title, text) {
   box.hidden = false;
 }
 
-function renderChips() {
-  const subjects = subjectsIn(guides);
-  const chip = (id, label) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip";
-    button.textContent = label;
-    button.setAttribute("aria-pressed", String(state.subject === id));
-    button.addEventListener("click", () => {
-      state.subject = id;
-      syncUrl();
-      render();
-    });
-    return button;
-  };
-  // A chosen subject that has no guides any more falls back to all.
-  if (state.subject !== "all" && !subjects.some((subject) => subject.id === state.subject)) state.subject = "all";
-  $("chips").replaceChildren(chip("all", "All"), ...subjects.map((subject) => chip(subject.id, subject.label)));
-}
-
 function render() {
   if (!loaded) return;
   $("message").hidden = true;
-  renderChips();
   $("sort").value = state.sort;
   const shown = visibleGuides(guides, state);
   const options = { admin, onEdit: edit };
   $("grid").replaceChildren(...shown.map((guide) => guideCard(guide, options)));
 
-  const filtering = state.query || state.subject !== "all";
+  const filtering = Boolean(state.query);
   const recent = filtering ? [] : recentIds().map((id) => guides.find((guide) => guide.id === id)).filter(Boolean).slice(0, 4);
   $("recent").hidden = recent.length === 0;
   $("recent-grid").replaceChildren(...recent.map((guide) => guideCard(guide, options)));
@@ -77,7 +54,7 @@ function render() {
   $("count").textContent = shown.length === 1 ? "1 guide" : `${shown.length} guides`;
   $("count").hidden = guides.length === 0;
   if (guides.length === 0) showMessage("No guides yet", admin ? "Use New guide to add the first one." : "Check back soon.");
-  else if (shown.length === 0) showMessage("No guides match", "Try a different word, or clear the subject filter.");
+  else if (shown.length === 0) showMessage("No guides match", "Try a different word.");
 }
 
 async function refresh() {
