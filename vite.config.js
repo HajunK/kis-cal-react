@@ -9,8 +9,10 @@ import { defineConfig } from "vite";
 // firebase.json's redirects (/ to /domain, old page names), applied by the dev
 // and preview servers too, read from that file so the two can't drift apart.
 function firebaseRedirects() {
+  // hosting is a list, one entry per Hosting site (this app's and guides/'s).
   const { hosting } = JSON.parse(readFileSync(new URL("firebase.json", import.meta.url), "utf8"));
-  const redirects = new Map((hosting.redirects || []).map(({ source, destination }) => [source, destination]));
+  const app = [].concat(hosting).find((site) => site.public === "dist") || {};
+  const redirects = new Map((app.redirects || []).map(({ source, destination }) => [source, destination]));
   const middleware = (req, res, next) => {
     const [path, query = ""] = req.url.split("?");
     const destination = redirects.get(path);
@@ -29,6 +31,6 @@ function firebaseRedirects() {
 export default defineConfig({
   plugins: [react(), firebaseRedirects()],
   test: {
-    include: ["src/**/*.test.{js,jsx}"],
+    include: ["src/**/*.test.{js,jsx}", "guides/**/*.test.js"],
   },
 });

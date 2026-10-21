@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#fcfcfb" />
+  <meta name="description" content="Study guides to help you prepare for tests at KIS." />
+  <title>KIS Cal Guides</title>
+  <link rel="icon" href="/icons/page-icon.png" />
+  <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/guides.css" />
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script type="module" src="/js/home.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">KIS Cal <span>Guides</span></a>
+    <div class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <label class="sr-only" for="search">Search guides</label>
+      <input id="search" type="search" placeholder="Search guides, courses or topics" autocomplete="off" />
+    </div>
+    <div class="admin-actions" id="admin-actions" hidden>
+      <button type="button" class="button button--primary" id="new-guide">New guide</button>
+      <button type="button" class="button" id="sign-out">Sign out</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <div class="chips" id="chips" role="group" aria-label="Subjects"></div>
+    <label class="sr-only" for="sort">Sort guides</label>
+    <select class="sort" id="sort">
+      <option value="newest">Newest</option>
+      <option value="az">A to Z</option>
+    </select>
+  </div>
+
+  <main>
+    <section id="recent" hidden>
+      <h2 class="section-title">Recently viewed</h2>
+      <ul class="grid" id="recent-grid"></ul>
+    </section>
+    <p class="count" id="count" aria-live="polite"></p>
+    <ul class="grid" id="grid"></ul>
+    <div class="message" id="message" hidden></div>
+  </main>
+
+  <footer class="footer">
+    <span id="admin-note"></span>
+    <button type="button" id="sign-in">Admin sign in</button>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Kept in sync with firestore.rules and ADMIN_EMAILS in src/core/admins.js.
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email in ['hajunk105@gmail.com', 'hjkim29@kis.ac'];
+    }
+
+    // The pictures of the study guides (guides/): anyone can see them, only an
+    // admin can add, replace or remove them, and only small images.
+    match /guides/{guideId}/{file} {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(webp|jpeg|png)');
+      allow delete: if isAdmin();
+    }
+  }
+}

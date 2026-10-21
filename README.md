@@ -55,6 +55,7 @@ src/popups/                               The account menu's popups (Settings, L
 src/ui/                                   Shared React components: Modal, ConfirmDialog, Toast, SegmentedControl, ToggleSwitch
 src/test/fakeFirebase.js                  In-memory Firestore and Auth for tests; records every write
 src/css/                                  The stylesheets, imported by src/app/main.jsx; Vite bundles them into one minified, hashed file
+guides/                                   The guides.kiscal.app site (plain static files, its own Firebase Hosting site, kiscal-guides)
 public/                                   Copied into the build unchanged: fonts/, icons/, grade-icons/, js/vendor/ (QR code libraries)
 firebase.json, firestore.rules            Hosting config and the security rules (the real admin gate)
 ```
@@ -78,7 +79,7 @@ reload, as they clear this device's cached preferences too.
 
 ## Suggestion alerts (Mac notifications for admins)
 
-An admin who switches on Settings > "Notify me of new suggestions" gets a
+An admin who switches on Settings > "Notify suggestions" gets a
 notification on their Mac when a student suggests an assessment, while KIS Cal is
 open in that browser (any tab, in the background too; nothing when the browser or
 the site is closed).
@@ -86,3 +87,35 @@ the site is closed).
 It watches the `suggested` list the Assessments tab already reads (anyone may read
 it), so there's nothing to deploy: no function, no rules change. The choice is
 kept per browser. The code is src/shell/notifications.js.
+
+## Guides site (guides.kiscal.app)
+
+Study guides for test prep, in `guides/`: plain static files (no build step) on
+their own Firebase Hosting site (`kiscal-guides`, also kiscal-guides.web.app);
+firebase.json lists it beside the app's site.
+
+- `index.html` + `js/home.js`: search, subject chips, a grid of guide cards, a
+  "Recently viewed" row. `guide.html` + `js/guide.js`: one guide, at `/g/<id>`.
+- Guides are Firestore documents in `guides` (published ones readable by anyone,
+  drafts and all writes admin-only); their pictures are in Cloud Storage under
+  `guides/<id>/`. firestore.rules and storage.rules are the real gate;
+  `ADMIN_EMAILS` in `js/config.js` only shows or hides the controls.
+- An admin signs in with Google (the "Admin sign in" link at the bottom), then
+  gets New guide and Edit buttons. The editor shrinks pictures in the browser
+  (a 16:9 card picture, body pictures up to 1600 px) and uploads them from there.
+- `js/guides.js`, `markdown.js` and `images.js` are plain functions with tests.
+
+Before the editor can save anything (once):
+
+1. Upgrade the project to the Blaze plan and create the Storage bucket (Firebase
+   console > Storage > Get started).
+2. In Authentication > Settings > Authorized domains, add `guides.kiscal.app`
+   and `kiscal-guides.web.app`.
+3. `firebase deploy --only firestore:rules,storage`. This replaces the live
+   rules with the ones in this repo, so check them first.
+
+Run it locally with `firebase emulators:start --only hosting` (the `/g/<id>`
+addresses need Hosting's rewrite; a plain file server only serves the home page).
+Deploy just this site with `firebase deploy --only hosting:kiscal-guides`, and
+the app's with `firebase deploy --only hosting:kisj-grade-calculator`. A plain
+`firebase deploy --only hosting` publishes both.

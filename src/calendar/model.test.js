@@ -3,6 +3,7 @@ import {
   acceptedReplacements,
   addableCourseOptions,
   assessmentCategory,
+  calendarDateRange,
   carriedCompletions,
   courseColorNames,
   courseColorVars,
@@ -190,5 +191,22 @@ describe("accepted suggestions", () => {
     const replacedBy = new Map([["mine1", "s1"], ["mine2", "s2"]]);
     const completed = [{ id: "mine1", completedAt: 7 }, "old", { id: "mine2", completedAt: 8 }, { id: "s2", completedAt: 1 }];
     expect(carriedCompletions(completed, replacedBy)).toEqual([{ id: "s1", completedAt: 7 }]);
+  });
+});
+
+describe("calendarDateRange", () => {
+  it("runs from the first week of the school year to the end of the fourth week ahead", () => {
+    // Monday 12 Oct 2026: this week starts Sunday the 11th, so four weeks ahead ends Saturday 7 Nov.
+    expect(calendarDateRange(4, new Date(2026, 9, 12))).toEqual({ start: "2026-07-26", end: "2026-11-07" });
+  });
+
+  it("starts from the week of last August 1 in the spring", () => {
+    // Aug 1 2025 was a Friday, so that week started Sunday 27 Jul.
+    expect(calendarDateRange(4, new Date(2026, 2, 10)).start).toBe("2025-07-27");
+  });
+
+  it("counts the end from the start of this week, whatever day it is", () => {
+    expect(calendarDateRange(4, new Date(2026, 9, 17)).end).toBe("2026-11-07"); // a Saturday
+    expect(calendarDateRange(4, new Date(2026, 9, 11)).end).toBe("2026-11-07"); // the Sunday
   });
 });

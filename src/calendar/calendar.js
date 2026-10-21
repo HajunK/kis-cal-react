@@ -21,7 +21,7 @@ import {
   upcomingSortTime,
 } from "./data.js";
 import { ICON_CHEVRON_DOWN } from "./icons.js";
-import { CAL_WEEKDAY_LABELS, assessmentCategory, latestAugustFirst, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
+import { CAL_WEEKDAY_LABELS, assessmentCategory, calendarDateRange, latestAugustFirst, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
 import { animatePillChanges, buildDayCell, fitName, pillListGap, renderedPillsByDate } from "./pills.js";
 import { loadAddedAssessments, loadCompletedTasks, loadPeriods, saveAddedAssessments, saveCompletedTasks } from "../shell/data.js";
 import { getPreferences } from "../shell/preferences.js";
@@ -383,6 +383,10 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   function renderUpcoming(entries, resolvedNames, courseColors, matchEntries) {
     if (!upcomingList) return;
     lastUpcomingArgs = [entries, resolvedNames, courseColors, matchEntries];
+    // Only what's within the dates the calendar shows (anything further ahead,
+    // or from before the school year, isn't on it).
+    const range = calendarDateRange(ASSESSMENT_CALENDAR_WEEK_COUNT);
+    entries = entries.filter((entry) => entry.date >= range.start && entry.date <= range.end);
     const today = todayISODate();
     const completed = new Map(completedTaskRecords().map((record) => [record.id, record.completedAt]));
     const periodIndexOf = new Map(matchEntries.map((entry) => [entry.name, entry.periodIndex]));

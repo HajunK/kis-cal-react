@@ -59,7 +59,7 @@ function SuggestionAlertsRow({ page }) {
   };
   return (
     <div className="settings-row">
-      <span className="settings-label">Notify me of new suggestions</span>
+      <span className="settings-label">Notify suggestions</span>
       <ToggleSwitch className="settings-toggle" data-pref="suggestionAlerts" checked={on} onChange={change} />
     </div>
   );

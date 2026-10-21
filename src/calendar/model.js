@@ -87,6 +87,16 @@ export function startOfWeek(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
 }
 
+// The dates the Calendar draws, first to last as YYYY-MM-DD: from the start of
+// the week the school year's August 1 falls in, to the end of the week
+// weeksAhead weeks on from this one's start. Anything outside it isn't on the
+// calendar, so isn't in Upcoming either.
+export function calendarDateRange(weeksAhead, today = new Date()) {
+  const thisWeekStart = startOfWeek(today);
+  const last = new Date(thisWeekStart.getFullYear(), thisWeekStart.getMonth(), thisWeekStart.getDate() + weeksAhead * 7 - 1);
+  return { start: toISODate(startOfWeek(latestAugustFirst(today))), end: toISODate(last) };
+}
+
 // A Testing Block is just a summative here.
 export function upcomingTitle(entry, courseLabel) {
   if (assessmentCategory(entry) === "assignment") return entry.title || "Assignment";

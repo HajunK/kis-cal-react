@@ -76,6 +76,23 @@ service cloud.firestore {
         && (resource.data.emails.size() <= 1 || isAdmin());
     }
 
+    // Study guides on guides.kiscal.app (guides/): a published guide can be
+    // read by anyone, a draft only by an admin, and only an admin can write
+    // them. (A guide that doesn't exist reads as missing rather than refused.)
+    match /guides/{guideId} {
+      allow read: if resource == null || resource.data.published == true || isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.course is string
+        && request.resource.data.subject is string
+        && request.resource.data.published is bool
+        && request.resource.data.body is string
+        && request.resource.data.body.size() < 200000;
+      allow delete: if isAdmin();
+    }
+
     // Admin-authored posts/announcements shown on Domain, below the class
     // cards — always visible to every signed-in student, no per-user
     // dismiss. Same public-read/admin-write rule as assessments above.

@@ -1,120 +1,164 @@
 {
-  "hosting": {
-    "predeploy": [
-      "npm run build"
-    ],
-    "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "cleanUrls": true,
-    "trailingSlash": false,
-    "redirects": [
-      {
-        "source": "/",
-        "destination": "/domain",
-        "type": 301
-      },
-      {
-        "source": "/my-courses",
-        "destination": "/calendar",
-        "type": 301
-      },
-      {
-        "source": "/my-courses.html",
-        "destination": "/calendar",
-        "type": 301
-      },
-      {
-        "source": "/suggestions",
-        "destination": "/assessments",
-        "type": 301
-      },
-      {
-        "source": "/suggestions.html",
-        "destination": "/assessments",
-        "type": 301
-      },
-      {
-        "source": "/domain.html",
-        "destination": "/domain",
-        "type": 301
-      },
-      {
-        "source": "/calendar.html",
-        "destination": "/calendar",
-        "type": 301
-      },
-      {
-        "source": "/gpa.html",
-        "destination": "/gpa",
-        "type": 301
-      },
-      {
-        "source": "/assessments.html",
-        "destination": "/assessments",
-        "type": 301
-      },
-      {
-        "source": "/posts.html",
-        "destination": "/domain",
-        "type": 301
-      },
-      {
-        "source": "/calendar-demo.html",
-        "destination": "/calendar-demo",
-        "type": 301
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
-      },
-      {
-        "source": "**/*.@(png|jpg|jpeg|webp|svg|ico|woff2)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=86400"
-          }
-        ]
-      },
-      {
-        "source": "js/vendor/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=86400"
-          }
-        ]
-      },
-      {
-        "source": "assets/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=31536000, immutable"
-          }
-        ]
-      }
-    ]
-  },
+  "hosting": [
+    {
+      "site": "kisj-grade-calculator",
+      "predeploy": [
+        "npm run build"
+      ],
+      "public": "dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "redirects": [
+        {
+          "source": "/",
+          "destination": "/domain",
+          "type": 301
+        },
+        {
+          "source": "/my-courses",
+          "destination": "/calendar",
+          "type": 301
+        },
+        {
+          "source": "/my-courses.html",
+          "destination": "/calendar",
+          "type": 301
+        },
+        {
+          "source": "/suggestions",
+          "destination": "/assessments",
+          "type": 301
+        },
+        {
+          "source": "/suggestions.html",
+          "destination": "/assessments",
+          "type": 301
+        },
+        {
+          "source": "/domain.html",
+          "destination": "/domain",
+          "type": 301
+        },
+        {
+          "source": "/calendar.html",
+          "destination": "/calendar",
+          "type": 301
+        },
+        {
+          "source": "/gpa.html",
+          "destination": "/gpa",
+          "type": 301
+        },
+        {
+          "source": "/assessments.html",
+          "destination": "/assessments",
+          "type": 301
+        },
+        {
+          "source": "/posts.html",
+          "destination": "/domain",
+          "type": 301
+        },
+        {
+          "source": "/calendar-demo.html",
+          "destination": "/calendar-demo",
+          "type": 301
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(png|jpg|jpeg|webp|svg|ico|woff2)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=86400"
+            }
+          ]
+        },
+        {
+          "source": "js/vendor/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=86400"
+            }
+          ]
+        },
+        {
+          "source": "assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "kiscal-guides",
+      "public": "guides",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "**/*.test.js"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(png|jpg|jpeg|webp|svg|ico|woff2)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=86400"
+            }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/g/**",
+          "destination": "/guide.html"
+        }
+      ]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }

@@ -96,7 +96,7 @@ describe("SettingsPopup", () => {
 
   it("lets only admins switch suggestion alerts on and off", async () => {
     render(<SettingsPopup page={fakePage()} />);
-    expect(screen.queryByText("Notify me of new suggestions")).toBe(null);
+    expect(screen.queryByText("Notify suggestions")).toBe(null);
     cleanup();
 
     const admin = { uid: "u1", email: "hjkim29@kis.ac" };
