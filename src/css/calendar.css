@@ -170,6 +170,12 @@
   color: var(--color-accent);
 }
 
+/* In dark mode the circle behind today's number on the selected day is white
+   (--color-surface there is a dark gray); the number stays the blue. */
+:root[data-theme="dark"] .assessment-calendar-day--selected .assessment-calendar-day-number--today {
+  background: #ffffff;
+}
+
 .assessment-calendar-day--selected {
   background: var(--color-accent);
   color: var(--color-on-accent);
@@ -214,6 +220,16 @@
    either theme; gray-dark would be too faint. */
 .assessment-calendar-day--selected .assessment-calendar-day-type {
   color: color-mix(in srgb, var(--color-surface) 70%, transparent);
+}
+
+/* In dark mode the selected day's dots are white and its A/B label a white
+   with a tint of the blue behind it (--color-surface there is a dark gray). */
+:root[data-theme="dark"] .assessment-calendar-day--selected .assessment-calendar-day-dot {
+  background: #ffffff;
+}
+
+:root[data-theme="dark"] .assessment-calendar-day--selected .assessment-calendar-day-type {
+  color: color-mix(in srgb, #ffffff 78%, var(--color-accent));
 }
 
 /* The same look as the Calendar tab's .assessment-chip, in dark blue. */
@@ -569,6 +585,9 @@
   gap: 8px;
   min-width: 0;
   padding: 0 14px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .class-grid-course-dot {
@@ -683,13 +702,14 @@
   stroke-linecap: round;
 }
 
-/* Lines between the days in the course rows (not the date row), in the
-   same color as the gridlines between rows (the grid's background, showing
-   through its row gaps). Drawn on each day's right edge, so a line only
+/* Lines between the days in the course rows (not the date row), the color of
+   the gridlines between rows (the grid's background, showing through its row
+   gaps) at half strength, so the days guide the eye without a lattice. Drawn on each day's right edge, so a line only
    ever sits between two days: none against the course-name column, where
    the leftmost day in view would otherwise have one. */
 .class-grid-cell {
-  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light));
+  box-shadow: inset -1px 0 0
+    color-mix(in srgb, color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light)) 50%, transparent);
 }
 
 .class-grid-head--weekend,
@@ -1051,11 +1071,11 @@
 /* An assignment checked off in Upcoming: struck through, its subtitle folded
    away. */
 .assessment-chip--done .assessment-pill-text {
-  text-decoration: line-through;
+  background-size: 100% 1.5px;
 }
 
-/* The ring becomes a check, the same one Upcoming uses, on a light circle of
-   the course color (the summative pill's tint). Bigger than the ring, with
+/* The ring becomes the check Upcoming uses: a circle of the course color with
+   a black or white check by its lightness. Bigger than the ring, with
    negative margins so the name doesn't move. */
 .assessment-chip--done .assessment-chip-dot {
   position: relative;
@@ -1063,14 +1083,14 @@
   height: 15px;
   margin: 0.5px -3.5px 0;
   box-shadow: none;
-  background: oklch(from color-mix(in oklch, var(--chip-color) 22%, var(--color-surface)) l calc(c * 1.8) h);
+  background: var(--chip-color);
 }
 
 .assessment-chip--done .assessment-chip-dot::after {
   content: "";
   position: absolute;
   inset: 2px;
-  background: var(--chip-color);
+  background: oklch(from var(--chip-color) clamp(0, (0.78 - l) * 1000, 1) 0 0);
   -webkit-mask: url("/icons/light/check.png") center / contain no-repeat;
   mask: url("/icons/light/check.png") center / contain no-repeat;
 }
@@ -1127,6 +1147,14 @@
 
 .assessment-chip--stacked .assessment-chip-dot {
   margin-top: 4px;
+}
+
+/* The strike for a done assignment: a line that grows from the left
+   (text-decoration can't animate). */
+.assessment-pill-text,
+.upcoming-title-text {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 55% / 0 1.5px;
+  transition: background-size 0.3s ease;
 }
 
 /* inline-block, not the window's block, lets the text size to its full width,
@@ -1208,6 +1236,9 @@
   --todo-pad-top: 0px;
   --todo-header-h: 32px;
   --todo-header-gap: 16px;
+  /* How much further down than the gap the blur begins (see .upcoming-blur and
+     .upcoming-list's mask, which hand over to each other across it). */
+  --upcoming-blur-drop: 24px;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -1234,39 +1265,87 @@
      placeUpcomingBlur). */
   left: -24px;
   right: -34px;
-  z-index: 1;
-  height: calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap));
+  /* Above the tab bar (z-index 20, in nav.css), since the strip reaches up over
+     it to the top of the page; still below menus, popups and tooltips. */
+  z-index: 21;
+  /* Reaches --upcoming-blur-reach above the heading's box (set in JS), up to the
+     top of the page, where the blur finishes fading away. */
+  height: calc(var(--upcoming-blur-reach, 0px) + var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap) + var(--upcoming-blur-drop));
   overflow: hidden;
   pointer-events: none;
   /* Never fully opaque, and fainter the higher it goes: rows fade as they
-     blur, from 60% where they hand over from the real ones at the header's
-     bottom edge, through 55% at its middle, to 35% at the card's top.
-     Nothing at the strip's own bottom either, where the list starts at rest,
-     so nothing shows until it's scrolled. */
+     blur, from 60% where they hand over from the real ones, at the bottom of
+     the heading (below all of its text), one steady fade up through the heading
+     to nothing at the top of the page. Nothing at the strip's own bottom either,
+     where the list starts at rest, so nothing shows until it's scrolled. And
+     nothing at its sides: the second mask fades the left and right (over the
+     room the strip has beyond the list), so the blur dies away there instead of
+     being cut off in a line. The two are intersected. */
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent,
+      rgba(0, 0, 0, 0.6) calc(var(--upcoming-blur-reach, 0px) + var(--todo-pad-top) + var(--todo-header-h)),
+      transparent
+    ),
+    linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 34px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent,
+      rgba(0, 0, 0, 0.6) calc(var(--upcoming-blur-reach, 0px) + var(--todo-pad-top) + var(--todo-header-h)),
+      transparent
+    ),
+    linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 34px), transparent);
+  mask-composite: intersect;
+}
+
+/* One copy of the list per blur level (see copyUpcomingForBlur), each blurred a
+   little more, and each shown only over its own band of the strip, with the
+   bands overlapping so one level eases into the next: the blur starts small
+   at the bottom of the strip and grows to the full amount by the heading.
+   --blur-edge is the bottom of the heading, where the opacity is at its most. */
+.upcoming-blur-layer {
+  --blur-edge: calc(var(--upcoming-blur-reach, 0px) + var(--todo-pad-top) + var(--todo-header-h));
+  position: absolute;
+  inset: 0;
+}
+
+/* The most blurred: all the way up, easing out below the heading. */
+.upcoming-blur-layer--3 {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--blur-edge) + 4px), transparent calc(var(--blur-edge) + 24px));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--blur-edge) + 4px), transparent calc(var(--blur-edge) + 24px));
+}
+
+.upcoming-blur-layer--2 {
   -webkit-mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.35),
-    rgba(0, 0, 0, 0.55) calc(var(--todo-pad-top) + var(--todo-header-h) / 2),
-    rgba(0, 0, 0, 0.6) calc(var(--todo-pad-top) + var(--todo-header-h)),
-    transparent
+    transparent calc(var(--blur-edge) - 6px),
+    #000 calc(var(--blur-edge) + 10px),
+    #000 calc(var(--blur-edge) + 14px),
+    transparent calc(var(--blur-edge) + 34px)
   );
   mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.35),
-    rgba(0, 0, 0, 0.55) calc(var(--todo-pad-top) + var(--todo-header-h) / 2),
-    rgba(0, 0, 0, 0.6) calc(var(--todo-pad-top) + var(--todo-header-h)),
-    transparent
+    transparent calc(var(--blur-edge) - 6px),
+    #000 calc(var(--blur-edge) + 10px),
+    #000 calc(var(--blur-edge) + 14px),
+    transparent calc(var(--blur-edge) + 34px)
   );
 }
 
-.upcoming-blur-copy {
-  filter: blur(6px);
+/* The least: takes over at the bottom, where the blur begins. */
+.upcoming-blur-layer--1 {
+  -webkit-mask-image: linear-gradient(to bottom, transparent calc(var(--blur-edge) + 14px), #000 calc(var(--blur-edge) + 34px));
+  mask-image: linear-gradient(to bottom, transparent calc(var(--blur-edge) + 14px), #000 calc(var(--blur-edge) + 34px));
 }
 
-/* Above the list and its blur (see .upcoming-list). */
+/* Above the list and its blur (see .upcoming-list, and .upcoming-blur, which is
+   at 21 to clear the tab bar). */
 .todo-card-header {
   position: relative;
-  z-index: 2;
+  z-index: 22;
   height: var(--todo-header-h);
   display: flex;
   align-items: center;
@@ -1354,7 +1433,7 @@
     linear-gradient(
       to bottom,
       transparent calc(var(--todo-pad-top) + var(--todo-header-h) - 8px),
-      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap)),
+      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap) + var(--upcoming-blur-drop)),
       #000 calc(100% - 36px),
       transparent
     ),
@@ -1363,7 +1442,7 @@
     linear-gradient(
       to bottom,
       transparent calc(var(--todo-pad-top) + var(--todo-header-h) - 8px),
-      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap)),
+      #000 calc(var(--todo-pad-top) + var(--todo-header-h) + var(--todo-header-gap) + var(--upcoming-blur-drop)),
       #000 calc(100% - 36px),
       transparent
     ),
@@ -1498,9 +1577,23 @@
   align-self: center;
 }
 
+.upcoming-title {
+  transition: color 0.3s ease;
+}
+
+/* The title's text is inline (see the strike above). The padding, undone by
+   the margin, lets the strike reach past the letters on both sides. */
+.upcoming-title-text {
+  padding: 0 1px;
+  margin: 0 -1px;
+}
+
 .upcoming-item--done .upcoming-title {
   color: var(--color-gray-dark);
-  text-decoration: line-through;
+}
+
+.upcoming-item--done .upcoming-title-text {
+  background-size: 100% 1.5px;
 }
 
 /* The course in its darker shade, as on a Calendar pill. */
@@ -1675,6 +1768,13 @@
   align-content: start;
 }
 
+/* The Courses view labels its own rows (and recolors from them), so the list
+   isn't repeated here. Hidden rather than removed, so the panel keeps the
+   height the list gives it. */
+.calendar-legend-card[data-view="byClass"] .calendar-legend-column:has(.course-color-list) {
+  visibility: hidden;
+}
+
 .calendar-legend-label {
   font-size: 14px;
   color: var(--color-gray-dark);
@@ -1815,6 +1915,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Tall enough for twelve courses; a longer list scrolls. */
+  max-height: calc(12 * 18px + 11 * 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .course-color-item {
@@ -1828,6 +1933,7 @@
   font: inherit;
   /* The same size as an Upcoming item's title. */
   font-size: 15px;
+  line-height: 18px;
   color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
@@ -1880,6 +1986,14 @@
   /* Behind the swatches: its inner half would otherwise cover the ring on a
      selected swatch in the last column. */
   z-index: -1;
+}
+
+/* Opened from a row in the Courses view: the pointer is on the left edge. */
+.course-color-picker--right::after {
+  right: auto;
+  left: -11px;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 4px;
 }
 
 .course-color-picker--visible {
@@ -2367,6 +2481,14 @@
   background: var(--color-hover-overlay);
 }
 
+/* The time an option means, small and gray at the right of its row. */
+.add-popup-time-option-hint {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-gray-dark);
+}
+
 /* The chosen time in the course's color, as the date was. */
 .add-popup-time-option--selected,
 .add-popup-time-option--selected:hover {
@@ -2387,6 +2509,9 @@
   font: inherit;
   font-size: 14px;
   font-weight: 400;
+  /* Flush with the hints above: the patch's padding hangs into the row's. */
+  margin-right: -4px;
+  text-align: right;
 }
 
 .add-popup-time-input::-webkit-calendar-picker-indicator {
@@ -2394,12 +2519,13 @@
 }
 
 .add-popup-time-option--selected .add-popup-time-input {
-  background: rgba(255, 255, 255, 0.75);
+  /* Lighter than the row but still carrying its color, so it isn't plain white. */
+  background: color-mix(in srgb, var(--chip-color) 5%, white);
 }
 
 /* Faint enough on a dark page to stay a patch, not a glare. */
 :root[data-theme="dark"] .add-popup-time-option--selected .add-popup-time-input {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .add-popup-date-label {
@@ -2462,6 +2588,22 @@
 
 .calendar-pick-overlay--visible {
   opacity: 1;
+}
+
+/* On the dark theme the page is already dark, so a stronger layer is needed
+   for the calendar raised above it to stand out. */
+:root[data-theme="dark"] .calendar-pick-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* And while it's up, the page's own background (behind the cards, and the tab
+   bar) is pure black, easing there and back with the layer. */
+:root[data-theme="dark"]:has(.calendar-pick-overlay) :is(body, .tab-bar) {
+  transition: background-color 0.2s ease;
+}
+
+:root[data-theme="dark"]:has(.calendar-pick-overlay--visible) :is(body, .tab-bar) {
+  background-color: #000000;
 }
 
 .my-courses-calendar-box--raised {
@@ -2602,4 +2744,10 @@
 .class-grid-head {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Keyboard focus in the popup uses the course's color, not the browser blue. */
+.add-popup :is(button, label):focus-visible {
+  outline: 2px solid var(--chip-color, var(--color-text-primary));
+  outline-offset: 1px;
 }

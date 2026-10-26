@@ -401,10 +401,24 @@ export function initCardScrollButtons(container, nav, prev, next, popupOpen, sig
     clearTimeout(buttonScrollTimer);
   });
 
+  // Cards arriving (or the first look) measure the row, which makes the browser
+  // lay out everything drawn so far: done once the cards have been painted, so
+  // it doesn't hold them up. The arrows are hidden until then.
+  let updateQueued = false;
+  const updateAfterPaint = () => {
+    if (updateQueued) return;
+    updateQueued = true;
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        updateQueued = false;
+        if (!signal.aborted) update();
+      }, 0)
+    );
+  };
   container.addEventListener("scroll", update, { passive: true });
   window.addEventListener("resize", update, { signal });
-  const observer = new MutationObserver(update);
+  const observer = new MutationObserver(updateAfterPaint);
   observer.observe(container, { childList: true });
   signal.addEventListener("abort", () => observer.disconnect());
-  update();
+  updateAfterPaint();
 }

@@ -115,7 +115,7 @@ export function CalendarPage() {
           <div className="upcoming-blur" aria-hidden="true" inert />
         </section>
         <div className="calendar-side-divider" />
-        <section className="calendar-side-card calendar-legend-card">
+        <section className="calendar-side-card calendar-legend-card" data-view={viewMode}>
           <div className="calendar-legend-column">
             <span className="calendar-legend-label">View</span>
             <ViewToggle handleRef={viewToggleRef} mode={viewMode} onPick={pickView} />
@@ -249,11 +249,31 @@ function CourseColors({ legend }) {
     setPickers((list) => list.map((picker) => ({ ...picker, open: false })));
     setTimeout(() => setPickers((list) => list.filter((picker) => picker.open)), COLOR_PICKER_EXIT_MS);
   };
-  const openPickerFor = (anchor, name, color) => {
-    const picker = { id: Date.now() + Math.random(), anchor, name, color, open: true };
+  const openPickerFor = (anchor, name, color, side = "left") => {
+    const picker = { id: Date.now() + Math.random(), anchor, name, color, side, open: true };
     openRef.current = picker;
     setPickers((list) => [...list, picker]);
   };
+
+  // A course's row in the Courses view asks for the picker too, which opens past
+  // the right edge of its row, so as not to cover the name. The
+  // legend's own list is hidden there, so the colors come from what it last drew.
+  const colorNamesRef = useRef(null);
+  colorNamesRef.current = legend ? legend.colorNames : null;
+  useEffect(() => {
+    const onPick = (event) => {
+      const { anchor, name } = event.detail;
+      const color = colorNamesRef.current && colorNamesRef.current.get(name);
+      if (!color) return;
+      const reopening = openRef.current && openRef.current.anchor === anchor;
+      closePicker();
+      if (!reopening) openPickerFor(anchor, name, color, "right");
+    };
+    window.addEventListener("app:course-color-pick", onPick);
+    return () => window.removeEventListener("app:course-color-pick", onPick);
+    // closePicker and openPickerFor only use refs and setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const onClick = (event) => {
@@ -321,7 +341,7 @@ function ColorPicker({ picker, onClose }) {
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
-    const dot = picker.anchor.querySelector(".course-color-dot").getBoundingClientRect();
+    const dot = picker.anchor.querySelector(".course-color-dot, .class-grid-course-dot").getBoundingClientRect();
     // The panel starts scaled down, which getBoundingClientRect would measure.
     const width = panel.offsetWidth;
     const height = panel.offsetHeight;
@@ -329,9 +349,11 @@ function ColorPicker({ picker, onClose }) {
     const top = Math.max(8, Math.min(dotCenterY - height / 2, window.innerHeight - height - 8));
     panel.style.top = `${top}px`;
     // Room for the pointer, whose tip sits 8px from the dot.
-    panel.style.left = `${Math.max(8, dot.left - 24 - width)}px`;
+    panel.style.left =
+      picker.side === "right" ? `${picker.anchor.getBoundingClientRect().right + 20}px` : `${Math.max(8, dot.left - 24 - width)}px`;
     panel.style.setProperty("--pointer-y", `${dotCenterY - top}px`);
-    panel.style.transformOrigin = `calc(100% + 16px) ${dotCenterY - top}px`;
+    panel.style.transformOrigin =
+      picker.side === "right" ? `-16px ${dotCenterY - top}px` : `calc(100% + 16px) ${dotCenterY - top}px`;
     void panel.offsetWidth;  // so the entrance transitions
     setVisible(true);
     // Placed once, as it opens.
@@ -339,7 +361,7 @@ function ColorPicker({ picker, onClose }) {
   }, []);
 
   return (
-    <div className={`course-color-picker${visible && picker.open ? " course-color-picker--visible" : ""}`} ref={panelRef}>
+    <div className={`course-color-picker${picker.side === "right" ? " course-color-picker--right" : ""}${visible && picker.open ? " course-color-picker--visible" : ""}`} ref={panelRef}>
       {COURSE_COLOR_CHOICES.map((color) => {
         const colorLabel = color.replace("-", " ");
         return (

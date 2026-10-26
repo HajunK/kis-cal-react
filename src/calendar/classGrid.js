@@ -237,6 +237,11 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
     label.className = "class-grid-course-name";
     label.textContent = course;
     fitName(label, label, course, shortCourseName(course));
+    // The Course Colors list is hidden in this view, so the row recolors its
+    // course (the page draws the picker).
+    name.addEventListener("click", () =>
+      window.dispatchEvent(new CustomEvent("app:course-color-pick", { detail: { anchor: name, name: course } }))
+    );
 
     days.forEach((date, dayIndex) => {
       const iso = isoDays[dayIndex];

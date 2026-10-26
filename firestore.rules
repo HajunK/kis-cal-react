@@ -99,6 +99,52 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Star ratings of the study guides (guides/js/rating.js). Rating takes a
+    // Google sign-in, and each person has one rating per guide: the document is
+    // named <guide key>__<their user id>, so there is only one, and a signed-in
+    // user may create it and replace it (to change their rating) but never write
+    // anyone else's or delete it. It holds the guide key, a whole number from 1 to
+    // 5 and the time, nothing else. A user can read only their own; an admin
+    // reads, lists and may delete any.
+    match /guideRatings/{ratingId} {
+      allow get: if isAdmin()
+        || (request.auth != null && ratingId.matches('[a-z0-9]+(-[a-z0-9]+)*__' + request.auth.uid));
+      allow list: if isAdmin();
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['guide', 'rating', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['guide', 'rating', 'updatedAt'])
+        && request.resource.data.guide is string
+        && request.resource.data.guide.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && request.resource.data.guide.size() >= 2
+        && request.resource.data.guide.size() <= 40
+        && ratingId == request.resource.data.guide + '__' + request.auth.uid
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.updatedAt is number;
+      allow delete: if isAdmin();
+    }
+
+    // How many different browsers have read each study guide (guides/js/views.js),
+    // with no sign-in. A browser adds one document per guide, named
+    // <guide key>__<its random 32-character id>, holding the guide key and the
+    // time; it can be added once and never changed, deleted or read back. Only an
+    // admin can list them, to count them (and may delete any).
+    match /guideViews/{viewId} {
+      allow get, list: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['guide', 'at'])
+        && request.resource.data.keys().hasAll(['guide', 'at'])
+        && request.resource.data.guide is string
+        && request.resource.data.guide.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && request.resource.data.guide.size() >= 2
+        && request.resource.data.guide.size() <= 40
+        && viewId.matches('^[a-z0-9]+(-[a-z0-9]+)*__[a-f0-9]{32}$')
+        && viewId.size() == request.resource.data.guide.size() + 34
+        && viewId.matches('^' + request.resource.data.guide + '__.*$')
+        && request.resource.data.at is number;
+      allow delete: if isAdmin();
+    }
+
     // Admin-authored posts/announcements shown on Domain, below the class
     // cards — always visible to every signed-in student, no per-user
     // dismiss. Same public-read/admin-write rule as assessments above.

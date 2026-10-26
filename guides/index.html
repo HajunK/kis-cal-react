@@ -24,11 +24,17 @@
     </div>
     <div class="admin-actions" id="admin-actions" hidden>
       <button type="button" class="button button--primary" id="new-guide">New guide</button>
+      <button type="button" class="button" id="show-views">Views</button>
       <button type="button" class="button" id="sign-out">Sign out</button>
     </div>
   </header>
 
   <main>
+    <section id="views" hidden>
+      <h2 class="section-title">Readers per guide</h2>
+      <p class="views-note" id="views-note"></p>
+      <ul class="views-list" id="views-list"></ul>
+    </section>
     <section id="recent" hidden>
       <h2 class="section-title">Recently viewed</h2>
       <ul class="grid" id="recent-grid"></ul>

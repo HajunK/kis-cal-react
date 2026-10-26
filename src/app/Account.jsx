@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { openLoginKeysModal, openMyCoursesModal, openSettingsModal } from "../popups/popupStore.js";
 import { firebaseAuth, googleProvider } from "../shell/firebase.js";
+import { flushPendingSave } from "../shell/data.js";
 import { AVATAR_IMAGE_KEY } from "../shell/session.js";
 
 // The tab bar's right end, from auth.js: the account picture, which opens the
@@ -185,7 +186,7 @@ function AccountMenu({ open, anchor, withCourses, onClose, onGone }) {
       {item("Settings", openSettingsModal)}
       {item("Login Key", openLoginKeysModal)}
       <div className="popup-menu-divider" />
-      {item("Sign out", () => firebaseAuth().signOut())}
+      {item("Sign out", () => (flushPendingSave(), firebaseAuth().signOut()))}
     </div>,
     document.body
   );

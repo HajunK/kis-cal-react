@@ -129,6 +129,17 @@ body {
   animation: page-enter 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 
+/* The rise is for arriving at a tab. One drawn again while it's open (its data was
+   replaced, by an add or a change from another device) just appears. */
+[data-redraw] :is(.classes-container, .domain-card-nav, .calendar-side, .gpa-layout, .admin-calendar-layout, .suggestions-card) {
+  animation: none;
+}
+
+/* The Domain tab's cards, drawn in place of the outlines or another draw. */
+.no-rise {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .classes-container,
   .domain-card-nav,

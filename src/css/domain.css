@@ -1,17 +1,234 @@
-/* Pinned to the middle of the window while the cards load, rather than
-   taking up the page's height (which let it scroll, spinner and all). */
-.domain-loading {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* The cards' outlines while they load: the real cards' size, spacing and
+   shadow (they use .class-card), with gray bars where the text will be that
+   glow in turn. Clipped at the window's edge, as the row would scroll. */
+.domain-skeleton {
+  overflow: hidden;
   pointer-events: none;
 }
 
-.domain-loading[hidden] {
+.domain-skeleton[hidden] {
   display: none;
+}
+
+/* Each line is the box the real text sits in (its height and spacing), with a
+   bar covering where the text goes. */
+.skeleton-line--title,
+.skeleton-line--grade,
+.skeleton-line--breakdown {
+  box-sizing: border-box;
+}
+
+.skeleton-line--title {
+  height: 34px;
+  padding-top: 3px;
+}
+
+.skeleton-line--title .skeleton-bar {
+  width: 150px;
+  height: 28px;
+}
+
+.skeleton-line--grade {
+  height: 54px;
+  margin-top: 4px;
+  padding-top: 7px;
+}
+
+.skeleton-line--grade .skeleton-bar {
+  width: 64px;
+  height: 40px;
+}
+
+.skeleton-line--breakdown {
+  height: 19px;
+  margin: 12px 0 20px;
+  padding-top: 2px;
+}
+
+.skeleton-line--breakdown .skeleton-bar {
+  width: 200px;
+  height: 15px;
+}
+
+/* A soft light sweeps across the whole row from left to right, passing over
+   the bars as it goes. --glow-x is where it is along the row, animated on the
+   row; each bar shifts it by its card's distance from the row's left edge
+   (--card-x) and its own from the card's (--bar-x), so the bars light up as one
+   band across the page rather than each card on its own. */
+@property --glow-x {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+/* 0 until the glow starts, then it fades in. */
+@property --glow-on {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.domain-skeleton-card {
+  --skeleton-glow-alpha: 0.85;
+  /* Not under the real cards' width: the rows' own width mustn't widen it. */
+  min-width: 0;
+}
+
+/* Bands of light repeat along the row (see .skeleton-bar) and the row slides
+   them one gap along every 1.5s, so a new one is always entering before the last
+   has left. Waits a second first, so a load that's quick never shows one. */
+.domain-skeleton {
+  animation:
+    skeleton-glow 1.5s linear 1s infinite,
+    skeleton-glow-on 0.5s ease 1s both;
+}
+
+/* Up from the page's first paint (see index.html), before the app has loaded,
+   under the tab bar's place; the app's own copy then takes over without the
+   bars arriving again. */
+#boot-skeleton {
+  position: absolute;
+  top: var(--tab-bar-h);
+  left: 0;
+  right: 0;
+}
+
+.domain-skeleton--seamless .skeleton-bar {
+  animation: none;
+}
+
+/* Where each card starts in the row: the row's padding, then a card (444px) and
+   the 32px gap apiece. */
+.domain-skeleton-card {
+  --card-x: 48px;
+}
+
+.domain-skeleton-card:nth-child(2) {
+  --card-x: 524px;
+}
+
+.domain-skeleton-card:nth-child(3) {
+  --card-x: 1000px;
+}
+
+.domain-skeleton-card:nth-child(4) {
+  --card-x: 1476px;
+}
+
+.domain-skeleton-card:nth-child(5) {
+  --card-x: 1952px;
+}
+
+:root[data-theme="dark"] .domain-skeleton-card {
+  --skeleton-glow-alpha: 0.1;
+}
+
+.skeleton-bar {
+  --bar-x: 32px;
+  /* Not there for the first 0.1s, then fading in over 0.2s. */
+  animation: skeleton-bar-in 0.2s linear 0.1s both;
+  display: block;
+  border-radius: 8px;
+  background:
+    linear-gradient(
+        100deg,
+        transparent calc(50% - 120px),
+        rgb(255 255 255 / calc(var(--skeleton-glow-alpha) * var(--glow-on))) 50%,
+        transparent calc(50% + 120px)
+      )
+      repeat-x calc(var(--glow-x) - var(--card-x) - var(--bar-x)) 0 / 560px 100%,
+    var(--color-gray-lighter);
+}
+
+/* The boxes' bars start further in: the box's left edge, its outline and its
+   padding. */
+.skeleton-box:nth-child(1) .skeleton-bar {
+  --bar-x: 49.5px;
+}
+
+.skeleton-box:nth-child(2) .skeleton-bar {
+  --bar-x: 247.5px;
+}
+
+/* The Formatives and Summatives boxes: the same padding, outlined in the bars' gray, rows
+   running off the bottom behind the same fade. */
+.skeleton-boxes {
+  position: relative;
+  display: flex;
+  /* The height the real boxes have, so the rows below can't stretch the card. */
+  flex: none;
+  height: 378px;
+  gap: 16px;
+}
+
+.skeleton-box {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  --score-label-h: 24px;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1.5px solid var(--color-gray-lighter);
+  border-radius: 14px;
+  padding: 10px 16px 0;
+}
+
+.skeleton-box::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 36px;
+  background: linear-gradient(to bottom, transparent, var(--color-surface));
+}
+
+/* The label is the real one (.assessment-label); the rows are pills like the one
+   a score row shows on hover (34px high with a 4px gap, 17px corners, the width
+   of the real rows), starting 6px under the label as the real list does. */
+.skeleton-box .assessment-label {
+  flex: none;
+  margin-bottom: 6px;
+  /* A plain gray a step darker than the bars, not the page's tinted one. */
+  color: color-mix(in srgb, var(--color-text-primary) 18%, var(--color-surface));
+}
+
+.skeleton-bar--row {
+  flex: none;
+  width: 156px;
+  height: 34px;
+  margin-bottom: 4px;
+  border-radius: 17px;
+}
+
+@keyframes skeleton-glow {
+  from {
+    --glow-x: 0px;
+  }
+  to {
+    --glow-x: 560px;
+  }
+}
+
+@keyframes skeleton-bar-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes skeleton-glow-on {
+  to {
+    --glow-on: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .domain-skeleton,
+  .skeleton-bar {
+    animation: none;
+  }
 }
 
 .classes-container {
@@ -513,6 +730,23 @@ html[data-privacy-blur] .class-card .grade-summary:hover .grade-value {
 
 html[data-privacy-blur] .class-card li[data-reveal-score] .score-value,
 html[data-privacy-blur] .class-card li[data-reveal-score] .score-original {
+  filter: none;
+}
+
+/* Hovering a formative's link button shows the two scores it refers to (the
+   formative and the summative of its row, marked by ClassCard's LinkButton),
+   with their grade circles in their real colors, as hovering the row does. */
+html[data-privacy-blur] .class-card li.link-hover .score-value,
+html[data-privacy-blur] .class-card li.link-hover .score-original {
+  filter: none;
+}
+
+html[data-privacy-blur] .class-card li.link-hover .score-value {
+  color: var(--color-text-primary);
+}
+
+html[data-privacy-blur] .class-card li.link-hover img.letter-grade[data-slug]:not(.letter-grade--preview) {
+  background-color: var(--grade-color, transparent);
   filter: none;
 }
 

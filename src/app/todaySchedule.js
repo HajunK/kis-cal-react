@@ -28,7 +28,7 @@ function formatScheduleClock(hhmm) {
 
 // A date's events with their names, the student's course in each period.
 // Empty without a bell schedule.
-function scheduleEventsOn(iso) {
+export function scheduleEventsOn(iso) {
   if (!defaultPeriodTimes) return [];
   const periods = loadPeriods();
   const events = [];
@@ -190,7 +190,7 @@ function buildTodaySchedule(popup, { date, hasType, dayType, events, next, viewi
       const nextType = allDayTypes[next.iso];
       const when = next.offset === 1 ? "Tomorrow" : next.date.toLocaleDateString("en-US", { weekday: "long" });
       footer.innerHTML =
-        `<span>${when}${nextType === "A" || nextType === "B" ? ` · <b>${nextType} Day</b>` : ""}</span>` +
+        `<span><span class="today-schedule-footer-when">${when}</span>${nextType === "A" || nextType === "B" ? ` · ${nextType} Day` : ""}</span>` +
         TODAY_SCHEDULE_CHEVRON;
     }
   }
@@ -214,6 +214,74 @@ const TODAY_SCHEDULE_SPRING = "cubic-bezier(0.32, 1.08, 0.42, 1)";
 // the pill's right edge and top. Nothing moves across: what the pill showed
 // blurs away where it is, and the schedule blurs in. Closing runs it
 // backwards.
+// Today to the next school day and back: the day's heading, strip and list
+// swipe as the Domain date picker's days do between months (SLIDE_MS and the 24px
+// shift in src/domain/ScoreDatePicker.jsx): the old day slides away and fades
+// (in 0.7 of the time) as the new one slides in from the other side, and the
+// window eases to the new day's height, since days have different numbers of
+// events. Going to the next day moves left (the new day arrives from the right),
+// and back to today does the reverse.
+const SCHEDULE_SLIDE_MS = 220;
+const SCHEDULE_SLIDE_SHIFT = 24;
+
+function swapScheduleDay(popup) {
+  const direction = popup._viewingNext ? -1 : 1;
+  const days = popup.querySelector(".today-schedule-days");
+  const header = popup.querySelector(".today-schedule-header");
+  const heading = popup.querySelector(".today-schedule-heading");
+  const current = () => days.querySelector(".today-schedule-pane:not(.today-schedule-pane--leaving)");
+  const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animated = typeof days.animate === "function" && !reduced;
+
+  const before = animated && {
+    days: current().cloneNode(true),
+    heading: heading.cloneNode(true),
+    headingBox: { top: heading.offsetTop, left: heading.offsetLeft, width: heading.getBoundingClientRect().width },
+    height: days.offsetHeight,
+  };
+  popup._viewingNext = !popup._viewingNext;
+  renderTodaySchedule(popup);
+  if (!before) return;
+
+  const shift = SCHEDULE_SLIDE_SHIFT * direction;
+  const slide = (outgoing, incoming) => {
+    outgoing
+      .animate(
+        [
+          { opacity: 1, transform: "translateX(0)" },
+          { opacity: 0, transform: `translateX(${-shift}px)` },
+        ],
+        { duration: SCHEDULE_SLIDE_MS * 0.7, easing: "ease", fill: "forwards" }
+      )
+      .finished.catch(() => {})
+      .finally(() => outgoing.remove());
+    incoming.animate(
+      [
+        { opacity: 0, transform: `translateX(${shift}px)` },
+        { opacity: 1, transform: "translateX(0)" },
+      ],
+      { duration: SCHEDULE_SLIDE_MS, easing: "ease" }
+    );
+  };
+
+  const leavingDay = before.days;
+  leavingDay.classList.add("today-schedule-pane--leaving");
+  const to = days.offsetHeight;
+  days.appendChild(leavingDay);
+  if (before.height !== to) days.animate([{ height: `${before.height}px` }, { height: `${to}px` }], { duration: SCHEDULE_SLIDE_MS, easing: "ease" });
+  slide(leavingDay, current());
+
+  const leavingHeading = before.heading;
+  leavingHeading.classList.add("today-schedule-heading--leaving");
+  Object.assign(leavingHeading.style, {
+    top: `${before.headingBox.top}px`,
+    left: `${before.headingBox.left}px`,
+    width: `${before.headingBox.width}px`,
+  });
+  header.appendChild(leavingHeading);
+  slide(leavingHeading, heading);
+}
+
 export function openTodaySchedule() {
   if (!classCountdownEl || todaySchedulePopup) return;
   const rect = classCountdownEl.getBoundingClientRect();
@@ -229,8 +297,12 @@ export function openTodaySchedule() {
         <p class="today-schedule-heading"></p>
       </div>
       <div class="today-schedule-body">
-        <div class="today-schedule-strip" aria-hidden="true"></div>
-        <ol class="today-schedule-list"></ol>
+        <div class="today-schedule-days">
+          <div class="today-schedule-pane">
+            <div class="today-schedule-strip" aria-hidden="true"></div>
+            <ol class="today-schedule-list"></ol>
+          </div>
+        </div>
         <button type="button" class="today-schedule-footer"></button>
       </div>
     </div>
@@ -244,10 +316,7 @@ export function openTodaySchedule() {
   const popup = panel.querySelector(".today-schedule");
   // The header sits where the pill was, so a click there folds it back up.
   popup.querySelector(".today-schedule-header").addEventListener("click", closeTodaySchedule);
-  popup.querySelector(".today-schedule-footer").addEventListener("click", () => {
-    popup._viewingNext = !popup._viewingNext;
-    renderTodaySchedule(popup);
-  });
+  popup.querySelector(".today-schedule-footer").addEventListener("click", () => swapScheduleDay(popup));
   // The pill as it was, left in place to fade.
   const ghost = panel.querySelector(".today-schedule-pill-ghost");
   ghost.style.height = `${rect.height}px`;

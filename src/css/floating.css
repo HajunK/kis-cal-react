@@ -111,6 +111,11 @@
   margin-left: 8px;
 }
 
+/* Signed out, the sign in button is the same 12px from the pill. */
+.class-countdown-pill:not([hidden]) + .auth-container .auth-signin-btn {
+  margin-left: 8px;
+}
+
 /* A page with no tab bar: floating at the bottom-left, as it used to. */
 body > .class-countdown-pill {
   position: fixed;
@@ -355,6 +360,31 @@ body > .class-countdown-pill {
   transition: opacity 0.15s ease, transform var(--popup-spring-ms) var(--ease-popup-spring);
 }
 
+/* The edge of the menus, except the Calendar's four-option menu
+   (.popup-menu--types), which keeps its flat one, and the add popup that follows
+   it (.add-popup, in calendar.css), likewise: a 1px ring a little brighter at
+   the top left than at the bottom right (--popup-edge-start and -end, in
+   theme.css), drawn as a gradient masked down to its border area, since a border
+   can't take a gradient and keep rounded corners. It takes the place of the flat
+   edge in the box-shadow. */
+.popup-menu:not(.popup-menu--types) {
+  box-shadow: var(--shadow-card);
+}
+
+.popup-menu:not(.popup-menu--types)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  corner-shape: inherit;
+  background: linear-gradient(135deg, var(--popup-edge-start), var(--popup-edge-end));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+
 .popup-menu--visible {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -457,6 +487,7 @@ body > .class-countdown-pill {
 /* Clicking it closes the schedule. It reaches the panel's top and sides (the
    top padding is its own), so the band where the pill was all counts. */
 .today-schedule-header {
+  position: relative;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -470,6 +501,10 @@ body > .class-countdown-pill {
   align-items: center;
   gap: 8px;
   margin: 0;
+  /* On one line however the box is sized: the outgoing copy is held at the old
+     heading's width (see swapScheduleDay), and a fraction of a pixel short
+     wrapped "B Day" onto a second line as it swiped. */
+  white-space: nowrap;
   /* The day's name and type can't be selected (a double-click on them
      highlights nothing). */
   -webkit-user-select: none;
@@ -502,6 +537,26 @@ body > .class-countdown-pill {
   color: var(--color-gray-dark);
   font-size: 15px;
   font-weight: 400;
+}
+
+/* Clips the day's content as it slides between days (see swapScheduleDay). */
+.today-schedule-days {
+  position: relative;
+  overflow: hidden;
+}
+
+/* The day being left, over the new one while it slides away; likewise the old
+   heading over the new one. */
+.today-schedule-pane--leaving,
+.today-schedule-heading--leaving {
+  position: absolute;
+  pointer-events: none;
+}
+
+.today-schedule-pane--leaving {
+  top: 0;
+  left: 0;
+  right: 0;
 }
 
 /* Each event's length of the day, side by side: done ones gray, the one on
@@ -646,13 +701,18 @@ body > .class-countdown-pill {
   cursor: pointer;
 }
 
-.today-schedule-footer b {
+/* Only the day's name ("Tomorrow") is bold, in the main color; the rest
+   ("· B Day"), and the arrow, are plain and gray. */
+.today-schedule-footer-when {
   color: var(--color-text-primary);
   font-weight: 600;
 }
 
+/* Hovered, the gray parts ("· B Day", "Back to today" and the arrow) go a step
+   darker, a dark gray rather than the main text color (in dark mode, a
+   brighter gray rather than white). "Tomorrow" keeps its own color. */
 .today-schedule-footer:hover {
-  color: var(--color-text-primary);
+  color: color-mix(in srgb, var(--color-gray-dark) 55%, var(--color-text-primary));
 }
 
 .today-schedule-footer[hidden] {

@@ -1,11 +1,13 @@
 // Whether a course has a final decides its grading split (20/60/20 vs 20/80).
+// alias: other names My Courses finds a course by, each with the division it
+// stands for.
 export const COURSE_CATALOG = [
   { name: "Algebra II", ap: false, final: false, weight: 1},
   { name: "AP Art", ap: true, final: false, weight: 1, divisions: ["2D", "3D"] },
   { name: "Biology", ap: false, final: false, weight: 1 },
   { name: "AP Biology", ap: true, final: false, weight: 1 },
   { name: "Calculus", ap: false, final: false, weight: 1 },
-  { name: "AP Calculus", ap: true, final: false, weight: 1, divisions: ["AB", "BC"] },
+  { name: "AP Calculus", ap: true, final: false, weight: 1, divisions: ["AB", "BC"], alias: { AB: "AB", BC: "BC" } },
   { name: "Chamber Choir", ap: false, final: false, weight: 1 },
   { name: "Chemistry", ap: false, final: false, weight: 1 },
   { name: "AP Chemistry", ap: true, final: false, weight: 1 },
@@ -25,7 +27,7 @@ export const COURSE_CATALOG = [
   { name: "Digital Photography", ap: false, final: false, weight: 1 },
   { name: "Earth Science", ap: false, final: false, weight: 1 },
   { name: "Economics", ap: false, final: false, weight: 1 },
-  { name: "AP Economics", ap: true, final: false, weight: 1, divisions: ["Mic", "Mac"] },
+  { name: "AP Economics", ap: true, final: false, weight: 1, divisions: ["Mic", "Mac"], alias: { Macro: "Mac", Micro: "Mic" } },
   { name: "Engineering", ap: false, final: false, weight: 1 },
   { name: "Advanced Engineering", short: "Engineering", ap: false, final: false, weight: 1 },
   { name: "English", ap: false, final: false, weight: 1, divisions: ["9", "10", "11", "12"] },

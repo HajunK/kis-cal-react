@@ -41,12 +41,34 @@ function measureCharWidth(referenceEl, char) {
   return measureCharWidths(referenceEl, char)[0];
 }
 
+// What was measured, by font and text: a roll measures its old and new text,
+// and each measuring puts a probe in the page and has the browser lay it all
+// out. The same numbers come up again and again (a score rolling between the
+// same digits), so only the first time pays for that. Dropped when a font
+// finishes loading, which changes the widths.
+const charWidthCache = new Map();
+if (typeof document !== "undefined" && document.fonts && document.fonts.addEventListener) {
+  document.fonts.addEventListener("loadingdone", () => charWidthCache.clear());
+}
+
 // Measured within the whole string so kerning between neighbors counts,
 // matching the plain text the roll ends on.
 function measureCharWidths(referenceEl, text) {
   if (text.length === 0) return [];
 
   const style = getComputedStyle(referenceEl);
+  const cacheKey = [
+    style.fontFamily,
+    style.fontSize,
+    style.fontWeight,
+    style.fontStyle,
+    style.fontVariantNumeric,
+    style.fontFeatureSettings,
+    style.letterSpacing,
+    text,
+  ].join("|");
+  const known = charWidthCache.get(cacheKey);
+  if (known) return known.slice();
   const probe = document.createElement("span");
   probe.textContent = text;
   probe.style.position = "absolute";
@@ -73,6 +95,8 @@ function measureCharWidths(referenceEl, text) {
   }
 
   probe.remove();
+  if (charWidthCache.size > 500) charWidthCache.clear();
+  charWidthCache.set(cacheKey, widths.slice());
   return widths;
 }
 
@@ -254,6 +278,9 @@ export function animateNumberChange(element, newText, revealStyle) {
       opacity: 1,
     });
   }
+  // Each piece is put in its starting state, then (after one reflow for all of
+  // them, rather than one apiece) set going.
+  const startRolls = [];
   const leavingCurve = continuing ? "cubic-bezier(0.33, 1, 0.68, 1)" : "cubic-bezier(0.65, 0, 0.35, 1)";
   leavingDigits.forEach(({ text, width, opacity }) => {
     const leaving = document.createElement("span");
@@ -267,10 +294,11 @@ export function animateNumberChange(element, newText, revealStyle) {
       leaving.style.textAlign = "left";
     }
     element.appendChild(leaving);
-    void leaving.offsetWidth;  // so the starting width applies first
-    leaving.style.transition = `width ${rollMs}ms ${leavingCurve}, opacity ${rollMs}ms ${leavingCurve}`;
-    leaving.style.width = "0px";
-    leaving.style.opacity = "0";
+    startRolls.push(() => {
+      leaving.style.transition = `width ${rollMs}ms ${leavingCurve}, opacity ${rollMs}ms ${leavingCurve}`;
+      leaving.style.width = "0px";
+      leaving.style.opacity = "0";
+    });
   });
 
   // Gaining a digit on the way up (87 -> 100): rather than a new column
@@ -304,11 +332,12 @@ export function animateNumberChange(element, newText, revealStyle) {
       strip.style.transform = "translateY(0px)";
       slot.appendChild(strip);
       element.appendChild(slot);
-      void strip.offsetHeight;
-      strip.style.transition = `transform ${easing}`;
-      strip.style.transform = `translateY(${-(to - from) * slotHeight}px)`;
-      slot.style.transition = `width ${easing}`;
-      slot.style.width = `${width}px`;
+      startRolls.push(() => {
+        strip.style.transition = `transform ${easing}`;
+        strip.style.transform = `translateY(${-(to - from) * slotHeight}px)`;
+        slot.style.transition = `width ${easing}`;
+        slot.style.width = `${width}px`;
+      });
       return;
     }
     // The same line box as a digit's slot, so a colon or dot sits at the
@@ -384,13 +413,17 @@ export function animateNumberChange(element, newText, revealStyle) {
     slot.appendChild(strip);
     element.appendChild(slot);
 
-    // So the starting frame applies before the transition.
-    void strip.offsetHeight;
-    strip.style.transition = `transform ${easing}`;
-    strip.style.transform = `translateY(${endTransform}px)`;
-    slot.style.transition = `width ${easing}`;
-    slot.style.width = `${newWidth}px`;
+    startRolls.push(() => {
+      strip.style.transition = `transform ${easing}`;
+      strip.style.transform = `translateY(${endTransform}px)`;
+      slot.style.transition = `width ${easing}`;
+      slot.style.width = `${newWidth}px`;
+    });
   });
+
+  // So the starting frame applies before the transitions.
+  void element.offsetHeight;
+  startRolls.forEach((start) => start());
 
   const timer = setTimeout(() => {
     element.textContent = newText;

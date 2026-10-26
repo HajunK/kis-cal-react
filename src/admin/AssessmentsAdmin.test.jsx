@@ -168,6 +168,24 @@ describe("AssessmentsAdmin", () => {
     expect(day(MONDAY).querySelectorAll(".assessment-calendar-day-dot")).toHaveLength(2);
   });
 
+  it("accepts a Wednesday summative as In-Class, from a plain Accept button", async () => {
+    const page = renderPage({
+      collections: {
+        suggested: {
+          s9: { date: "2026-10-14", courseName: "Physics", type: "Summative", emails: ["kim@kis.ac"], lastAddedAt: 9 },
+        },
+      },
+    });
+    await settle();
+    const accept = screen.getByText("Accept", { selector: ".suggestions-accept-btn" });
+    expect(screen.queryByText("Summative", { selector: ".suggestions-accept-btn" })).toBe(null);
+    fireEvent.click(accept);
+    await settle();
+    expect(writesTo(page, "assessments")).toEqual([
+      { op: "add", collection: "assessments", value: { type: "In-Class", date: "2026-10-14", courseName: "Physics", createdAt: expect.any(Number) } },
+    ]);
+  });
+
   it("saves the day's bell schedule from its popup", async () => {
     const page = renderPage({
       collections: {

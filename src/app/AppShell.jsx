@@ -45,6 +45,14 @@ export function AppShell({ firebaseReady, demo }) {
   // change made elsewhere): the student's tabs are drawn afresh from it, as
   // the old pages were reloaded.
   const version = useSyncExternalStore(sessionStore.subscribe, sessionStore.version);
+  // Whether this draw of the tab replaces one that was already open (the data
+  // was replaced under it), as opposed to arriving at the tab: the rise that
+  // plays on arriving is skipped for it (see page-enter in base.css, and rise in
+  // calendar.js). Kept for as long as that draw lasts.
+  const lastDraw = useRef({ route, version, redraw: false });
+  if (lastDraw.current.route !== route) lastDraw.current = { route, version, redraw: false };
+  else if (lastDraw.current.version !== version) lastDraw.current = { route, version, redraw: true };
+  const redraw = lastDraw.current.redraw;
   const hideAdminTabs = useSyncExternalStore(subscribePreferences, () => getPreferences().hideAdminTabs);
   const studentTab = STUDENT_TABS.has(route);
   // Inter is made sure of as soon as another tab is drawn, before anything in
@@ -101,11 +109,11 @@ export function AppShell({ firebaseReady, demo }) {
       <Suspense fallback={null}>
       <Routes>
         <Route path="/" element={<Navigate to="/domain" replace />} />
-        <Route path="/calendar" element={<CalendarRoute key={version} ready={ready} />} />
-        <Route path="/calendar-demo" element={<CalendarRoute key={version} ready={ready} />} />
+        <Route path="/calendar" element={<CalendarRoute key={version} ready={ready} redraw={redraw} />} />
+        <Route path="/calendar-demo" element={<CalendarRoute key={version} ready={ready} redraw={redraw} />} />
         <Route path="/gpa" element={<GpaRoute key={version} ready={ready} />} />
         <Route path="/assessments" element={<AssessmentsRoute firebaseReady={firebaseReady} />} />
-        <Route path="*" element={<DomainRoute key={version} ready={ready} />} />
+        <Route path="*" element={<DomainRoute key={version} ready={ready} redraw={redraw} />} />
       </Routes>
       </Suspense>
       <Popups store={popupStore} page={page} />

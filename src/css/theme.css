@@ -37,6 +37,12 @@
   --color-popover-outline: rgba(15, 23, 42, 0.28);
   /* The menus' edge: thicker than the pickers' hairline, so fainter. */
   --color-popup-outline: rgba(15, 23, 42, 0.12);
+  /* The edge of the account menu and the add popup as a gradient, brighter
+     (fainter) at the top left than at the bottom right, so it reads even with
+     the shadow falling to one side. Averages the flat edge above. Very slight on
+     purpose. (The Calendar's four-option menu keeps the flat edge.) */
+  --popup-edge-start: rgba(15, 23, 42, 0.07);
+  --popup-edge-end: rgba(15, 23, 42, 0.16);
   --color-focus-highlight: rgba(0, 41, 107, 0.08);
   --preview-opacity: 0.35;
   /* Same in both themes, so the dark block doesn't override it. */
@@ -111,6 +117,9 @@
   --color-shadow-popover: rgba(255, 255, 255, 0.08);
   --color-popover-outline: rgba(255, 255, 255, 0.3);
   --color-popup-outline: rgba(255, 255, 255, 0.14);
+  /* On the dark page a brighter edge is a stronger white one. */
+  --popup-edge-start: rgba(190, 190, 190, 0.2);
+  --popup-edge-end: rgba(255, 255, 255, 0.09);
 
   /* Muted a step below the light theme's contrast, which glares on a dark
      surface; the circle stays light enough for the black check. */

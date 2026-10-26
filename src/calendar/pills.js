@@ -38,8 +38,12 @@ export function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseC
   const kind = category === "assignment" ? "assignment" : category === "formative" ? "formative" : "summative";
   // Assigned outright, so it must come before any classList.add.
   pill.className = `assessment-chip assessment-chip--${kind}`;
-  // A reassessment's name already says so.
-  if (category !== "reassessment") {
+  // Custom types ("Reassessment") look like a standard style, so the type stays
+  // in the name.
+  const isCustomType = !["In-Class", "Testing Block", "Summative", "Formative", "Assignment"].includes(entry.type);
+  // A reassessment's name already says so, and a custom type isn't any of
+  // these, however it's drawn.
+  if (category !== "reassessment" && !isCustomType) {
     // A Testing Block counts as a summative. _noTooltip skips it where the
     // pill's text already says the same.
     attachHoverTooltip(pill, { summative: "Summative", formative: "Formative", assignment: "Assignment" }[category], {
@@ -63,9 +67,6 @@ export function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseC
   nameEl.className = "assessment-pill-name";
   const nameText = document.createElement("span");
   nameText.className = "assessment-pill-text";
-  // Custom types ("Reassessment") look like a standard style, so the type stays
-  // in the name.
-  const isCustomType = !["In-Class", "Testing Block", "Summative", "Formative", "Assignment"].includes(entry.type);
   const shortLabel = shortCourseName(label);
   const withType = (name) => (isCustomType ? `${name} ${entry.type}` : name);
   nameEl.appendChild(nameText);
@@ -348,10 +349,8 @@ export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames,
   }
   cell.appendChild(head);
 
-  // A stable sort, so the rest keep their order.
-  const entries = (entriesByDate[iso] || [])
-    .slice()
-    .sort((a, b) => Number(b.type === "Testing Block") - Number(a.type === "Testing Block"));
+  // Already in a day's order (sortDayEntries, in the calendar's render).
+  const entries = entriesByDate[iso] || [];
 
   const pillList = document.createElement("div");
   pillList.className = "assessment-week-day-pills";

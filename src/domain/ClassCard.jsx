@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { fromISODate } from "../core/dates.js";
 import { gradeIconPath } from "../core/grades.js";
@@ -274,6 +274,9 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
 
   const toggleLink = (row) => {
     change((draft, ctx) => toggleFormativeLink(draft, row, ctx));
+    // Linking or unlinking changes the grade, so under Privacy Blur it shows for
+    // a moment, as it does after typing a score and pressing Enter.
+    revealDomainScoreBriefly(elRef.current);
     // The roll can reflow the card while it plays, so the button follows the
     // row for that whole time instead of snapping.
     const trackUntil = performance.now() + ROLL_DURATION_MS + 100;
@@ -404,6 +407,10 @@ function ScoreRow({ cell, on }) {
           className={iconClass}
           src={icon ? gradeIconPath(icon.slug) : TRANSPARENT_ICON}
           alt={icon ? icon.label : ""}
+          // The size .letter-grade gives it, as attributes too: until the stylesheet
+          // has applied, the picture would otherwise draw at its own size.
+          width={34}
+          height={34}
           data-slug={icon ? icon.slug : undefined}
           onMouseDown={on.onMouseDownIcon}
         />
@@ -465,6 +472,19 @@ function LinkButton({ row, applied, card, onToggle }) {
     }
   };
   const rowEl = () => cellInput(card.current, "formative", row)?.closest("li");
+  // Under Privacy Blur, hovering the button shows the two scores it joins, the
+  // formative and the summative of its row (.link-hover, in domain.css). The
+  // button is outside both rows, so :hover can't reach them.
+  const revealed = useRef([]);
+  const reveal = (on) => {
+    revealed.current.forEach((li) => li.classList.remove("link-hover"));
+    revealed.current = on
+      ? ["formative", "summative"].map((box) => cellInput(card.current, box, row)?.closest("li")).filter(Boolean)
+      : [];
+    revealed.current.forEach((li) => li.classList.add("link-hover"));
+  };
+  // Not left on if the button goes while hovered (the card redrawing under it).
+  useEffect(() => () => reveal(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <button
       type="button"
@@ -480,8 +500,14 @@ function LinkButton({ row, applied, card, onToggle }) {
         event.stopPropagation();
         onToggle();
       }}
-      onMouseEnter={() => rowEl()?.classList.add("force-original")}
-      onMouseLeave={() => rowEl()?.classList.remove("force-original")}
+      onMouseEnter={() => {
+        rowEl()?.classList.add("force-original");
+        reveal(true);
+      }}
+      onMouseLeave={() => {
+        rowEl()?.classList.remove("force-original");
+        reveal(false);
+      }}
     >
       <img className="formative-link-icon" alt="" src={uiIcon(applied ? "unlink.png" : "link.png")} />
     </button>

@@ -164,6 +164,17 @@ const FORMATIVE_DATE_ICON_FADE_MS = 120;
 // swap called again mid-way (spam clicking the link button) reverses them
 // from where they are instead of jumping. onUnlinked runs once it settles
 // unlinked, to empty the original score (which the swap kept showing).
+// Sets the input's text color with no transition. Under Privacy Blur a score
+// eases its color over 0.2s (domain.css), so handing the number to a stand-in
+// drawn over it, or taking it back, left both faint for that moment: the blurred
+// number vanished and then faded back in, like a blink.
+function setColorAtOnce(input, color) {
+  input.style.transition = "none";
+  input.style.color = color;
+  void input.offsetWidth; // so the change lands before the transition is back
+  input.style.transition = "";
+}
+
 export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, onUnlinked) {
   const swap = input._swap;
   if (swap) {
@@ -183,7 +194,7 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
     clearTimeout(input._rollOverlayTimer);
     input._rollOverlay.remove();
     input._rollOverlay = null;
-    input.style.color = "";
+    setColorAtOnce(input, "");
   }
   // Keeps the original score visible for the whole swap, whatever the hover
   // state or a date in the row.
@@ -232,7 +243,7 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
     timing
   );
 
-  input.style.color = "transparent";
+  setColorAtOnce(input, "transparent");
 
   // The date button sits where the small number grows.
   const dateBtn = input.parentElement.querySelector(".score-date-btn");
@@ -259,7 +270,7 @@ export function endFormativeSwap(input) {
   swap.ghostAnim.cancel();
   swap.spanAnim.cancel();
   swap.ghost.remove();
-  input.style.color = "";
+  setColorAtOnce(input, "");
   swap.row.classList.remove("swap-animating");
   if (swap.dateBtn) {
     swap.dateBtn.style.transition = "";
@@ -435,9 +446,15 @@ function updateDomainBadge(card, domain, revealStyle) {
 
     badge = document.createElement("img");
     badge.className = "letter-grade letter-grade--lg";
+    // The size .letter-grade--lg gives it, as attributes too, so the picture
+    // can't draw at its own size before the stylesheet applies.
+    badge.width = 54;
+    badge.height = 54;
 
     const fadeLayer = document.createElement("img");
     fadeLayer.className = "letter-grade letter-grade--lg letter-grade-lg-fade";
+    fadeLayer.width = 54;
+    fadeLayer.height = 54;
     fadeLayer.alt = "";
     fadeLayer.setAttribute("aria-hidden", "true");
 
@@ -452,8 +469,18 @@ function updateDomainBadge(card, domain, revealStyle) {
     crossfadeBadgeIcon(wrap, badge, tier);
   }
 
+  // Drawing the card as the page loads: the number goes from the "--" placeholder
+  // (never blurred) to blurred under Privacy Blur, and once the page has
+  // settled that ease would play, blurring the grade in a moment after it
+  // appeared. Not eased here; later changes still are.
+  const drawing = revealStyle === "instant";
+  if (drawing) gradeValueEl.style.transition = "none";
   delete gradeValueEl.dataset.empty;
   animateNumberChange(gradeValueEl, String(rounded), revealStyle);
+  if (drawing) {
+    void gradeValueEl.offsetWidth;  // so the blur applies before the ease is back
+    gradeValueEl.style.transition = "";
+  }
 }
 
 // With nothing scored, the numbers stay hidden behind "No grades yet";

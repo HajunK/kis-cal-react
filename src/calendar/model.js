@@ -74,6 +74,34 @@ export function assessmentCategory(entry) {
   return "formative";
 }
 
+// How a day's pills are stacked, top to bottom: Testing Blocks, In-Classes,
+// Formatives, every other type of assessment, then assignments (the student's
+// own). Rank 0 to 4. A plain "Summative" (an older type) is drawn exactly like an
+// In-Class, so it goes with the In-Classes rather than under "other".
+export function dayPillRank(entry) {
+  if (assessmentCategory(entry) === "assignment") return 4;
+  if (entry.type === "Testing Block") return 0;
+  if (entry.type === "In-Class" || entry.type === "Summative") return 1;
+  if (entry.type === "Formative") return 2;
+  return 3;
+}
+
+// By date, then within a day by dayPillRank, then (among the same kind) by the
+// period of the class, 1 to 8: the A day's classes are periods 1 to 4 and the
+// B day's 5 to 8, so this is the order they meet that day. Anything still tied
+// keeps the order it came in. periodIndexOf(entry) is the 0-based period of the
+// entry's class.
+export function sortDayEntries(entries, periodIndexOf) {
+  return entries
+    .slice()
+    .sort(
+      (a, b) =>
+        (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) ||
+        dayPillRank(a) - dayPillRank(b) ||
+        periodIndexOf(a) - periodIndexOf(b)
+    );
+}
+
 export function stripDivisionSuffix(courseName) {
   return courseName.replace(/ \([^)]*\)$/, "");
 }

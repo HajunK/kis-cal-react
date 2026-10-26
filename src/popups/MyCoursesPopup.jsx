@@ -1,7 +1,7 @@
 import { useLayoutEffect, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { expandCourseNames, findCourseCatalogEntry } from "../core/catalog.js";
-import { matchCourses } from "./courseSearch.js";
+import { aliasDivision, matchCourses } from "./courseSearch.js";
 
 const PERIOD_COUNT = 8;
 
@@ -134,6 +134,13 @@ function ScheduleRow({ index, page, open, placeholder, inputRef, onSaved, onNext
   };
 
   const pick = (name) => {
+    // What was typed says which division, if it was an alias ("BC").
+    const division = aliasDivision(name, inputEl.current.value);
+    if (division) {
+      const all = page.divisions();
+      all[index] = division;
+      page.saveDivisions(all);
+    }
     // Into the field at once, not on the next render: Enter goes straight on
     // to the next period, and the blur that causes checks what the field
     // holds (half-typed, it would be rejected and cleared).

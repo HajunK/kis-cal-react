@@ -4,6 +4,7 @@ import { guideCard, skeletonCard } from "./cards.js";
 import { loadGuides } from "./data.js";
 import { openEditor } from "./editor.js";
 import { visibleGuides } from "./guides.js";
+import { loadViewCounts } from "./views.js";
 import { maybeAdmin, signIn, signOut, watchAdmin } from "./session.js";
 
 const $ = (id) => document.getElementById(id);
@@ -72,6 +73,38 @@ async function refresh() {
   }
 }
 
+// For an admin: how many different browsers have read each guide, which a guide
+// page of its own (like /biology) shows here too.
+async function showViews() {
+  const box = $("views");
+  if (!box.hidden) {
+    box.hidden = true;
+    return;
+  }
+  const note = $("views-note");
+  const list = $("views-list");
+  box.hidden = false;
+  note.textContent = "Counting…";
+  list.replaceChildren();
+  try {
+    const counts = await loadViewCounts();
+    const total = counts.reduce((sum, row) => sum + row.views, 0);
+    note.textContent = counts.length === 0 ? "No one has read a guide yet." : `${total} ${total === 1 ? "reader" : "readers"} in all. Each browser counts once per guide.`;
+    list.replaceChildren(
+      ...counts.map((row) => {
+        const item = document.createElement("li");
+        const title = (guides.find((guide) => guide.id === row.guide) || {}).title;
+        const link = Object.assign(document.createElement("a"), { href: `/${encodeURIComponent(row.guide)}`, textContent: title || row.guide });
+        item.append(link, Object.assign(document.createElement("span"), { textContent: String(row.views) }));
+        return item;
+      })
+    );
+  } catch (error) {
+    console.error("Couldn't load views:", error);
+    note.textContent = "Couldn't load the counts.";
+  }
+}
+
 function edit(guide) {
   openEditor({ guide, onSaved: refresh, onDeleted: refresh });
 }
@@ -81,6 +114,7 @@ function setAdmin(next, rejected) {
   if (rejected) $("admin-note").textContent = "That account isn't an admin's. ";
   else if (next) $("admin-note").textContent = "";
   $("admin-actions").hidden = !next;
+  if (!next) $("views").hidden = true;
   $("sign-in").hidden = next;
   if (next !== admin) {
     admin = next;
@@ -108,6 +142,7 @@ $("sort").addEventListener("change", (event) => {
 });
 
 $("new-guide").addEventListener("click", () => openEditor({ onSaved: refresh }));
+$("show-views").addEventListener("click", showViews);
 $("sign-in").addEventListener("click", async () => {
   $("admin-note").textContent = "";
   try {

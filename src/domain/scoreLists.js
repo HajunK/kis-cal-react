@@ -26,10 +26,24 @@ export function attachScoreScrollBlur(box, list, blur) {
     place();
   };
 
+  // The first copy (and the changes drawing the card makes) wait until the card
+  // has been painted: the copy only shows where rows scroll up under the label,
+  // so nothing's lost by it arriving a frame later, and drawing it first held
+  // up the card itself. After that it's made in the next frame, as before.
   let frame = 0;
+  let timer = 0;
+  let painted = false;
   const recopySoon = () => {
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(recopy);
+    clearTimeout(timer);
+    frame = requestAnimationFrame(() => {
+      if (painted) recopy();
+      else
+        timer = setTimeout(() => {
+          painted = true;
+          recopy();
+        }, 0);
+    });
   };
   new MutationObserver(recopySoon).observe(list, {
     childList: true,

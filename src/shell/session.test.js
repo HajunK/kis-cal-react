@@ -151,6 +151,30 @@ describe("a change made elsewhere", () => {
     expect(data.sessionStore.version()).toBe(shown + 1);
   });
 
+  it("is saved once however many times it's asked for, after a moment, or at once when flushed", async () => {
+    const { data } = await signedIn();
+    const usersWrites = () => fb.writes.filter((write) => write.collection === "users").length;
+    const before = usersWrites();
+    data.appData.periods[0] = "Chinese";
+    data.pushDataToCloud();
+    data.appData.periods[1] = "Biology";
+    data.pushDataToCloud();
+    // Waiting, but counted as on its way, so a cloud copy arriving isn't taken
+    // for newer than this tab's.
+    expect(data.savesInFlight()).toBe(1);
+    expect(usersWrites()).toBe(before);
+    data.flushPendingSave();
+    await flush();
+    await flush();
+    expect(usersWrites()).toBe(before + 1);
+    expect(fb.writes.filter((write) => write.collection === "users").at(-1).value.periods.slice(0, 2)).toEqual(["Chinese", "Biology"]);
+    expect(data.savesInFlight()).toBe(0);
+    // Nothing left to flush.
+    data.flushPendingSave();
+    await flush();
+    expect(usersWrites()).toBe(before + 1);
+  });
+
   it("isn't this tab's own save coming back", async () => {
     const { data } = await signedIn();
     const shown = data.sessionStore.version();
@@ -190,6 +214,10 @@ describe("signing out and in", () => {
     await flush();
     expect(data.appData.periods[0]).toBe("Chinese");
     expect(session.sessionState.get().ready).toBe(true);
+    // Saves wait a moment, to come in one go; this one is made now.
+    data.flushPendingSave();
+    await flush();
+    await flush();
     await flush();
     const saved = fb.writes.filter((write) => write.collection === "users" && write.value.periods);
     expect(saved.at(-1).value.periods[0]).toBe("Chinese");

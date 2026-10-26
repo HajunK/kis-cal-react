@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFirestore } from "../test/fakeFirebase.js";
 import {
   acceptSuggestion,
+  acceptedType,
   addAssessment,
   clearDaySchedule,
   declineSuggestion,
@@ -135,6 +136,31 @@ describe("suggestions", () => {
     ]);
     // Shown on the calendar before the suggestion is deleted.
     expect(added[0][1]).toBe(2);
+  });
+
+  it("goes in as In-Class when a Tuesday, Wednesday or Thursday summative is accepted", () => {
+    // 2026-10-13 is a Tuesday, the 14th a Wednesday, the 15th a Thursday.
+    for (const date of ["2026-10-13", "2026-10-14", "2026-10-15"]) {
+      expect(acceptedType({ ...suggestion, date })).toBe("In-Class");
+    }
+  });
+
+  it("stays as suggested on any other day, and for any other type", () => {
+    // Monday the 12th, Friday the 16th, Saturday the 17th, Sunday the 18th.
+    for (const date of ["2026-10-12", "2026-10-16", "2026-10-17", "2026-10-18"]) {
+      expect(acceptedType({ ...suggestion, date })).toBe("Summative");
+    }
+    for (const type of ["Formative", "Reassessment", "In-Class", "Testing Block"]) {
+      expect(acceptedType({ ...suggestion, date: "2026-10-14", type })).toBe(type);
+    }
+  });
+
+  it("accepts a Wednesday summative onto the calendar as In-Class", async () => {
+    const wednesday = { ...suggestion, date: "2026-10-14" };
+    const db = fakeFirestore({ suggested: { s1: wednesday } });
+    await acceptSuggestion(db, wednesday, acceptedType(wednesday), () => {});
+    await flush();
+    expect(db.writes[0]).toEqual({ op: "add", collection: "assessments", value: { type: "In-Class", date: "2026-10-14", courseName: "Geometry", createdAt: 1000 } });
   });
 
   it("declines by deleting only the suggestion", async () => {

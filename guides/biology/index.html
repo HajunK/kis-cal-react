@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Biogeochemical</title>
+  <link rel="icon" href="/icons/page-icon.png" />
+  <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/guides.css" />
+  <style>
+    /* Pure white, and the pictures twice the usual width (760px) where the window
+       has room; narrower windows fit them to the width. */
+    html,
+    body {
+      background: #ffffff;
+    }
+    /* The pictures are 65% of 1520px wide (or of the window's width if that is
+       less); --zoom scales that, and past the window the page scrolls sideways. */
+    .article {
+      max-width: none;
+      width: max-content;
+      min-width: 100%;
+      /* The zoom control (from /js/zoom.js) floats over the picture's own margin. */
+      padding-top: 16px;
+      padding-bottom: 0;
+    }
+    .prose img {
+      width: calc(min(100vw - 2 * var(--page-pad), 1520px) * 0.65 * var(--zoom, 1));
+      max-width: none;
+      margin-inline: auto;
+    }
+    /* Sized so the title is about three quarters as wide as the diagrams at 100%;
+       the zoom doesn't change it. */
+    .prose img.heading {
+      margin-top: 0;
+      width: calc(min(100vw - 2 * var(--page-pad), 1520px) * 0.65 * 0.75);
+    }
+    /* The key to the colors, for Exemplary only; its box is about as wide as the
+       title's picture was. */
+    .prose img.legend {
+      width: calc(min(100vw - 2 * var(--page-pad), 1520px) * 0.65 * var(--zoom, 1) * 0.74);
+      margin-top: 0;
+    }
+    /* Proficient or Exemplary, styled as KIS Cal's Settings options (the app's
+       segmented control): a gray pill, a light blue thumb that slides to the
+       choice, 14px semibold labels, and a gray wash on the one you hover. */
+    .level {
+      --gray-lighter: #eeeeee;
+      --segment-active: #90c2ff;
+      --hover-overlay: color-mix(in srgb, #c3c9d6 50%, transparent);
+      position: relative;
+      isolation: isolate;
+      display: flex;
+      gap: 4px;
+      width: fit-content;
+      max-width: 100%;
+      margin: 8px auto 16px;
+      padding: 4px;
+      background: var(--gray-lighter);
+      border-radius: 999px;
+    }
+    .level-thumb {
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 0;
+      z-index: -1;
+      border-radius: 999px;
+      background: var(--segment-active);
+      transition: left 0.2s ease, width 0.2s ease;
+    }
+    /* A light line after the selector, as wide as the diagrams. */
+    .level-rule {
+      width: calc(min(100vw - 2 * var(--page-pad), 1520px) * 0.65 * var(--zoom, 1));
+      max-width: none;
+      height: 0;
+      margin: 24px auto;
+      border: 0;
+      border-top: 2px solid var(--border);
+    }
+    #levels {
+      position: relative;
+    }
+    /* Nothing below the last picture of either level. */
+    .pane .prose:last-child img:last-child {
+      margin-bottom: 0;
+    }
+    /* While the panes swap, the one going out lies over the one coming in, and
+       what slides past the edges is clipped. */
+    #levels.levels--moving {
+      overflow: clip;
+    }
+    .pane--leaving {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      pointer-events: none;
+    }
+    .level-label {
+      margin: 40px 0 0;
+      text-align: center;
+      color: #4a4741;
+      font-size: 15px;
+    }
+    .level button {
+      position: relative;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: #111111;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    /* The hover wash sits under the thumb, so the thumb slides over it. */
+    .level button::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      border-radius: inherit;
+      background: transparent;
+    }
+    .level button[aria-checked="false"]:hover::before {
+      background: var(--hover-overlay);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .level-thumb {
+        transition: none;
+      }
+    }
+    /* The pictures can't be dragged off the page or selected. */
+    .prose img {
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- A page of its own rather than a Firestore guide, so it needs no Storage
+       or sign-in. Hosting serves it ahead of the guide.html rewrite. -->
+  <article class="article">
+    <div class="prose">
+      <img class="heading" src="/biology/heading.png" width="1266" height="322" alt="Get an A on Biogeochemical Cycles. #1 Hajun study guide according to my friends." />
+    </div>
+    <!-- Right below the heading, which stays whichever is chosen. -->
+    <p class="level-label">I'm aiming for...</p>
+    <div class="level" id="level" role="radiogroup" aria-label="Proficient or Exemplary" data-level="proficient">
+      <span class="level-thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" id="level-proficient" aria-checked="true">Proficient (3/4)</button>
+      <button type="button" role="radio" id="level-exemplary" aria-checked="false" tabindex="-1">Exemplary (4/4)</button>
+    </div>
+    <hr class="level-rule" />
+    <!-- What's below the line: one pane per level, which swipe in and out. -->
+    <div id="levels">
+    <div class="pane" id="pane-exemplary" hidden>
+    <!-- Exemplary only. -->
+    <div class="prose" id="legend">
+      <img class="legend" src="/biology/legend.png" width="1174" height="753" alt="Key: black text labels fluxes; a solid red line is a flux learned in class; a dotted red line is a flux not learned in class; blue text describes things; green text describes fluxes; orange text marks major sinks and sources; purple text marks human impacts. There are multiple correct ways to get an exemplary! Be creative!" />
+    </div>
+    <div class="prose" id="exemplary">
+      <img src="/biology/carbon-cycle.png" width="1326" height="1492" alt="The carbon cycle: carbon dioxide moves between the atmosphere, forests, animals, the ocean, fossil fuels and rock through photosynthesis, cellular respiration, consumption, decomposition, combustion, fossilization, sedimentation, subduction, metamorphism and volcanic outgassing." />
+      <img src="/biology/phosphorus-cycle.png" width="1312" height="1244" alt="The phosphorus cycle: phosphate moves from rocks by weathering and runoff into soil and water, is taken up by plants and animals, and returns through decomposition, sedimentation, burial and geological uplift. Fertilizer runoff can cause eutrophication." />
+      <img src="/biology/nitrogen-cycle.png" width="1338" height="1326" alt="The nitrogen cycle: nitrogen gas is fixed into ammonia, then ammonium, nitrite and nitrate by bacteria, taken up by plants, passed to animals, and returned to the air by denitrification. Combustion, acid rain and fertilizer runoff are human impacts." />
+    </div>
+    </div>
+    <div class="pane" id="pane-proficient">
+    <div class="prose" id="proficient">
+      <img src="/biology/proficient-water-cycle.png" width="1224" height="1290" alt="The water cycle: the sun's heat drives evaporation and transpiration; condensation forms clouds; precipitation falls and returns by streamflow and groundwater flow to a collection sink such as the ocean. Human impacts: deforestation lowers transpiration and changes climate; urbanization lowers infiltration and groundwater." />
+      <img src="/biology/proficient-carbon-cycle.png" width="1224" height="1548" alt="The carbon cycle: carbon dioxide is taken in by photosynthesis in plants and algae, returned by respiration, decomposition and combustion, and locked away as fossils and fossil fuels. Human impacts: burning fossil fuels raises carbon dioxide and greenhouse gas; deforestation lowers carbon storage." />
+      <img src="/biology/proficient-nitrogen-cycle.png" width="1224" height="1538" alt="The nitrogen cycle: nitrogen fixation turns nitrogen gas into ammonia; ammonification and two steps of nitrification make ammonium, nitrite and nitrate; plants absorb nitrate by assimilation; denitrification returns nitrogen gas to the air. Human impacts: fertilizer use causes eutrophication; artificial nitrogen fixing from burning fossil fuels warms the planet and weakens the ozone layer." />
+      <img src="/biology/proficient-phosphorus-cycle.png" width="1224" height="1376" alt="The phosphorus cycle: weathering frees phosphate from rock; it moves by runoff, infiltration and leaching, is taken up by plants and animals, returns by decomposition, settles by sedimentation and returns to land by geological uplift. Human impact: fertilizer use raises phosphorus in runoff and causes eutrophication." />
+    </div>
+    </div>
+    </div>
+  </article>
+  <!-- The glass zoom control, the back arrow and the bottom pill come from one shared script, with their look from guides.css, so every guide has them. -->
+  <script type="module" src="/js/guide-ui.js"></script>
+  <script>
+    document.addEventListener("dragstart", (event) => {
+      if (event.target.tagName === "IMG") event.preventDefault();
+    });
+
+    const level = document.getElementById("level");
+    const thumb = level.querySelector(".level-thumb");
+    // The thumb takes the left and width of the chosen option, as in the app.
+    const place = (animate) => {
+      const active = level.querySelector('[aria-checked="true"]');
+      if (!animate) thumb.style.transition = "none";
+      thumb.style.left = active.offsetLeft + "px";
+      thumb.style.width = active.offsetWidth + "px";
+      if (!animate) {
+        void thumb.offsetWidth;
+        thumb.style.transition = "";
+      }
+    };
+    // Swipes the content below the line to the chosen level's pane: Exemplary is
+    // the option on the right, so its pane comes in from the right and the old one
+    // leaves to the left; going back to Proficient is the reverse. As with the
+    // app's own swipes: 220ms, 24px, the old pane out in 0.7 of that, and the
+    // height eased to the new pane's.
+    const levels = document.getElementById("levels");
+    const panes = { proficient: document.getElementById("pane-proficient"), exemplary: document.getElementById("pane-exemplary") };
+    const SWIPE_MS = 220;
+    const SWIPE_SHIFT = 24;
+    let swap = 0; // which swipe is current, so a slower one's clean-up can't undo a newer
+    const swipeTo = (name) => {
+      const incoming = panes[name];
+      const outgoing = panes[name === "proficient" ? "exemplary" : "proficient"];
+      const mine = ++swap;
+      // Whatever was still moving is put straight: its animations are dropped (a
+      // finished fill would otherwise hold the pane transparent), the one that was
+      // leaving is hidden, and the height is left to the content.
+      for (const pane of Object.values(panes)) {
+        pane.getAnimations().forEach((animation) => animation.cancel());
+        pane.classList.remove("pane--leaving");
+      }
+      levels.getAnimations().forEach((animation) => animation.cancel());
+      levels.classList.remove("levels--moving");
+      const wasShowing = !outgoing.hidden || incoming.hidden;
+      const still = !incoming.animate || matchMedia("(prefers-reduced-motion: reduce)").matches || !wasShowing;
+      if (still) {
+        outgoing.hidden = true;
+        incoming.hidden = false;
+        return;
+      }
+      const direction = name === "exemplary" ? 1 : -1;
+      const before = levels.offsetHeight;
+      outgoing.classList.add("pane--leaving");
+      incoming.hidden = false;
+      const after = incoming.offsetHeight;
+      levels.classList.add("levels--moving");
+      const options = { duration: SWIPE_MS, easing: "ease" };
+      const done = () => {
+        if (mine !== swap) return;
+        outgoing.hidden = true;
+        outgoing.classList.remove("pane--leaving");
+        levels.classList.remove("levels--moving");
+        // Nothing is left holding a pane at its end state.
+        incoming.getAnimations().forEach((animation) => animation.cancel());
+        outgoing.getAnimations().forEach((animation) => animation.cancel());
+      };
+      levels.animate([{ height: before + "px" }, { height: after + "px" }], options);
+      incoming.animate(
+        [{ opacity: 0, transform: `translateX(${direction * SWIPE_SHIFT}px)` }, { opacity: 1, transform: "translateX(0)" }],
+        options
+      );
+      const leaving = outgoing.animate(
+        [{ opacity: 1, transform: "translateX(0)" }, { opacity: 0, transform: `translateX(${-direction * SWIPE_SHIFT}px)` }],
+        { duration: SWIPE_MS * 0.7, easing: "ease", fill: "forwards" }
+      );
+      // After the longer of the two (the incoming one's 220ms).
+      setTimeout(done, SWIPE_MS + 20);
+      leaving.finished.catch(() => {});
+    };
+    const choose = (name) => {
+      const proficient = name === "proficient";
+      level.dataset.level = name;
+      swipeTo(name);
+      for (const other of ["proficient", "exemplary"]) {
+        const button = document.getElementById("level-" + other);
+        button.setAttribute("aria-checked", String(other === name));
+        button.tabIndex = other === name ? 0 : -1;
+      }
+      place(true);
+    };
+    place(false);
+    // Again once the font has loaded, since its widths differ from the fallback's.
+    if (document.fonts) document.fonts.ready.then(() => place(false));
+    addEventListener("resize", () => place(false));
+    for (const name of ["proficient", "exemplary"]) {
+      document.getElementById("level-" + name).addEventListener("click", () => choose(name));
+    }
+    // Arrow keys move between the two, as in any radio group.
+    level.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const name = level.dataset.level === "proficient" ? "exemplary" : "proficient";
+      choose(name);
+      document.getElementById("level-" + name).focus();
+    });
+  </script>
+</body>
+</html>

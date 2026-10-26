@@ -115,6 +115,21 @@ describe("MyCoursesPopup", () => {
     expect(page.refreshes).toEqual(["calendar", "domain"]);
   });
 
+  it("selects the division an alias stands for when the course is picked by it", () => {
+    const page = fakePage();
+    render(<MyCoursesPopup page={page} open />);
+    fireEvent.change(input(0), { target: { value: "BC" } });
+    fireEvent.mouseDown(document.querySelector(".schedule-dropdown-item"));
+    expect(page.appData.periods[0]).toBe("AP Calculus");
+    expect(page.appData.periodDivisions[0]).toBe("BC");
+    expect(row(0).querySelector(".division-option--selected").textContent).toBe("BC");
+
+    // Typing the course's own name picks no division.
+    fireEvent.change(input(1), { target: { value: "AP Calc" } });
+    fireEvent.mouseDown(document.querySelector(".schedule-dropdown-item"));
+    expect(page.appData.periodDivisions[1] || "").toBe("");
+  });
+
   it("clears a saved division the course doesn't have, on opening", () => {
     const page = fakePage({ periods: ["Geometry", "English"], periodDivisions: ["AB", "10"] });
     render(<MyCoursesPopup page={page} open />);

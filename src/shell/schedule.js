@@ -22,10 +22,13 @@ export function currentScheduleBlock() {
   // Fractional so the countdown ticks smoothly within each minute.
   const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-  // Advisory and Academic Support don't count down.
+  // Every event on the day counts down, so the schedule can be opened during
+  // each of them.
   for (const event of scheduleForDate(iso)) {
     let block = null;
     if (event.key === "testingBlock") block = { type: "testing" };
+    else if (event.key === "advisory") block = { type: "advisory" };
+    else if (event.key === "academicSupport") block = { type: "support" };
     else if (event.key.startsWith("period")) block = { type: "class", periodIndex: Number(event.key.slice(6)) - 1 };
     else if (event.key === "block2") block = { type: "lunch" };
     if (!block) continue;

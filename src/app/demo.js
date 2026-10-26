@@ -1,10 +1,10 @@
 // The Calendar demo (/calendar-demo): the real Calendar, filled with made-up
 // data instead of an account's, from calendar-demo.js. Nothing is read from or
-// saved to Firebase. Each visit picks 8 random courses for the 8 periods and
-// scatters random formatives, summatives (in class or in the Testing Block)
-// and reassessments around the coming weeks.
+// saved to Firebase. Every course in the catalog is there at once, each with
+// random formatives, summatives (in class or in the Testing Block)
+// and reassessments scattered around the coming weeks.
 
-import { COURSE_CATALOG } from "../core/catalog.js";
+import { COURSE_CATALOG, effectiveCourseName } from "../core/catalog.js";
 import { fromISODate, toISODate } from "../core/dates.js";
 import { emptyAppData } from "../core/sync.js";
 import { disableFirebase } from "../shell/firebase.js";
@@ -24,10 +24,10 @@ export function startCalendarDemo() {
   const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
   const isWeekday = (date) => date.getDay() !== 0 && date.getDay() !== 6;
 
-  // Plain courses only: one with divisions or sections would need one picked.
-  const courses = shuffle(
-    COURSE_CATALOG.filter((course) => course.weight > 0 && !course.divisions && !course.sections).map((course) => course.name)
-  ).slice(0, 8);
+  // Every course, a course with divisions in its first.
+  const catalog = COURSE_CATALOG.filter((course) => course.weight > 0);
+  const courses = catalog.map((course) => course.name);
+  const divisions = catalog.map((course) => (course.divisions ? course.divisions[0] : ""));
 
   // A and B days alternate on weekdays, from six weeks back to ten ahead.
   const today = new Date();
@@ -40,10 +40,10 @@ export function startCalendarDemo() {
     next = next === "A" ? "B" : "A";
   }
 
-  // Periods 1-4 meet on A days, 5-8 on B days.
+  // Every other course meets on A days, the rest on B days.
   const assessments = [];
   courses.forEach((name, periodIndex) => {
-    const dayType = periodIndex < 4 ? "A" : "B";
+    const dayType = periodIndex % 2 === 0 ? "A" : "B";
     const meetingDays = Object.keys(dayTypes).filter((iso) => {
       const date = fromISODate(iso);
       return dayTypes[iso] === dayType && date >= addDays(today, -14) && date <= addDays(today, 35);
@@ -55,7 +55,7 @@ export function startCalendarDemo() {
         const roll = Math.random();
         let type = roll < 0.45 ? "Formative" : roll < 0.8 ? "In-Class" : "Reassessment";
         if (type === "In-Class" && (weekday === 1 || weekday === 5) && Math.random() < 0.5) type = "Testing Block";
-        assessments.push({ id: `demo_${periodIndex}_${index}`, date: iso, courseName: name, type });
+        assessments.push({ id: `demo_${periodIndex}_${index}`, date: iso, courseName: effectiveCourseName(name, divisions[periodIndex]), type });
       });
   });
 
@@ -80,5 +80,6 @@ export function startCalendarDemo() {
   // checking one off) work for the visit without touching a real one.
   const data = emptyAppData();
   data.periods = courses;
+  data.periodDivisions = divisions;
   showWithoutFirebase("demo", data);
 }

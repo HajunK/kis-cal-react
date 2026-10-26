@@ -1,8 +1,11 @@
-// The admin's editor for one guide, in a dialog: its details, a picture for its
-// card, and its text (Markdown) with pictures that go up to Storage from here.
-import { deleteGuide, deleteImages, loadGuide, saveGuide, uploadImage } from "./data.js";
+// The admin's editor for one guide, in a dialog: its details and its text
+// (Markdown). Uploading pictures to Storage (a card picture, and pictures put
+// into the text) is commented out below, since Storage needs the Blaze plan;
+// remove the comments marked "Image upload" to bring it back.
+import { deleteGuide, loadGuide, saveGuide } from "./data.js";
 import { keyProblem, normalizeKey } from "./guides.js";
-import { prepareBodyImage, prepareThumbnail } from "./images.js";
+// Image upload: import { deleteImages, uploadImage } from "./data.js";
+// Image upload: import { prepareBodyImage, prepareThumbnail } from "./images.js";
 
 const KNOWN_ERRORS = [
   [/permission-denied|unauthorized|unauthenticated/i, "You don't have permission to do that. Sign in with an admin account."],
@@ -34,6 +37,7 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
         <div class="field"><label for="ed-test">Test</label><input id="ed-test" type="text" maxlength="60" autocomplete="off" placeholder="Unit 3 test" /></div>
       </div>
       <div class="field"><label for="ed-minutes">Read time (minutes)</label><input id="ed-minutes" type="number" min="0" max="240" step="1" /></div>
+      <!-- Image upload:
       <div class="field">
         <span class="label">Card picture</span>
         <div class="thumb-picker">
@@ -46,13 +50,19 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
           </div>
         </div>
       </div>
+      -->
       <div class="field">
         <label for="ed-body">Guide text</label>
         <textarea id="ed-body" spellcheck="true"></textarea>
+        <!-- Image upload:
         <div class="actions">
           <input id="ed-image" type="file" accept="image/*" hidden />
           <button type="button" class="button" data-add-image>Add image</button>
           <span class="hint">Markdown: # Heading, **bold**, - list, [link](https://…). An added image is put in at the cursor.</span>
+        </div>
+        -->
+        <div class="actions">
+          <span class="hint">Markdown: # Heading, **bold**, - list, [link](https://…).</span>
         </div>
       </div>
       <label class="check"><input id="ed-published" type="checkbox" /> Published (visible to everyone)</label>
@@ -82,6 +92,7 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
   $("[data-delete]").hidden = !guide;
 
   const keyOf = () => (guide ? guide.id : normalizeKey($("#ed-key").value));
+  /* Image upload:
   let pendingThumb = null; // a picked picture, not yet uploaded
   let removeThumb = false;
   let previewUrl = null;
@@ -95,6 +106,8 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
     $("[data-remove-thumb]").hidden = !shown;
   };
   showThumb();
+  */
+  let saved = false;
 
   const setBusy = (busy) => dialog.querySelectorAll("button, input, select, textarea").forEach((control) => (control.disabled = busy));
   const fail = (error) => {
@@ -110,6 +123,7 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
     field.setSelectionRange(at, at);
   });
 
+  /* Image upload:
   $("[data-pick-thumb]").addEventListener("click", () => $("#ed-thumb").click());
   $("#ed-thumb").addEventListener("change", async (event) => {
     const file = event.target.files[0];
@@ -159,17 +173,19 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
       setBusy(false);
     }
   });
+  */
 
   const close = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    // Image upload: if (previewUrl) URL.revokeObjectURL(previewUrl);
     dialog.close();
   };
   $("[data-cancel]").addEventListener("click", close);
-  // However it closes, pictures uploaded here and never saved are cleaned up.
-  dialog.addEventListener("close", () => {
-    if (!saved) deleteImages(sessionImages);
-    dialog.remove();
-  });
+  // Image upload, which also cleans up pictures uploaded and never saved:
+  // dialog.addEventListener("close", () => {
+  //   if (!saved) deleteImages(sessionImages);
+  //   dialog.remove();
+  // });
+  dialog.addEventListener("close", () => dialog.remove());
 
   $("[data-delete]").addEventListener("click", async () => {
     if (!window.confirm(`Delete "${guide.title}"? This can't be undone.`)) return;
@@ -210,6 +226,9 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
         $("#ed-key").focus();
         return;
       }
+      // A guide that already has pictures keeps them as they are.
+      const { thumbnailUrl = "", thumbnailPath = "", imagePaths = [] } = guide || {};
+      /* Image upload:
       let { thumbnailUrl = "", thumbnailPath = "" } = guide || {};
       const unused = [];
       if (pendingThumb || removeThumb) {
@@ -223,9 +242,10 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
         thumbnailPath = uploaded.path;
       }
       // Body pictures the text still uses are kept; the rest go.
-      const body = $("#ed-body").value;
       const bodyImages = [...(guide?.imagePaths || []), ...sessionImages];
       const inUse = (path) => body.includes(encodeURIComponent(path));
+      */
+      const body = $("#ed-body").value;
       const now = Date.now();
       const next = {
         id,
@@ -237,13 +257,14 @@ export function openEditor({ guide = null, onSaved = () => {}, onDeleted = () =>
         published: $("#ed-published").checked,
         thumbnailUrl,
         thumbnailPath,
-        imagePaths: bodyImages.filter(inUse),
+        imagePaths,
+        // Image upload: imagePaths: bodyImages.filter(inUse),
         createdAt: guide?.createdAt || now,
         updatedAt: now,
       };
       await saveGuide(next);
       saved = true;
-      await deleteImages([...unused, ...bodyImages.filter((path) => !inUse(path))]);
+      // Image upload: await deleteImages([...unused, ...bodyImages.filter((path) => !inUse(path))]);
       close();
       onSaved(next);
     } catch (error) {

@@ -111,16 +111,75 @@ firebase.json lists it beside the app's site.
 - An admin signs in with Google (the "Admin sign in" link at the bottom), then
   gets New guide and Edit buttons. The editor shrinks pictures in the browser
   (a 16:9 card picture, body pictures up to 1600 px) and uploads them from there.
+- A guide can also be a page of its own: `guides/biology/index.html` (with its pictures
+  beside it) is served at `/biology` ahead of the rewrite, with no Firestore
+  document or Storage. It isn't in the home grid or the editor, and its key can't
+  also be made as a guide.
+- Counting readers (`js/views.js`, no sign-in): the first time a browser opens a guide it
+  adds `guideViews/<guide key>__<random 32-character browser id>` (the key and the time),
+  kept in localStorage so it happens once per guide per browser; it's skipped for an admin
+  and on localhost. firestore.rules lets anyone create one with exactly that shape and never
+  change or read it back; only an admin can list them. The guides home has a **Views** button
+  for admins that totals them per guide (including a page of its own like `/biology`). It's
+  readers' browsers, not people: clearing site data or switching browser counts again, and
+  anyone could write made-up documents, so treat the numbers as a guide. The rules need
+  deploying (`firebase deploy --only firestore:rules`) before counting works.
+- All the glass controls on a guide page (the zoom control, the round back arrow to KIS
+  Cal, and the bottom pill with the sign-in and star rating) come from one script,
+  `js/guide-ui.js`, styled by guides.css, and nothing about them is in a page's own
+  HTML. `guide.html` (so every guide made in the editor) loads it, and a page of
+  its own, like `/biology`, needs only `<link rel="stylesheet" href="/guides.css" />`
+  and `<script type="module" src="/js/guide-ui.js"></script>`.
+- Every guide page gets a zoom control (50% to 250%, top-right) from `js/zoom.js`
+  and `.zoom` in guides.css, not from the page's own HTML: `guide.html` and any page
+  of its own just load the script. It sets `--zoom` on the page; a guide's text
+  scales through the `.zoomable` class, and `/biology` reads `--zoom` for its pictures.
+- Rating a guide (`js/rating.js`, `js/app-link.js`): signed out, a "Sign in to KIS Cal"
+  pill rises at the bottom when you scroll nearly to the end; signed in, five stars sit
+  beside the back arrow at the top. A rating is one Firestore document,
+  `guideRatings/<guide key>__<user id>` (the key, a whole number 1 to 5 and the time), so
+  each person has one rating per guide, which they can change: firestore.rules lets a
+  signed-in user create and replace their own and never delete it, lets them read only
+  their own, and lets only an admin list or read the rest. It needs `guides.kiscal.app`
+  (and `kiscal-guides.web.app`) in Authentication > Settings > Authorized domains, and
+  `firebase deploy --only firestore:rules`.
+- All the glass controls on a guide page (the zoom control, the round back arrow to KIS
+  Cal, and the bottom pill with the sign-in and star rating) come from one script,
+  `js/guide-ui.js`, styled by guides.css, and nothing about them is in a page's own
+  HTML. `guide.html` (so every guide made in the editor) loads it, and a page of
+  its own, like `/biology`, needs only `<link rel="stylesheet" href="/guides.css" />`
+  and `<script type="module" src="/js/guide-ui.js"></script>`.
+- Every guide page gets a zoom control (50% to 250%, top-right) from `js/zoom.js`
+  and `.zoom` in guides.css, not from the page's own HTML: `guide.html` and any page
+  of its own just load the script. It sets `--zoom` on the page; a guide's text
+  scales through the `.zoomable` class, and `/biology` reads `--zoom` for its pictures.
+- Every guide page ends with a pill that rises when you scroll nearly to the bottom
+  (`js/app-link.js`): "Log in with Google" until you are signed in, then five stars to
+  rate the guide, above "Study Guide made by Hajun Kim". A rating is one Firestore
+  document, `guideRatings/<guide key>__<user id>` (the key, a whole number 1 to 5 and
+  the time), so each person has one rating per guide, which they can change:
+  firestore.rules lets a signed-in user create and replace their own and never
+  delete it, lets them read only their own, and lets only an admin list or read the
+  rest. It needs `guides.kiscal.app` (and
+  `kiscal-guides.web.app`) in Authentication > Settings > Authorized domains, and
+  `firebase deploy --only firestore:rules`. The code is `js/rating.js`.
 - `js/guides.js`, `markdown.js` and `images.js` are plain functions with tests.
+
+Pictures are off for now, since Storage needs the Blaze plan: the editor has no card
+picture or Add image (commented out, marked "Image upload" in `js/editor.js`), and
+firebase.json has no `storage` section, so `firebase deploy` doesn't touch Storage.
+A guide's text can still show a picture from its own address (a Markdown
+`![alt](https://…)` link), and a page like `guides/biology/` carries its own files.
+To bring uploads back: upgrade to Blaze, create the bucket (Firebase console >
+Storage > Get started), put back the commented-out code and the section
+`"storage": { "rules": "storage.rules" }` in firebase.json, then deploy `storage`.
 
 Before the editor can save anything (once):
 
-1. Upgrade the project to the Blaze plan and create the Storage bucket (Firebase
-   console > Storage > Get started).
-2. In Authentication > Settings > Authorized domains, add `guides.kiscal.app`
+1. In Authentication > Settings > Authorized domains, add `guides.kiscal.app`
    and `kiscal-guides.web.app`.
-3. `firebase deploy --only firestore:rules,storage`. This replaces the live
-   rules with the ones in this repo, so check them first.
+2. `firebase deploy --only firestore:rules`. This replaces the live rules with the
+   ones in this repo, so check them first.
 
 Run it locally with `firebase emulators:start --only hosting` (guide addresses
 like `/biology` need Hosting's rewrite; a plain file server only serves the home

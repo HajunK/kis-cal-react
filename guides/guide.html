@@ -12,18 +12,15 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script type="module" src="/js/guide.js"></script>
+  <script type="module" src="/js/guide-ui.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/">KIS Cal <span>Guides</span></a>
-    <div class="search"></div>
-    <div class="admin-actions" id="admin-actions" hidden>
-      <button type="button" class="button" id="edit-guide">Edit guide</button>
-    </div>
-  </header>
+  <!-- Just the document; only an admin sees the Edit button, in the corner. -->
+  <div class="admin-actions admin-actions--corner" id="admin-actions" hidden>
+    <button type="button" class="button" id="edit-guide">Edit guide</button>
+  </div>
   <article class="article" id="article">
-    <a class="back" href="/">All guides</a>
-    <div id="content"></div>
+    <div id="content" class="zoomable"></div>
   </article>
 </body>
 </html>

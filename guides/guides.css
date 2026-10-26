@@ -36,6 +36,42 @@
   box-sizing: border-box;
 }
 
+/* A thin scrollbar with no track color of its own (the page shows through), its
+   thumb well in from the right edge.
+   --scrollbar, its width (set by js/zoom.js), is added as padding on the other
+   side, so what's in the page stays centered in the window. Chrome and Safari
+   take the ::-webkit-scrollbar rules; Firefox the standard properties. */
+html {
+  padding-left: var(--scrollbar, 0px);
+}
+
+html::-webkit-scrollbar {
+  width: 16px;
+}
+
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb {
+  /* The transparent borders make the thumb's gap to the edges: 3px on the left
+     and top and bottom, 8px on the right. The thumb itself is 5px wide. */
+  border: solid transparent;
+  border-width: 3px 8px 3px 3px;
+  /* Each corner is its border plus half the 5px thumb, so the visible shape
+     (inside the borders) comes out fully rounded rather than flat on one side. */
+  border-radius: 5.5px 10.5px 10.5px 5.5px / 5.5px 5.5px 5.5px 5.5px;
+  background: rgba(0, 0, 0, 0.3);
+  background-clip: padding-box;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+  }
+}
+
 html,
 body {
   margin: 0;
@@ -192,6 +228,46 @@ main {
   margin: 24px 0 12px;
   font-size: 18px;
   font-weight: 600;
+}
+
+.views-note {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--muted, #6b7280);
+}
+
+.views-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 420px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.views-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+
+.views-list li:nth-child(odd) {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.views-list a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.views-list span {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .toolbar {
@@ -385,6 +461,15 @@ main {
   max-width: 760px;
   margin: 0 auto;
   padding: 24px var(--page-pad) 80px;
+}
+
+/* In the top-left corner, after the back arrow and the stars (--top-left-end, set
+   by js/app-link.js, is where they end). */
+.admin-actions--corner {
+  position: fixed;
+  top: 12px;
+  left: var(--top-left-end, 68px);
+  z-index: 10;
 }
 
 .back {
@@ -671,4 +756,369 @@ dialog.editor::backdrop {
   .row {
     flex-direction: column;
   }
+}
+
+/* The zoom control every guide page gets, from js/zoom.js. --zoom (0.5 to 2.5)
+   is set on the page; a guide's text scales with it through .zoomable, and a
+   page that lays out its own pictures reads --zoom itself. */
+.zoomable {
+  zoom: var(--zoom, 1);
+}
+
+.zoom {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  /* Glass, as in KIS Cal's add popup: a light tint, a strong blur and a
+     lift in brightness so the pictures show through softly, and a thin rim
+     and hairline for the edge, and a very faint shadow straight down. */
+  --glass-tint: rgba(255, 255, 255, 0.6);
+  --glass-lift: 1.03;
+  --glass-edge-glow: rgba(255, 255, 255, 0.6);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    inset 0 0 6px var(--glass-edge-glow),
+    0 2px 6px rgba(0, 0, 0, 0.06);
+}
+/* The slider: a rounded track, filled with the KIS Cal blue up to the thumb and
+   light blue beyond it, and a white thumb with a thick blue ring. --fill (0% to
+   100%) is set by js/zoom.js. */
+.zoom input {
+  --track: color-mix(in srgb, var(--accent) 18%, #ffffff);
+  --fill: 33%;
+  width: min(140px, 40vw);
+  height: 20px;
+  margin: 0;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.zoom input::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--accent) var(--fill), var(--track) var(--fill));
+}
+
+.zoom input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border: 4px solid var(--accent);
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.zoom input::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+}
+
+.zoom input::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.zoom input::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 4px solid var(--accent);
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.zoom input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+.zoom output {
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The round back arrow to KIS Cal, from js/app-link.js: glass like the zoom
+   control, in the top-left corner. */
+/* The back arrow and the rating stars sit side by side in one fixed group. */
+.app-top-left {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The arrow and "KIS Cal" in one pill-shaped button. */
+.app-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 18px 0 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  --glass-tint: rgba(255, 255, 255, 0.6);
+  --glass-lift: 1.03;
+  --glass-edge-glow: rgba(255, 255, 255, 0.6);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    inset 0 0 6px var(--glass-edge-glow),
+    0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.app-link:hover {
+  color: var(--text);
+}
+
+.app-link svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The outline of the glass controls up top and the bottom pill: 1px, a gradient along the width
+   that is darker gray at the left and right ends and lighter in the middle, the
+   same along the top and the bottom. Drawn as a masked layer, since a border
+   can't take a gradient and keep its rounded corners. */
+.zoom::before,
+.app-link::before,
+.rating-bar::before,
+.app-pill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.14) 50%, rgba(0, 0, 0, 0.22));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+
+/* The star rating beside the back arrow, from js/app-link.js, for someone signed
+   in: a glass pill as tall as the arrow's circle, with five stars. */
+.rating-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  --glass-tint: rgba(255, 255, 255, 0.6);
+  --glass-lift: 1.03;
+  --glass-edge-glow: rgba(255, 255, 255, 0.6);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    inset 0 0 6px var(--glass-edge-glow),
+    0 2px 6px rgba(0, 0, 0, 0.06);
+  /* Fades in when it first appears (.rating-bar--in is added a moment after). */
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.rating-bar--in {
+  opacity: 1;
+}
+
+.rating-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.rating-star {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: #f4b400;
+  cursor: pointer;
+}
+
+.rating-star svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #b8b3a7;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  transition: fill 0.12s ease, stroke 0.12s ease;
+}
+
+.rating-star--on svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.rating-star:disabled {
+  cursor: default;
+}
+
+/* While a rating is being saved (the stars are disabled meanwhile), the pointer
+   shows it's busy until Firebase has answered. */
+.rating-bar--saving,
+.rating-bar--saving .rating-star,
+.rating-bar--saving .rating-star:disabled {
+  cursor: wait;
+}
+
+.rating-star:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* The label left of the stars is open (as wide as its words) until the guide is
+   rated; closing it shrinks its width to nothing, which narrows the pill and
+   hides the words from their right end, as they are left-aligned. JS sets its
+   max-width to the text's own width when it opens it. */
+.rating-note {
+  max-width: 0;
+  margin-right: 0;
+  overflow: hidden;
+  color: var(--text);
+  transition: max-width 0.35s ease, margin-right 0.35s ease;
+}
+
+.rating-note--open {
+  margin-right: 10px;
+}
+
+/* "Sign in to KIS Cal", from js/app-link.js: a glass pill at the bottom of the
+   window, for someone who isn't signed in, in the same glass as the controls up
+   top. It rises into view like KIS Cal's notifications (16px and a fade over
+   0.25s) when the page is scrolled nearly to its end, and is the only thing at
+   the bottom. */
+.app-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  z-index: 10;
+  border-radius: 999px;
+  --glass-tint: rgba(255, 255, 255, 0.6);
+  --glass-lift: 1.03;
+  --glass-edge-glow: rgba(255, 255, 255, 0.6);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    inset 0 0 6px var(--glass-edge-glow),
+    0 2px 6px rgba(0, 0, 0, 0.06);
+  transform: translate(-50%, 16px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.app-pill--visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The pill's own glass is the button, which fills it. */
+.app-pill-login {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.app-pill-login svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* On hover only a faint gray tint over the glass, which stays as it is. */
+.app-pill-login:hover:not(:disabled) {
+  background: rgba(60, 64, 67, 0.07);
+}
+
+.app-pill-login:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-pill {
+    transition: opacity 0.25s ease;
+  }
+  .rating-star svg {
+    transition: none;
+  }
+  .rating-bar,
+  .rating-note {
+    transition: none;
+  }
+}
+
+/* "Made by Hajun Kim" at the foot of a guide page, from js/footer.js. */
+.guide-footer {
+  position: sticky;
+  left: 0;
+  width: var(--view, 100%);
+  padding: 28px 0 44px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+/* With the sign in pill able to rise at the bottom, the footer sits above it. */
+.has-bottom-pill .guide-footer {
+  padding-bottom: 120px;
 }

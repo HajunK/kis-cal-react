@@ -149,6 +149,17 @@ export function clearLastKnownUid() {
 let cloudWritesInFlight = 0;
 export const savesInFlight = () => cloudWritesInFlight;
 
+// Saves come in bursts (one change can ask for two), and writing everything
+// (the cached copy, then encrypting and sending it) takes a frame or more on a
+// slow device, which would hold up the animation a change starts. So the write
+// waits SAVE_DELAY_MS, asked for once however many times it's asked, and is made
+// at once if the tab is hidden or closed, or before signing out. It carries
+// whatever the data is by then, so nothing asked for in the meantime is left
+// out.
+const SAVE_DELAY_MS = 1000;
+let saveTimer = null;
+let savingUid = null;
+
 export function pushDataToCloud() {
   if (!currentUid) {
     showSignInToast();
@@ -157,23 +168,49 @@ export function pushDataToCloud() {
   // Lets a read that races this write tell its data is newer.
   appData.lastModified = Date.now();
   // Encryption hides data from Firestore, not from this device.
-  writeCachedAppData(currentUid, appData);
+  if (!hasFirebase()) {
+    writeCachedAppData(currentUid, appData);
+    return;
+  }
+  // Counted as in flight from now, so a cloud snapshot arriving before the write
+  // is made isn't taken for newer data than this tab's own.
+  if (saveTimer !== null) return;
+  savingUid = currentUid;
+  cloudWritesInFlight++;
+  saveTimer = setTimeout(flushPendingSave, SAVE_DELAY_MS);
+}
 
-  if (!hasFirebase()) return;
+// Makes the waiting save now, if there is one.
+export function flushPendingSave() {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  const uid = savingUid;
+  // Not for an account that has since signed out (its data is gone from appData).
+  if (uid !== currentUid) {
+    cloudWritesInFlight--;
+    return;
+  }
+  writeCachedAppData(uid, appData);
 
-  const uid = currentUid;
   // Safe as a shallow copy: the encrypted fields are always replaced
   // wholesale, never mutated. Preferences are left out: they save themselves
   // (see setPreference), and this tab's copy in appData isn't kept up to date,
   // so writing it put back whatever they were when the page loaded. Merged, so
   // they're kept rather than dropped; every field written is replaced whole.
   const { preferences, ...snapshot } = appData;
-  cloudWritesInFlight++;
   getDeviceKey(uid)
     .then((key) => encryptAppDataForCloud(snapshot, key))
     .then((encrypted) => firestore().collection("users").doc(uid).set(encrypted, { merge: true }))
     .catch((error) => console.error("Failed to save to Firestore:", error))
     .finally(() => cloudWritesInFlight--);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPendingSave();
+  });
+  window.addEventListener("pagehide", flushPendingSave);
 }
 
 // Grades are encrypted on the device so Firestore only ever holds ciphertext.

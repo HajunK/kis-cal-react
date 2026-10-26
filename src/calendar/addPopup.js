@@ -11,7 +11,7 @@ import { formatClockTime } from "./model.js";
 import { attachHoverMarquee } from "./pills.js";
 import { currentUid, loadAddedAssessments, loadPeriods, saveAddedAssessments } from "../shell/data.js";
 import { formatPreferredDate } from "../shell/preferences.js";
-import { allAssessments, allDayTypes, isAssessmentVisibleForPeriod } from "../shell/school.js";
+import { allAssessments, allDayTypes, isAssessmentVisibleForPeriod, scheduledTimeOn, scheduleForDate } from "../shell/school.js";
 import { attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, uiIconPath } from "../shell/ui.js";
 
 const ADD_POPUP_TYPES = [
@@ -22,10 +22,6 @@ const ADD_POPUP_TYPES = [
 ];
 const CAL_WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const ADD_POPUP_STEP_MS = 220;
-// Room kept below the popup when it opens from a calendar day, so its steps can
-// grow.
-const ADD_POPUP_MIN_ROOM_PX = 420;
-
 const CALENDAR_PICK_FADE_MS = 200;
 
 export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
@@ -50,7 +46,14 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
   let presetCell = null;
   // That row's course needn't be asked for.
   let presetCourse = null;
+  // Set while the popup is open: it started on the details screen with the
+  // row's course already chosen, so there's no course screen to go back to.
+  let startedOnDetails = false;
   let anchorPoint = null;
+  // Where the type menu sat; the popup opens there, so the cursor barely moves.
+  let menuSpot = null;
+  // Where the popup first sat, which it slides back to when it has room again.
+  let homeTop = null;
 
   // Opened at a click, it grows out of that point, even when it's had to sit
   // higher up (no room below the click) or further left; and then it rises
@@ -125,7 +128,7 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
 
   function buildPickStep() {
     const step = el("div", "add-popup-step");
-    step.appendChild(el("p", "add-popup-prompt")).textContent = "Which course?";
+    step.appendChild(el("p", "add-popup-prompt")).textContent = "Select course";
     const options = addableCourseOptions();
     if (options.length === 0) {
       step.appendChild(el("p", "add-popup-hint")).textContent =
@@ -133,6 +136,9 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       return step;
     }
     const list = el("div", "add-popup-courses");
+    // Opened from a calendar day, an assessment is saved as soon as its course
+    // is picked: no next screen, so no arrow pointing to one.
+    const savesAtOnce = !isAssignment() && Boolean(presetDate);
     options.forEach((option) => {
       const row = el("button", "add-popup-course");
       row.type = "button";
@@ -140,7 +146,7 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       row.appendChild(el("span", "add-popup-course-dot"));
       const nameWindow = row.appendChild(el("span", "add-popup-course-name"));
       attachHoverMarquee(row, nameWindow, option.displayName, shortCourseName(option.displayName));
-      row.appendChild(el("span", "add-popup-course-chevron", ICON_CHEVRON));
+      if (!savesAtOnce) row.appendChild(el("span", "add-popup-course-chevron", ICON_CHEVRON));
       // Each period keeps its own slot, so a missing period leaves a gap rather
       // than shifting the others.
       row.style.gridColumn = String(option.periodIndex < 4 ? 1 : 2);
@@ -187,9 +193,11 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
         withDot: true,
         heading: `${selectedCourse.displayName} ${typeInfo().noun}`,
         shortHeading: shortCourseName(selectedCourse.displayName) && `${shortCourseName(selectedCourse.displayName)} ${typeInfo().noun}`,
-        back: () => {
-          showStep(buildPickStep(), -1);
-        },
+        back: startedOnDetails
+          ? null
+          : () => {
+              showStep(buildPickStep(), -1);
+            },
       })
     );
 
@@ -278,11 +286,58 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     const period = selectedCourse.periodIndex + 1;
     // A period only means a time on a day that period meets.
     const periodKnown = () => allDayTypes[selectedDate] === (selectedCourse.periodIndex < 4 ? "A" : "B");
-    const isWeekday = () => fromISODate(selectedDate).getDay() % 6 !== 0;
+    // When the day's first event starts (usually Advisory or the Testing Block), or
+    // null when the day has no schedule.
+    const firstEventStart = () => {
+      const events = selectedDate ? scheduleForDate(selectedDate) : [];
+      return events.length > 0 ? events[0].start : null;
+    };
+    // When the day's last event ends, or null when the day has no schedule.
+    const lastEventEnd = () => {
+      const events = selectedDate ? scheduleForDate(selectedDate) : [];
+      return events.length > 0 ? events.reduce((latest, event) => (event.end > latest ? event.end : latest), "") : null;
+    };
+    // When this course's class starts that day, or null if it isn't known.
+    const classStart = () => {
+      const event = selectedDate ? scheduledTimeOn(selectedDate, `period${period}`) : null;
+      return event ? event.start : null;
+    };
+    const nightBeforeHint = () => {
+      const before = fromISODate(selectedDate);
+      before.setDate(before.getDate() - 1);
+      return `${before.toLocaleDateString("en-US", { weekday: "short" })}, 11:59 PM`;
+    };
+    // Picked, the school's start and end follow the date: a new date moves them to
+    // that day's first start or last end. label is what the option is called (and what the button shows);
+    // hint is the time it means, in gray at the right of the row.
+    let followsSchedule = null;
     const presets = [
-      { value: "start", label: "Start of the day", applies: () => true },
-      { value: "period", label: `By Period ${period}`, applies: periodKnown },
-      { value: "16:00", label: "By 4:00 PM", applies: isWeekday },
+      { value: "start", label: "Night before", hint: nightBeforeHint, applies: () => true },
+      {
+        // The time itself, which changes with the date.
+        get value() {
+          return firstEventStart();
+        },
+        label: "School starts",
+        hint: () => (firstEventStart() ? formatClockTime(firstEventStart()) : ""),
+        applies: () => firstEventStart() !== null,
+        follows: firstEventStart,
+      },
+      {
+        value: "period",
+        label: "Class starts",
+        hint: () => (classStart() ? `P${period}, ${formatClockTime(classStart())}` : `P${period}`),
+        applies: periodKnown,
+      },
+      {
+        get value() {
+          return lastEventEnd();
+        },
+        label: "School ends",
+        hint: () => (lastEventEnd() ? formatClockTime(lastEventEnd()) : ""),
+        applies: () => lastEventEnd() !== null,
+        follows: lastEventEnd,
+      },
     ];
     const describe = () =>
       (presets.find((preset) => preset.value === dueTime) || { label: formatClockTime(dueTime) }).label;
@@ -305,16 +360,18 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       resizeAround(() => {
         options.hidden = !open;
         timeBtn.classList.toggle("add-popup-date-btn--open", open);
-      });
+      }, true);
     };
     timeBtn.addEventListener("click", () => setOpen(options.hidden));
 
     const presetBtns = presets.map((preset) => {
       const option = options.appendChild(el("button", "add-popup-time-option"));
       option.type = "button";
-      option.textContent = preset.label;
+      option.appendChild(el("span")).textContent = preset.label;
+      option.appendChild(el("span", "add-popup-time-option-hint"));
       option.addEventListener("click", () => {
         dueTime = preset.value;
+        followsSchedule = preset.follows || null;
         sync();
         setOpen(false);
       });
@@ -338,6 +395,9 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     customInput.addEventListener("input", () => {
       if (!customInput.value) return;
       dueTime = customInput.value;
+      followsSchedule = null;
+      // The class's own start time is that option, as the school's are.
+      if (periodKnown() && dueTime === classStart()) dueTime = "period";
       sync();
     });
     // Losing focus stops the field showing the part being typed into.
@@ -345,13 +405,20 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       if (event.key === "Enter" && customInput.value) {
         customInput.blur();
         setOpen(false);
-      } else if (/^[ap]$/i.test(event.key) && customInput.value) {
-        setTimeout(() => customInput.blur(), 0);
+      } else if (/^[ap]$/i.test(event.key)) {
+        // Typing AM/PM ends the time; the value only completes once the key lands.
+        setTimeout(() => {
+          if (customInput.value) customInput.blur();
+        }, 0);
       }
     });
 
     function sync() {
-      presetBtns.forEach((option, index) => (option.hidden = !presets[index].applies()));
+      presetBtns.forEach((option, index) => {
+        option.hidden = !presets[index].applies();
+        // The times depend on the date.
+        option.querySelector(".add-popup-time-option-hint").textContent = presets[index].hint();
+      });
       timeText.innerHTML = "";
       timeText.appendChild(el("span", "add-popup-date-label")).textContent = describe();
       const isPreset = presets.some((preset) => preset.value === dueTime);
@@ -361,9 +428,17 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       custom.classList.toggle("add-popup-time-option--selected", !isPreset);
       if (!isPreset) customInput.value = dueTime;
     }
-    // A new date can remove options; a removed choice falls back to the start
-    // of the day.
+    // A new date can remove options; a removed choice falls back to the night
+    // before.
     field.syncToDate = () => {
+      if (followsSchedule) {
+        const start = followsSchedule();
+        if (start) dueTime = start;
+        else {
+          dueTime = "start";
+          followsSchedule = null;
+        }
+      }
       const chosen = presets.find((preset) => preset.value === dueTime);
       if (chosen && !chosen.applies()) dueTime = "start";
       sync();
@@ -372,12 +447,33 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     return field;
   }
 
-  function resizeAround(change) {
+  // Grows or shrinks the popup around a change. With `slide`, it also moves up
+  // when the new height would run past the bottom of the screen, and back down
+  // once it fits.
+  function resizeAround(change, slide = false) {
     const from = popup.offsetHeight;
+    const fromTop = parseFloat(popup.style.top);
+    const fromMax = popup.style.maxHeight;
+    if (homeTop === null) homeTop = fromTop;
     change();
+    let top = fromTop;
+    if (slide) {
+      popup.style.maxHeight = "none";
+      top = Math.max(16, Math.min(homeTop, window.innerHeight - 16 - popup.offsetHeight));
+      popup.style.top = `${top}px`;
+      popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
+    }
     const to = popup.offsetHeight;
-    if (from !== to) {
-      popup.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ADD_POPUP_STEP_MS, easing: "ease" });
+    if (from !== to || fromTop !== top) {
+      popup.animate(
+        [
+          // The max height travels too: jumping to its end value would clamp the
+          // height mid-slide and stall the edge.
+          { height: `${from}px`, top: `${fromTop}px`, maxHeight: fromMax },
+          { height: `${to}px`, top: `${top}px`, maxHeight: popup.style.maxHeight },
+        ],
+        { duration: ADD_POPUP_STEP_MS, easing: "ease" }
+      );
     }
   }
 
@@ -393,7 +489,7 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     resizeAround(() => {
       current.classList.add("add-popup-step--leaving");
       popup.appendChild(next);
-    });
+    }, true);
     const shift = 24 * direction;
     current
       .animate(
@@ -439,18 +535,20 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     }
 
     popup = el("div", "add-popup");
+    homeTop = null;
     syncSelectedDay();
     popup.setAttribute("role", "dialog");
     popup.setAttribute("aria-label", "Add to calendar");
     document.body.appendChild(popup);
     if (anchorPoint) {
-      // Kept on screen, with room below for its steps.
-      const left = Math.max(16, Math.min(anchorPoint.x, window.innerWidth - popup.offsetWidth - 16));
-      const top = Math.max(16, Math.min(anchorPoint.y, window.innerHeight - ADD_POPUP_MIN_ROOM_PX));
+      // At the type menu's corner if it was used, kept on screen.
+      const spot = menuSpot || anchorPoint;
+      menuSpot = null;
+      const left = Math.max(16, Math.min(spot.left ?? spot.x, window.innerWidth - popup.offsetWidth - 16));
+      const top = Math.max(16, spot.top ?? spot.y);
       popup.style.left = `${left}px`;
       popup.style.top = `${top}px`;
       popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
-      growFromPoint(popup, left, top);
       // Opened over the calendar itself, so it's glass, like the tooltips.
       popup.classList.add("calendar-glass");
     } else {
@@ -461,8 +559,18 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
     }
 
+    startedOnDetails = Boolean(knownCourse);
     const first = knownCourse ? buildDetailsStep() : buildPickStep();
     showStep(first, 1);
+    if (anchorPoint) {
+      // Moved up only as far as its first screen needs to fit.
+      popup.style.maxHeight = "none";
+      const left = parseFloat(popup.style.left);
+      const top = Math.max(16, Math.min(parseFloat(popup.style.top), window.innerHeight - 16 - popup.offsetHeight));
+      popup.style.top = `${top}px`;
+      popup.style.maxHeight = `${window.innerHeight - top - 16}px`;
+      growFromPoint(popup, left, top);
+    }
     void popup.offsetWidth;  // so the entrance transitions
     popup.classList.add("add-popup--visible");
   }
@@ -621,7 +729,7 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
   }
 
   function openMenu() {
-    menu = el("div", "popup-menu");
+    menu = el("div", "popup-menu popup-menu--types");
     // Left over from the last popup, it would read as a different day picked
     // and keep this one from graying.
     selectedDate = null;
@@ -645,6 +753,7 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       const top = Math.min(anchorPoint.y, window.innerHeight - menu.offsetHeight - 16);
       menu.style.left = `${left}px`;
       menu.style.top = `${top}px`;
+      menuSpot = { left, top };
       growFromPoint(menu, left, top);
       menu.classList.add("calendar-glass");
     } else {

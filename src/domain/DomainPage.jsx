@@ -16,7 +16,7 @@ import { hideToast, showToast } from "../shell/ui.js";
 // the way domain.js changed the page: cards that stay are kept as they are,
 // only ones that come or go fade. page (from main.jsx) gets the functions
 // the rest of the page calls.
-export function DomainPage({ page }) {
+export function DomainPage({ page, redraw = false }) {
   const containerRef = useRef(null);
   const thumbRef = useRef(null);
   const navRef = useRef(null);
@@ -292,7 +292,7 @@ export function DomainPage({ page }) {
 
   return (
     <>
-      <div className="classes-container" data-dynamic="true" ref={containerRef}>
+      <div className={`classes-container${redraw ? " no-rise" : ""}`} data-dynamic="true" ref={containerRef}>
         {m.items.map((item) => {
           if (item.type === "divider") return <div key={item.id} className="domain-current-divider" aria-hidden="true" />;
           if (item.type === "hint") return <EmptyHint key={item.id} />;
@@ -313,7 +313,7 @@ export function DomainPage({ page }) {
 
       {/* Under the cards' right end: scroll them one card back or forward
           (see initCardScrollButtons). Hidden while they all fit. */}
-      <div className="domain-card-nav" id="domain-card-nav" hidden ref={navRef}>
+      <div className={`domain-card-nav${redraw ? " no-rise" : ""}`} id="domain-card-nav" hidden ref={navRef}>
         <button type="button" className="domain-card-nav-btn" id="domain-card-prev" aria-label="Previous class" ref={prevRef}>
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <path d="M12 4.5L6.5 10l5.5 5.5" />

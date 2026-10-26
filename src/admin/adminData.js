@@ -11,6 +11,7 @@
 //   meta/cacheVersions: { assessments, dayTypes, periodTimes } (ms stamps)
 //   suggested/{hash}: { date, courseName, type, emails, lastAddedAt }
 
+import { fromISODate } from "../core/dates.js";
 import { DEFAULT_ACADEMIC_SUPPORT_TIMES, DEFAULT_ADVISORY_TIMES, DEFAULT_SCHEDULE_TIMES, DEFAULT_TESTING_BLOCK_TIMES } from "./bellSchedule.js";
 
 export function fetchAssessments(db) {
@@ -152,6 +153,16 @@ export function watchSuggestions(db, onChange) {
     },
     (error) => console.error("Failed to load suggestions:", error)
   );
+}
+
+// The type an accepted suggestion goes in as when the admin has no choice to
+// make: what students suggested, except a summative on a Tuesday, Wednesday or
+// Thursday, which is always in class (the Testing Block is only Mondays and
+// Fridays), so it goes in as "In-Class".
+export function acceptedType(suggestion) {
+  if (suggestion.type !== "Summative") return suggestion.type;
+  const weekday = fromISODate(suggestion.date).getDay();
+  return weekday >= 2 && weekday <= 4 ? "In-Class" : suggestion.type;
 }
 
 // Added before it's removed from "suggested", so a failure part way never

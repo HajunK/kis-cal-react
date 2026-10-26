@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { isAdminEmail } from "../core/admins.js";
-import { COURSE_CATALOG, effectiveCourseName, findCourseCatalogEntry } from "../core/catalog.js";
+import { aliasDivision, matchCourses } from "../popups/courseSearch.js";
+import { effectiveCourseName, findCourseCatalogEntry } from "../core/catalog.js";
 import { fromISODate, toISODate } from "../core/dates.js";
 import { Modal } from "../ui/Modal.jsx";
 import {
   acceptSuggestion,
+  acceptedType,
   addAssessment,
   clearDaySchedule,
   declineSuggestion,
@@ -105,11 +107,12 @@ export function AssessmentsAdmin({ page }) {
   const courseInputRef = useRef(null);
   const otherInputRef = useRef(null);
 
-  const courseChanged = (text) => {
+  const courseChanged = (text, aliasPick = "") => {
     const course = findCourseCatalogEntry(text.trim());
     const divisions = course && course.divisions;
     // Changing the course invalidates a division the new one doesn't have.
-    if (!divisions || divisions.length === 0 || !divisions.includes(division)) setDivision("");
+    if (aliasPick) setDivision(aliasPick);
+    else if (!divisions || divisions.length === 0 || !divisions.includes(division)) setDivision("");
     setDivisionDraw((count) => count + 1);
   };
 
@@ -367,9 +370,9 @@ export function AssessmentsAdmin({ page }) {
               <CourseField
                 inputRef={courseInputRef}
                 value={courseText}
-                onChange={(text) => {
+                onChange={(text, aliasPick) => {
                   setCourseText(text);
-                  courseChanged(text);
+                  courseChanged(text, aliasPick);
                 }}
                 onInvalid={() => page.toast("The course you typed does not exist.")}
               />
@@ -631,8 +634,8 @@ function TypeToggle({ withThumb, value, onPick, otherInputRef, otherText, onOthe
   );
 }
 
-// The course being added, with up to eight catalog names containing what's
-// typed. Picked from the list with the mouse or Enter, which then doesn't
+// The course being added, with up to eight catalog courses matching what's
+// typed (the same search as My Courses). Picked from the list with the mouse or Enter, which then doesn't
 // submit the form.
 function CourseField({ inputRef, value, onChange, onInvalid }) {
   const [matches, setMatches] = useState([]);
@@ -641,15 +644,16 @@ function CourseField({ inputRef, value, onChange, onInvalid }) {
   const blurTimer = useRef(null);
 
   const showMatches = (typed) => {
-    const query = typed.trim().toLowerCase();
     setHighlighted(-1);
-    setMatches(query === "" ? [] : COURSE_CATALOG.filter((course) => course.name.toLowerCase().includes(query)).slice(0, 8).map((course) => course.name));
+    setMatches(matchCourses(typed));
   };
   const pick = (name) => {
+    // What was typed says which division, if it was an alias ("BC").
+    const aliasPick = aliasDivision(name, inputRef.current.value);
     // Into the field at once: the blur check that can follow reads it.
     inputRef.current.value = name;
     setMatches([]);
-    onChange(name);
+    onChange(name, aliasPick);
   };
 
   useLayoutEffect(() => {
@@ -769,7 +773,10 @@ function Suggestions({ page, isAdmin, model, onAccepted }) {
   // Dates are formatted at render time, so a Date format change redraws.
   useEffect(() => {
     if (!watching) return undefined;
-    const redraw = () => render();
+    const redraw = (event) => {
+      if (event.detail && event.detail.key === "privacyBlurMode") return;
+      render();
+    };
     window.addEventListener("app:preferences-changed", redraw);
     return () => window.removeEventListener("app:preferences-changed", redraw);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -868,7 +875,7 @@ function SuggestionRows({ suggestions, page, model, onAccept, onDecline }) {
               ["In-Class", "In-Class"],
               ["Testing Block", "Testing Block"],
             ]
-          : [["Accept", suggestion.type]];
+          : [["Accept", acceptedType(suggestion)]];
       return (
         <div key={suggestion.id} className="suggestions-row">
           <span className="suggestions-cell suggestions-cell--added">{formatAddedAt(suggestion.lastAddedAt, page.formatDate)}</span>

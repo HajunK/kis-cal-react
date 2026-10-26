@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { loadPeriods } from "../shell/data.js";
+import { currentUid, loadPeriods } from "../shell/data.js";
 import { refreshPrivacyBlur } from "../shell/preferences.js";
 import { currentScheduleBlock } from "../shell/schedule.js";
 import { loadScheduleData } from "../shell/school.js";
@@ -24,7 +24,14 @@ export function ClassCountdown() {
       if (current) {
         if (current.block.type === "lunch") label = "Lunch";
         else if (current.block.type === "testing") label = "Testing Block";
-        else label = (loadPeriods()[current.block.periodIndex] || "").trim() || null;
+        else if (current.block.type === "support") label = "Academic Support";
+        else if (current.block.type === "advisory") label = "Advisory";
+        else {
+          // Signed out there are no course names to show, so a class is named by
+          // its period; signed in, a period with no course isn't a class.
+          const course = (loadPeriods()[current.block.periodIndex] || "").trim();
+          label = course || (currentUid ? null : `Period ${current.block.periodIndex + 1}`);
+        }
       }
       if (!label) {
         if (pillRef.current) flushSync(() => setPill((last) => last && { ...last, hidden: true }));

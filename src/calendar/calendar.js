@@ -21,7 +21,7 @@ import {
   upcomingSortTime,
 } from "./data.js";
 import { ICON_CHEVRON_DOWN } from "./icons.js";
-import { CAL_WEEKDAY_LABELS, assessmentCategory, calendarDateRange, latestAugustFirst, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
+import { CAL_WEEKDAY_LABELS, assessmentCategory, calendarDateRange, latestAugustFirst, sortDayEntries, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
 import { animatePillChanges, buildDayCell, fitName, pillListGap, renderedPillsByDate } from "./pills.js";
 import { loadAddedAssessments, loadCompletedTasks, loadPeriods, saveAddedAssessments, saveCompletedTasks } from "../shell/data.js";
 import { getPreferences } from "../shell/preferences.js";
@@ -32,6 +32,7 @@ import {
   assessmentsForCourses,
   assessmentsLoaded,
   dayTypesLoaded,
+  isAssessmentVisibleForPeriod,
   loadAssessmentData,
   loadPeriodTimes,
   periodTimesLoaded,
@@ -45,6 +46,8 @@ const ASSESSMENT_CALENDAR_WEEKDAYS_PER_WEEK = 7;
 const UPCOMING_LIMIT = 10;
 const UPCOMING_DONE_HOLD_MS = 600;
 const UPCOMING_SCROLLBAR_MIN_PX = 10;
+// The most the blurred strip behind the Upcoming heading reaches above it (see .upcoming-blur): in practice, up to the top of the page.
+const UPCOMING_BLUR_REACH_PX = 160;
 const UPCOMING_FADE_MS = 150;
 const UPCOMING_SLIDE_MS = 260;
 
@@ -134,8 +137,12 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   // to the window and a moving card would carry it off.
   const calendarBox = weeksContainer && weeksContainer.parentElement;
   let calendarEntered = false;
-  function rise(el) {
+  function rise(el, firstView) {
     if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Not when the Calendar is being drawn again while it was open. Only the
+    // view it comes back on: the mark stays on the page for as long as it's
+    // open, and a view the student then switches to should still rise.
+    if (firstView && el.closest("[data-redraw]")) return;
     el.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], {
       duration: 320,
       easing: "cubic-bezier(0.2, 0.7, 0.2, 1)",
@@ -145,7 +152,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   function showView(view) {
     if (!view.hidden) return;
     view.hidden = false;
-    rise(calendarEntered ? view : calendarBox);
+    rise(calendarEntered ? view : calendarBox, !calendarEntered);
     calendarEntered = true;
   }
 
@@ -212,9 +219,20 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
 
     currentAddedIds = new Set(effectiveAddedEntries.map((entry) => entry.id));
     renderUpcoming(schoolWideEntries.concat(effectiveAddedEntries), resolvedNames, courseColors, matchEntries);
-    const matchingEntries = schoolWideEntries
-      .concat(effectiveAddedEntries)
-      .filter((entry) => !hiddenCategories.has(assessmentCategory(entry)));
+    // The periods of each course name (one name can be in two: an A day class and
+    // a B day class), and the one that meets on an entry's day is its period.
+    const periodsOfCourse = new Map();
+    matchEntries.forEach((entry) => periodsOfCourse.set(entry.name, [...(periodsOfCourse.get(entry.name) || []), entry.periodIndex]));
+    const periodOfEntry = (entry) => {
+      const periods = periodsOfCourse.get(entry.courseName) || [];
+      return periods.find((index) => isAssessmentVisibleForPeriod(entry, index)) ?? periods[0] ?? Infinity;
+    };
+    // Each day's pills in order: Testing Blocks, In-Classes, Formatives, other
+    // types, assignments; the same kind by the class's period.
+    const matchingEntries = sortDayEntries(
+      schoolWideEntries.concat(effectiveAddedEntries).filter((entry) => !hiddenCategories.has(assessmentCategory(entry))),
+      periodOfEntry
+    );
     // Includes colors, so a new color repaints the pills.
     const matchNamesKey =
       matchEntries.map((entry) => `${entry.name}|${entry.periodIndex}`).join(" ") + " " + [...colorNames.values()].join(" ");
@@ -321,15 +339,28 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
 
   // Realigned on every scroll and resize.
   const upcomingBlur = upcomingList && upcomingList.parentElement.querySelector(".upcoming-blur");
-  let upcomingBlurCopy = null;
+  // The blur grows as the rows go up: the strip holds the list copied once per
+  // level, each blurred a little more and shown over its own band of the strip
+  // (see .upcoming-blur-layer in calendar.css), so the blur starts small low down
+  // and builds to the full amount behind the heading instead of being one blur
+  // faded in.
+  const UPCOMING_BLUR_LEVELS_PX = [1.5, 3.5, 6];
+  let upcomingBlurCopies = [];
 
   function copyUpcomingForBlur() {
-    upcomingBlurCopy = document.createElement("div");
-    upcomingBlurCopy.className = "upcoming-blur-copy";
-    upcomingBlurCopy.append(
-      ...[...upcomingList.children].filter((node) => !node.classList.contains("upcoming-ghost")).map((node) => node.cloneNode(true))
-    );
-    upcomingBlur.replaceChildren(upcomingBlurCopy);
+    const rows = [...upcomingList.children].filter((node) => !node.classList.contains("upcoming-ghost"));
+    const layers = UPCOMING_BLUR_LEVELS_PX.map((blurPx, index) => {
+      const layer = document.createElement("div");
+      layer.className = `upcoming-blur-layer upcoming-blur-layer--${index + 1}`;
+      const copy = document.createElement("div");
+      copy.className = "upcoming-blur-copy";
+      copy.style.filter = `blur(${blurPx}px)`;
+      copy.append(...rows.map((node) => node.cloneNode(true)));
+      layer.appendChild(copy);
+      return layer;
+    });
+    upcomingBlurCopies = layers.map((layer) => layer.firstElementChild);
+    upcomingBlur.replaceChildren(...layers);
     placeUpcomingBlur();
   }
 
@@ -339,14 +370,26 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     // rows.
     const scrollbarWidth = Math.max(UPCOMING_SCROLLBAR_MIN_PX, upcomingList.offsetWidth - upcomingList.clientWidth);
     upcomingList.closest(".todo-card").style.setProperty("--upcoming-scrollbar-w", `${scrollbarWidth}px`);
-    upcomingBlur.style.top = `${upcomingList.offsetTop}px`;
-    if (!upcomingBlurCopy) return;
-    upcomingBlurCopy.style.marginLeft = `${upcomingList.offsetLeft - upcomingBlur.offsetLeft}px`;
-    // clientWidth, so the copy's rows wrap like the real ones beside the
-    // scrollbar.
-    upcomingBlurCopy.style.width = `${upcomingList.clientWidth}px`;
-    upcomingBlurCopy.style.paddingTop = getComputedStyle(upcomingList).paddingTop;
-    upcomingBlurCopy.style.transform = `translateY(${-upcomingList.scrollTop}px)`;
+    // The strip reaches up from the list's top to the very top of the page, so the
+    // blur fades away all the way there (over the tab bar too: the strip is
+    // stacked above it, see .upcoming-blur). The copy is pushed down by the same
+    // amount to stay lined up with the list.
+    const reach = Math.max(0, Math.min(UPCOMING_BLUR_REACH_PX, Math.floor(upcomingList.getBoundingClientRect().top)));
+    upcomingBlur.style.setProperty("--upcoming-blur-reach", `${reach}px`);
+    upcomingBlur.style.top = `${upcomingList.offsetTop - reach}px`;
+    if (upcomingBlurCopies.length === 0) return;
+    const marginLeft = `${upcomingList.offsetLeft - upcomingBlur.offsetLeft}px`;
+    // clientWidth, so the copy's rows wrap like the real ones beside the scrollbar.
+    const width = `${upcomingList.clientWidth}px`;
+    const paddingTop = getComputedStyle(upcomingList).paddingTop;
+    const transform = `translateY(${-upcomingList.scrollTop}px)`;
+    upcomingBlurCopies.forEach((copy) => {
+      copy.style.marginTop = `${reach}px`;
+      copy.style.marginLeft = marginLeft;
+      copy.style.width = width;
+      copy.style.paddingTop = paddingTop;
+      copy.style.transform = transform;
+    });
     outlineAddButtonIfCovered();
   }
 
@@ -543,7 +586,8 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
 
     const titleEl = item.appendChild(document.createElement("span"));
     titleEl.className = "upcoming-title";
-    titleEl.textContent = upcomingTitle(entry, courseLabel);
+    titleEl.appendChild(document.createElement("span")).className = "upcoming-title-text";
+    titleEl.firstChild.textContent = upcomingTitle(entry, courseLabel);
     // An assessment's title already names its course.
     if (assessmentCategory(entry) === "assignment") {
       const courseEl = item.appendChild(document.createElement("span"));
@@ -685,7 +729,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   // here too. Not for the view, which the toggle redraws itself: drawing here
   // as well built the Courses grid twice per switch.
   const drawnPreferences = () => {
-    const { calendarView, ...rest } = getPreferences();
+    const { calendarView, privacyBlurMode, ...rest } = getPreferences();
     return JSON.stringify(rest);
   };
   let lastPreferences = drawnPreferences();

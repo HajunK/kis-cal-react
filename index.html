@@ -27,6 +27,14 @@
         document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
         if (prefs.showBreakdown === false) document.documentElement.dataset.hideBreakdown = "true";
         if (prefs.showUpcomingAssessments === false) document.documentElement.dataset.hideUpcomingAssessments = "true";
+        // Opening the Domain tab with no copy of the grades on this device to
+        // draw from: the cards' outlines go up with the first paint (below),
+        // rather than after the app has downloaded and started.
+        var path = location.pathname.replace(/\/+$/, "");
+        var otherTab = /^\/(calendar|calendar-demo|gpa|assessments)$/.test(path);
+        if (!otherTab && !(uid && localStorage.getItem("cachedAppData_" + uid))) {
+          document.documentElement.dataset.bootSkeleton = "true";
+        }
       } catch (error) {
         // ignore — worst case is the same flash this exists to prevent
       }
@@ -43,6 +51,32 @@
        tab and the popups. display: contents (see base.css), so they're laid
        out as the body's own children, as each tab's old page had them. -->
   <div id="app"></div>
+  <!-- The Domain tab's placeholder cards (DomainRoute.jsx draws the same ones,
+       and takes this copy down when it does), so they show before any script
+       has run. Styled by domain.css, which is linked above. -->
+  <script>
+    (function () {
+      if (document.documentElement.dataset.bootSkeleton !== "true") return;
+      var card =
+        '<div class="class-card domain-skeleton-card">' +
+        '<div class="skeleton-line skeleton-line--title"><span class="skeleton-bar"></span></div>' +
+        '<div class="skeleton-line skeleton-line--grade"><span class="skeleton-bar"></span></div>' +
+        '<div class="skeleton-line skeleton-line--breakdown"><span class="skeleton-bar"></span></div>' +
+        '<div class="skeleton-boxes">' +
+        ["Formatives", "Summatives"]
+          .map(function (label) {
+            return '<div class="skeleton-box"><span class="assessment-label">' + label + "</span>" + new Array(11).join('<span class="skeleton-bar skeleton-bar--row"></span>') + "</div>";
+          })
+          .join("") +
+        "</div></div>";
+      var row = document.createElement("div");
+      row.id = "boot-skeleton";
+      row.className = "classes-container domain-skeleton";
+      row.setAttribute("aria-hidden", "true");
+      row.innerHTML = new Array(6).join(card);
+      document.body.insertBefore(row, document.getElementById("app"));
+    })();
+  </script>
 
   <script type="module" src="/src/app/main.jsx"></script>
   <!-- Firebase's compat SDK, the same version as before; the app starts its

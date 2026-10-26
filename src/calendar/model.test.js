@@ -7,9 +7,11 @@ import {
   carriedCompletions,
   courseColorNames,
   courseColorVars,
+  dayPillRank,
   latestAugustFirst,
   matchEntries,
   normalizeCompletedRecords,
+  sortDayEntries,
   startOfWeek,
   stripDivisionSuffix,
   suggestedAssessmentDocId,
@@ -55,6 +57,53 @@ describe("course colors", () => {
       ["Biology", "brown"],
     ]);
     expect(courseColorVars(colors).get("English")).toBe("var(--color-red)");
+  });
+});
+
+describe("a day's pill order", () => {
+  const day = "2026-10-14";
+  const entry = (courseName, type, date = day) => ({ id: `${courseName}-${type}-${date}`, courseName, type, date });
+  const periods = { Biology: 0, Chemistry: 1, Physics: 2, English: 3, Korean: 4 };
+  const order = (entries) => sortDayEntries(entries, (e) => periods[e.courseName]).map((e) => `${e.courseName}:${e.type}`);
+
+  it("ranks Testing Block, In-Class, Formative, other types, then assignments", () => {
+    const types = ["Assignment", "Reassessment", "Formative", "In-Class", "Testing Block", "Summative", "Homework", "Quiz"];
+    // A plain Summative looks like an In-Class, so it ranks with them.
+    expect(types.map((type) => dayPillRank({ type }))).toEqual([4, 3, 2, 1, 0, 1, 4, 3]);
+  });
+
+  it("stacks a day in that order, whatever order the entries came in", () => {
+    const entries = [
+      entry("Korean", "Assignment"),
+      entry("English", "Reassessment"),
+      entry("Chemistry", "Formative"),
+      entry("Physics", "In-Class"),
+      entry("Biology", "Testing Block"),
+    ];
+    expect(order(entries)).toEqual(["Biology:Testing Block", "Physics:In-Class", "Chemistry:Formative", "English:Reassessment", "Korean:Assignment"]);
+  });
+
+  it("keeps In-Classes and plain Summatives together, as they look the same: split by neither a Formative nor anything else", () => {
+    const entries = [entry("English", "In-Class"), entry("Chemistry", "Formative"), entry("Korean", "Summative"), entry("Biology", "Formative")];
+    expect(order(entries)).toEqual(["English:In-Class", "Korean:Summative", "Biology:Formative", "Chemistry:Formative"]);
+  });
+
+  it("puts the same kind in the order the classes meet: periods 1 to 4, or 5 to 8", () => {
+    const entries = [entry("English", "Formative"), entry("Biology", "Formative"), entry("Physics", "Formative"), entry("Chemistry", "Formative")];
+    expect(order(entries)).toEqual(["Biology:Formative", "Chemistry:Formative", "Physics:Formative", "English:Formative"]);
+  });
+
+  it("goes by the kind first and the period second", () => {
+    // Biology (period 1) has a formative, English (period 4) an in-class: the in-class is still above it.
+    expect(order([entry("Biology", "Formative"), entry("English", "In-Class")])).toEqual(["English:In-Class", "Biology:Formative"]);
+  });
+
+  it("keeps days in date order, and the order it came in when everything ties", () => {
+    const entries = [entry("Biology", "Formative", "2026-10-15"), entry("English", "In-Class", "2026-10-14"), entry("Biology", "Formative", "2026-10-14")];
+    expect(sortDayEntries(entries, (e) => periods[e.courseName]).map((e) => e.date)).toEqual(["2026-10-14", "2026-10-14", "2026-10-15"]);
+    const a = { id: "a", courseName: "Biology", type: "Formative", date: day };
+    const b = { id: "b", courseName: "Biology", type: "Formative", date: day };
+    expect(sortDayEntries([b, a], () => 0).map((e) => e.id)).toEqual(["b", "a"]);
   });
 });
 

@@ -82,9 +82,12 @@ export function subscribePreferences(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
-function notifyPreferencesChanged() {
+// key: the one preference changed here, when it's known, so a tab can leave
+// alone a change that doesn't touch what it draws (Privacy Blur is all CSS on
+// the page, and redrawing every card for it held up the switch in Settings).
+function notifyPreferencesChanged(key) {
   listeners.forEach((listener) => listener());
-  window.dispatchEvent(new CustomEvent("app:preferences-changed"));
+  window.dispatchEvent(new CustomEvent("app:preferences-changed", { detail: { key } }));
 }
 
 // "school" mode depends on the time of day, so it's re-checked on a timer.
@@ -212,7 +215,7 @@ export function setPreference(key, value) {
   refreshUiIcons();
   // So anything depending on a preference reacts to changes made in this tab
   // too, not only ones confirmed from the cloud.
-  notifyPreferencesChanged();
+  notifyPreferencesChanged(key);
 
   if (!prefsUid || !hasFirebase()) {
     writeCachedPrefs(PREFS_ANON_KEY, currentPrefs, Date.now());
