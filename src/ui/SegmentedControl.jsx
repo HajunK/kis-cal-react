@@ -14,10 +14,16 @@ export function SegmentedControl({ value, options, onChange, ...props }) {
   const thumbRef = useRef(null);
   const optionRefs = useRef(new Map());
   const placedRef = useRef(false);
+  // What `place` reads, kept current: it's also called later from the font-ready
+  // callback below, set up once at the first draw, and reading `shown` there
+  // would be reading the first draw's option, which put the thumb back on it
+  // (with no slide) if the fonts finished loading after a click.
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
 
   const place = (animate) => {
     const thumb = thumbRef.current;
-    const active = optionRefs.current.get(shown);
+    const active = optionRefs.current.get(shownRef.current);
     if (!thumb || !active) return;
     if (!animate) thumb.style.transition = "none";
     thumb.style.left = `${active.offsetLeft}px`;

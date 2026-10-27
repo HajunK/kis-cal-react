@@ -999,10 +999,48 @@
   border-radius: 999px;
   /* Keeps the name inside the rounded ends now that it reaches the border. */
   overflow: hidden;
-  cursor: default;
-  /* Clicked and right-clicked, not read like text. */
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  /* Clicked, not read like text. */
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* A clicked pill: filled with its course's color, its dot and text black or white by
+   that color's lightness (--chip-selected-fg; the same OKLCH trick as the check on
+   a done item and the Add popup's Save button), while its details are open (see
+   pillMenu.js). */
+.assessment-chip.assessment-chip--selected {
+  --chip-selected-fg: oklch(from var(--chip-color) calc(var(--ink-floor) + (1 - var(--ink-floor)) * clamp(0, (var(--ink-cut) - l) * 1000, 1)) calc(c * var(--ink-tint) * (1 - clamp(0, (var(--ink-cut) - l) * 1000, 1))) h);
+  background: var(--chip-color);
+  border-color: var(--chip-color);
+  border-style: solid;
+}
+
+.assessment-chip--assignment.assessment-chip--selected {
+  /* A fill to round now, but only slightly. */
+  border-radius: 6px;
+}
+
+.assessment-chip.assessment-chip--selected .assessment-pill-name,
+.assessment-chip.assessment-chip--selected .assessment-pill-testing-label,
+.assessment-chip.assessment-chip--selected .assessment-chip-subtitle {
+  color: var(--chip-selected-fg);
+}
+
+.assessment-chip.assessment-chip--selected .assessment-chip-dot {
+  background: var(--chip-selected-fg);
+}
+
+/* A selected assignment's dot is its ring in the text color, hollow, until it's done: then
+   only the check shows, since the disc behind it would be the fill's own color. */
+.assessment-chip--assignment.assessment-chip--selected .assessment-chip-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--chip-selected-fg);
+}
+
+.assessment-chip--assignment.assessment-chip--selected.assessment-chip--done .assessment-chip-dot {
+  box-shadow: none;
 }
 
 .assessment-chip--summative {
@@ -1090,7 +1128,7 @@
   content: "";
   position: absolute;
   inset: 2px;
-  background: oklch(from var(--chip-color) clamp(0, (0.78 - l) * 1000, 1) 0 0);
+  background: oklch(from var(--chip-color) calc(var(--ink-floor) + (1 - var(--ink-floor)) * clamp(0, (var(--ink-cut) - l) * 1000, 1)) calc(c * var(--ink-tint) * (1 - clamp(0, (var(--ink-cut) - l) * 1000, 1))) h);
   -webkit-mask: url("/icons/light/check.png") center / contain no-repeat;
   mask: url("/icons/light/check.png") center / contain no-repeat;
 }
@@ -1545,7 +1583,7 @@
 }
 
 .upcoming-item:hover .upcoming-check-icon {
-  background: oklch(from var(--chip-color, var(--color-gray-dark)) clamp(0, (0.78 - l) * 1000, 1) 0 0);
+  background: oklch(from var(--chip-color, var(--color-gray-dark)) calc(var(--ink-floor) + (1 - var(--ink-floor)) * clamp(0, (var(--ink-cut) - l) * 1000, 1)) calc(c * var(--ink-tint) * (1 - clamp(0, (var(--ink-cut) - l) * 1000, 1))) h);
   opacity: 1;
 }
 
@@ -1556,7 +1594,7 @@
 /* Black or white by the course color's lightness, like the popup's Save
    button. */
 .upcoming-item--done .upcoming-check-icon {
-  background: oklch(from var(--chip-color, var(--color-gray-dark)) clamp(0, (0.78 - l) * 1000, 1) 0 0);
+  background: oklch(from var(--chip-color, var(--color-gray-dark)) calc(var(--ink-floor) + (1 - var(--ink-floor)) * clamp(0, (var(--ink-cut) - l) * 1000, 1)) calc(c * var(--ink-tint) * (1 - clamp(0, (var(--ink-cut) - l) * 1000, 1))) h);
   opacity: 1;
 }
 
@@ -2560,7 +2598,7 @@
    it stays readable on yellow as well as on dark blue. */
 .add-popup-primary-btn {
   background: var(--chip-color);
-  color: oklch(from var(--chip-color) clamp(0, (0.78 - l) * 1000, 1) 0 0);
+  color: oklch(from var(--chip-color) calc(var(--ink-floor) + (1 - var(--ink-floor)) * clamp(0, (var(--ink-cut) - l) * 1000, 1)) calc(c * var(--ink-tint) * (1 - clamp(0, (var(--ink-cut) - l) * 1000, 1))) h);
 }
 
 
@@ -2632,6 +2670,11 @@
 
 .my-courses-calendar-box--picking .assessment-chip {
   opacity: 0.5;
+}
+
+/* The one being moved stays bright, so it's clear which it is. */
+.my-courses-calendar-box--picking .assessment-chip--selected {
+  opacity: 1;
 }
 
 .my-courses-calendar-box--picking .assessment-week-day,
@@ -2750,4 +2793,289 @@
 .add-popup :is(button, label):focus-visible {
   outline: 2px solid var(--chip-color, var(--color-text-primary));
   outline-offset: 1px;
+}
+
+/* The card a clicked pill opens (see pillMenu.js), in the manner of Apple Calendar's
+   event popover: the course's color down the left of the title, the details in a
+   rounded panel and Delete across the bottom. Glass, like the menus opened on the
+   calendar. */
+/* The shadow is the glass menus', a little darker and tighter: it sits close under the
+   card instead of spreading wide around it. */
+.popup-menu.calendar-glass.pill-details {
+  --glass-shadow: rgba(0, 0, 0, 0.22);
+  /* Its look is the layers below, drawn from one outline with its point. */
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  /* Fades in by its parts (below), never as a whole: while an element is below full
+     opacity, a backdrop-filter inside it can't see past it, so the glass layer had
+     nothing to blur until the card had finished opening. */
+  opacity: 1;
+}
+
+/* It grows out of its point rather than popping up in place: it starts a little smaller and
+   scales about the tip (the origin is set in pillMenu.js), which stays where it is. A short
+   way and quickly, on the other popups' spring, so it opens as they do. Every part of it,
+   opening or closing, takes the same 200ms (pillMenu.js removes it after that). */
+.popup-menu.pill-details {
+  --pill-card-ms: 200ms;
+  transform: scale(0.78);
+  transition: opacity var(--pill-card-ms) ease, transform var(--pill-card-ms) var(--ease-popup-spring);
+}
+
+.popup-menu.pill-details.popup-menu--visible {
+  transform: none;
+}
+
+/* Each part fades on its own, except the glass, which isn't faded at all (a glass half
+   faded out shows the calendar behind it sharp): its blur and tint grow from nothing
+   instead (below), so it's frosted at every point of the card opening and closing. */
+.popup-menu.pill-details > :not(.pill-details-layer--glass) {
+  opacity: 0;
+  transition: opacity var(--pill-card-ms) ease;
+}
+
+.popup-menu.pill-details.popup-menu--visible > :not(.pill-details-layer--glass) {
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .popup-menu.calendar-glass.pill-details {
+  --glass-shadow: rgba(0, 0, 0, 0.48);
+}
+
+.pill-details {
+  /* --detail-panel: the tone the card's glass is given: none in light mode, where it's the
+     Calendar's four-option menu's glass as it is, and a little lighter in dark. */
+  --detail-panel: transparent;
+  /* How much the glass blurs what is behind the card: less in light mode, so the calendar
+     shows through more. */
+  --detail-blur: 7px;
+  --detail-line: rgba(0, 0, 0, 0.09);
+  --detail-button: rgba(0, 0, 0, 0.06);
+  /* --detail-edge-start and -end: the line round the card, from its top left corner to its
+     bottom right (pillMenu.js). Further apart than the other menus' (theme.css), whose slight
+     change hardly shows on a card this size. */
+  --detail-edge-start: rgba(15, 23, 42, 0.05);
+  --detail-edge-end: rgba(15, 23, 42, 0.24);
+  box-sizing: border-box;
+  width: 288px;
+  min-width: 0;
+  /* The text sits straight on the card, so it needs the room the panels gave it. */
+  padding: 16px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+:root[data-theme="dark"] .pill-details {
+  --detail-panel: rgba(255, 255, 255, 0.07);
+  --detail-blur: 14px;
+  --detail-line: rgba(255, 255, 255, 0.12);
+  --detail-button: rgba(255, 255, 255, 0.1);
+  --detail-edge-start: rgba(255, 255, 255, 0.34);
+  --detail-edge-end: rgba(255, 255, 255, 0.05);
+}
+
+/* The card's look, drawn from one outline (cardShapePath in pillMenu.js) so its point is
+   part of it: the shadow, the glass (with its blur and tint, cut to the outline), a flat tone
+   over the glass and the edge, four layers under the content. */
+.pill-details-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.pill-details-layer--shadow {
+  z-index: -3;
+}
+
+.pill-details-layer--glass {
+  z-index: -2;
+  background-color: transparent;
+  -webkit-backdrop-filter: blur(0px) saturate(100%) brightness(1);
+  backdrop-filter: blur(0px) saturate(100%) brightness(1);
+  transition:
+    background-color var(--pill-card-ms) ease,
+    -webkit-backdrop-filter var(--pill-card-ms) ease,
+    backdrop-filter var(--pill-card-ms) ease;
+}
+
+.popup-menu--visible .pill-details-layer--glass {
+  background-color: var(--glass-tint);
+  -webkit-backdrop-filter: blur(var(--detail-blur)) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(var(--detail-blur)) saturate(180%) brightness(var(--glass-lift));
+}
+
+.pill-details-layer--tone {
+  z-index: -2;
+  background: var(--detail-panel);
+}
+
+.pill-details-layer--edge {
+  z-index: -1;
+}
+
+.pill-details-layer svg {
+  display: block;
+  overflow: visible;
+}
+
+.pill-details-shadow-shape {
+  fill: var(--glass-shadow);
+}
+
+.pill-details-edge-rim {
+  fill: none;
+  stroke: var(--glass-rim);
+  stroke-width: 2;
+}
+
+.pill-details-edge-line {
+  fill: none;
+  /* Its stroke is the gradient set on it in pillMenu.js. */
+  stroke-width: 1;
+}
+
+.pill-details-header {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.pill-details-bar {
+  flex: none;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--chip-color);
+}
+
+.pill-details-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pill-details-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.pill-details-subtitle {
+  font-size: 13px;
+  color: var(--color-gray-dark);
+}
+
+.pill-details-done {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-gray-dark);
+}
+
+.pill-details-rows {
+  margin: 0;
+  padding: 0;
+}
+
+.pill-details-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 14px;
+  border-bottom: 1px solid var(--detail-line);
+}
+
+.pill-details-row:last-child {
+  border-bottom: none;
+}
+
+.pill-details-row dt {
+  flex: none;
+  color: var(--color-gray-dark);
+}
+
+.pill-details-row dd {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* Delete alone fills the row; beside Reschedule they share it equally. */
+.pill-details-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pill-details-actions > button {
+  flex: 1;
+}
+
+.pill-details-reschedule {
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--detail-button);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.pill-details-reschedule:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+}
+
+.pill-details-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-f-red) 12%, transparent);
+  color: var(--color-f-red);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+/* icons/trash.svg and icons/flag.svg as masks, so they take the button's color. */
+.pill-details-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: center / contain no-repeat;
+  mask: center / contain no-repeat;
+}
+
+.pill-details-icon--trash {
+  -webkit-mask-image: url("/icons/trash.svg");
+  mask-image: url("/icons/trash.svg");
+}
+
+.pill-details-icon--flag {
+  -webkit-mask-image: url("/icons/flag.svg");
+  mask-image: url("/icons/flag.svg");
+}
+
+.pill-details-delete:hover {
+  background: color-mix(in srgb, var(--color-f-red) 20%, transparent);
 }

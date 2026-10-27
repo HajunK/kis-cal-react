@@ -15,6 +15,7 @@ vi.mock("../shell/data.js", () => ({
   loadAddedAssessments: () => app.data.addedAssessments,
   saveAddedAssessments: vi.fn((entries) => (app.data.addedAssessments = entries)),
   loadCompletedTasks: () => app.data.completedTasks,
+  loadConfirmedAssessments: () => app.data.confirmedAssessments || [],
   saveCompletedTasks: vi.fn(),
 }));
 vi.mock("../shell/school.js", () => ({
@@ -44,7 +45,7 @@ vi.mock("../shell/firebase.js", () => {
 vi.mock("../shell/preferences.js", () => ({ getPreferences: () => ({}), formatPreferredDate: (date) => String(date) }));
 vi.mock("../shell/openTab.js", () => ({ redrawCalendar: vi.fn() }));
 
-const { dropAcceptedSuggestions, logSuggestedAssessment, unlogSuggestedAssessment } = await import("./data.js");
+const { confirmedAssessmentIds, dropAcceptedSuggestions, logSuggestedAssessment, unlogSuggestedAssessment } = await import("./data.js");
 const { saveAddedAssessments } = await import("../shell/data.js");
 const { redrawCalendar } = await import("../shell/openTab.js");
 
@@ -104,6 +105,15 @@ describe("dropAcceptedSuggestions", () => {
     expect(appData.addedAssessments).toEqual([{ id: "mine2", date: "2026-10-13", courseName: "Geometry", type: "Formative" }]);
     expect(appData.completedTasks).toEqual([{ id: "mine1", completedAt: 7 }, { id: "s1", completedAt: 7 }]);
     expect(redrawCalendar).toHaveBeenCalledWith(true, true);
+    // Remembered as this student's, so the details can still say "You (Confirmed)".
+    expect(appData.confirmedAssessments).toEqual(["s1"]);
+  });
+
+  it("knows which school assessments began as the student's own, from what's remembered and what's matched now", () => {
+    appData.confirmedAssessments = ["old1"];
+    appData.addedAssessments = [{ id: "mine1", date: "2026-10-12", courseName: "English (10)", type: "Summative" }];
+    app.assessments = [{ id: "s1", date: "2026-10-12", courseName: "English (10)", type: "In-Class" }, { id: "other", date: "2026-10-13", courseName: "English (10)", type: "Formative" }];
+    expect([...confirmedAssessmentIds()].sort()).toEqual(["old1", "s1"]);
   });
 
   it("changes nothing with nothing accepted", () => {

@@ -7,12 +7,18 @@ import {
   clearDaySchedule,
   declineSuggestion,
   deleteAssessment,
+  deleteReportedAssessment,
+  dismissReport,
   ensureCacheVersions,
   fetchDayTypes,
   fetchPeriodTimes,
   saveDayType,
   saveSchedule,
+  putReportBack,
+  putSuggestionBack,
   seedDefaultSchedule,
+  undoAcceptedSuggestion,
+  watchReports,
   watchSuggestions,
 } from "./adminData.js";
 
@@ -130,7 +136,7 @@ describe("suggestions", () => {
     await acceptSuggestion(db, suggestion, "Testing Block", (id) => added.push([id, db.writes.length]));
     await flush();
     expect(db.writes).toEqual([
-      { op: "add", collection: "assessments", value: { type: "Testing Block", date: "2026-10-12", courseName: "Geometry", createdAt: 1000 } },
+      { op: "add", collection: "assessments", value: { type: "Testing Block", date: "2026-10-12", courseName: "Geometry", createdAt: 1000, fromStudent: true } },
       stamp("assessments", 1000),
       { op: "delete", collection: "suggested", id: "s1" },
     ]);
@@ -160,12 +166,91 @@ describe("suggestions", () => {
     const db = fakeFirestore({ suggested: { s1: wednesday } });
     await acceptSuggestion(db, wednesday, acceptedType(wednesday), () => {});
     await flush();
-    expect(db.writes[0]).toEqual({ op: "add", collection: "assessments", value: { type: "In-Class", date: "2026-10-14", courseName: "Geometry", createdAt: 1000 } });
+    expect(db.writes[0]).toEqual({ op: "add", collection: "assessments", value: { type: "In-Class", date: "2026-10-14", courseName: "Geometry", createdAt: 1000, fromStudent: true } });
   });
 
   it("declines by deleting only the suggestion", async () => {
     const db = fakeFirestore({ suggested: { s1: suggestion } });
     await declineSuggestion(db, suggestion);
     expect(db.writes).toEqual([{ op: "delete", collection: "suggested", id: "s1" }]);
+  });
+});
+
+describe("reports that an assessment is wrong", () => {
+  const stored = { assessmentId: "as1", date: "2026-10-12", courseName: "Geometry", type: "Summative", emails: ["a@kis.ac", "b@kis.ac"], lastReportedAt: 7 };
+
+  it("lists reports as rows the suggestions list can draw, and deletes emptied ones", async () => {
+    const db = fakeFirestore({ reportedAssessments: { as1: stored, as2: { ...stored, assessmentId: "as2", emails: [] } } });
+    const seen = [];
+    watchReports(db, (list) => seen.push(list));
+    await flush();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toHaveLength(1);
+    expect(seen[0][0]).toMatchObject({ id: "report-as1", reportId: "as1", kind: "report", assessmentId: "as1", courseName: "Geometry", lastAddedAt: 7 });
+    expect(db.writes).toEqual([{ op: "delete", collection: "reportedAssessments", id: "as2" }]);
+  });
+
+  it("dismisses by deleting only the report", async () => {
+    const db = fakeFirestore({ reportedAssessments: { as1: stored } });
+    await dismissReport(db, { reportId: "as1" });
+    expect(db.writes).toEqual([{ op: "delete", collection: "reportedAssessments", id: "as1" }]);
+  });
+
+  it("deletes the assessment itself, then the report", async () => {
+    const db = fakeFirestore({ assessments: { as1: { type: "Summative", date: "2026-10-12", courseName: "Geometry" } }, reportedAssessments: { as1: stored } });
+    await deleteReportedAssessment(db, { reportId: "as1", assessmentId: "as1" });
+    await flush();
+    expect(db.writes).toEqual([
+      { op: "delete", collection: "assessments", id: "as1" },
+      stamp("assessments", 1000),
+      { op: "delete", collection: "reportedAssessments", id: "as1" },
+    ]);
+  });
+});
+
+describe("taking an accept back", () => {
+  const entry = { id: "s1", date: "2026-10-12", courseName: "Geometry", type: "In-Class", suggestedType: "Summative", emails: ["a@kis.ac"], lastAddedAt: 5, assessmentId: "as1" };
+
+  it("puts the suggestion back as it was suggested, then takes the assessment off the calendar", async () => {
+    const db = fakeFirestore({ assessments: { as1: { type: "In-Class", date: "2026-10-12", courseName: "Geometry" } } });
+    await undoAcceptedSuggestion(db, entry);
+    await flush();
+    expect(db.writes).toEqual([
+      { op: "set", collection: "suggested", id: "s1", value: { date: "2026-10-12", courseName: "Geometry", type: "Summative", emails: ["a@kis.ac"], lastAddedAt: 5 } },
+      { op: "delete", collection: "assessments", id: "as1" },
+      stamp("assessments", 1000),
+    ]);
+  });
+
+  it("keeps a student who suggested it again in the meantime", async () => {
+    const db = fakeFirestore({ suggested: { s1: { date: "2026-10-12", courseName: "Geometry", type: "Summative", emails: ["b@kis.ac"], lastAddedAt: 9 } } });
+    await undoAcceptedSuggestion(db, entry);
+    await flush();
+    expect(db.writes[0].value).toMatchObject({ emails: ["a@kis.ac", "b@kis.ac"], lastAddedAt: 9, type: "Summative" });
+  });
+
+  it("leaves the assessment on the calendar if putting the suggestion back fails", async () => {
+    const db = fakeFirestore({});
+    db.failNext("set");
+    await expect(undoAcceptedSuggestion(db, entry)).rejects.toBeTruthy();
+    expect(db.writes.filter((write) => write.op === "delete")).toEqual([]);
+  });
+});
+
+describe("putting dismissed ones back", () => {
+  it("puts a declined suggestion back as it was, keeping a student who suggested it again", async () => {
+    const db = fakeFirestore({ suggested: { s1: { date: "2026-10-12", courseName: "Geometry", type: "Formative", emails: ["b@kis.ac"], lastAddedAt: 9 } } });
+    await putSuggestionBack(db, { id: "s1", date: "2026-10-12", courseName: "Geometry", type: "Formative", emails: ["a@kis.ac"], lastAddedAt: 5 });
+    expect(db.writes).toEqual([
+      { op: "set", collection: "suggested", id: "s1", value: { date: "2026-10-12", courseName: "Geometry", type: "Formative", emails: ["a@kis.ac", "b@kis.ac"], lastAddedAt: 9 } },
+    ]);
+  });
+
+  it("puts a dismissed report back under its assessment's id", async () => {
+    const db = fakeFirestore();
+    await putReportBack(db, { id: "report-as1", kind: "report", date: "2026-10-12", courseName: "Geometry", type: "Summative", emails: ["a@kis.ac", "b@kis.ac"], lastAddedAt: 7 });
+    expect(db.writes).toEqual([
+      { op: "set", collection: "reportedAssessments", id: "as1", value: { assessmentId: "as1", date: "2026-10-12", courseName: "Geometry", type: "Summative", emails: ["a@kis.ac", "b@kis.ac"], lastReportedAt: 7 } },
+    ]);
   });
 });

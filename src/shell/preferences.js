@@ -207,30 +207,64 @@ export function getPreferences() {
   return { ...currentPrefs };
 }
 
+// What a change does to the page happens as it's made; saving it (this device's
+// copy, then the cloud) waits a moment, since writing the cached copies and
+// handing the write to Firebase take real time, and the switch the student
+// pressed shouldn't wait on any of it. Changes made close together are saved
+// once, as they stand then; a hidden or closing tab, or a sign-out, saves at
+// once.
+const PREFS_SAVE_DELAY_MS = 400;
+let pendingSave = null; // { uid (null: this browser's own), prefs, timestamp }
+let pendingSaveTimer = null;
+
+export function flushPreferenceSave() {
+  clearTimeout(pendingSaveTimer);
+  pendingSaveTimer = null;
+  const save = pendingSave;
+  pendingSave = null;
+  if (!save) return;
+  if (!save.uid) {
+    writeCachedPrefs(PREFS_ANON_KEY, save.prefs, save.timestamp);
+    return;
+  }
+  writeCachedPrefs(prefsCacheKeyFor(save.uid), save.prefs, save.timestamp);
+  syncAppDataCache(save.uid, save.prefs, save.timestamp);
+  firestore()
+    .collection("users")
+    .doc(save.uid)
+    .set({ preferences: { ...save.prefs, modified: save.timestamp }, lastModified: save.timestamp }, { merge: true })
+    .catch((error) => console.error("Failed to save preferences:", error));
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPreferenceSave();
+  });
+  window.addEventListener("pagehide", flushPreferenceSave);
+}
+
 export function setPreference(key, value) {
   currentPrefs = { ...currentPrefs, [key]: value };
   applyPreferences(currentPrefs);
   watchSystemTheme(currentPrefs.appearance);
-  refreshGradeIcons();
-  refreshUiIcons();
+  // The icons come in the theme's folder, so only a new appearance changes them.
+  if (key === "appearance") {
+    refreshGradeIcons();
+    refreshUiIcons();
+  }
   // So anything depending on a preference reacts to changes made in this tab
   // too, not only ones confirmed from the cloud.
   notifyPreferencesChanged(key);
 
-  if (!prefsUid || !hasFirebase()) {
-    writeCachedPrefs(PREFS_ANON_KEY, currentPrefs, Date.now());
-    return;
-  }
-
   const timestamp = Date.now();
-  appliedPrefsModified = timestamp;
-  writeCachedPrefs(prefsCacheKeyFor(prefsUid), currentPrefs, timestamp);
-  syncAppDataCache(prefsUid, currentPrefs, timestamp);
-  firestore()
-    .collection("users")
-    .doc(prefsUid)
-    .set({ preferences: { ...currentPrefs, modified: timestamp }, lastModified: timestamp }, { merge: true })
-    .catch((error) => console.error("Failed to save preferences:", error));
+  const uid = prefsUid && hasFirebase() ? prefsUid : null;
+  // Marked now, so a confirmation arriving before the save is made is seen as
+  // older than this change.
+  if (uid) appliedPrefsModified = timestamp;
+  // A change under a different account than the one waiting is saved first.
+  if (pendingSave && pendingSave.uid !== uid) flushPreferenceSave();
+  pendingSave = { uid, prefs: currentPrefs, timestamp };
+  if (pendingSaveTimer === null) pendingSaveTimer = setTimeout(flushPreferenceSave, PREFS_SAVE_DELAY_MS);
 }
 
 // Preferences saved to the cloud, at load or as they change in another tab or
@@ -256,6 +290,8 @@ export function applyCloudPreferences(uid, cloudPrefs) {
 // the account's, confirmed from the server. Called by session.js as sign-in
 // changes.
 export function preferencesForUser(user) {
+  // A change waiting to be saved goes under the account it was made in.
+  flushPreferenceSave();
   if (!user) {
     prefsUid = null;
     appliedPrefsModified = 0;

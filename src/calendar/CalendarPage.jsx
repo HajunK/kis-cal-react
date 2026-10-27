@@ -9,7 +9,7 @@ import { openMyCoursesModal } from "../popups/popupStore.js";
 import { onCalendarRedraw, redrawCalendar } from "../shell/openTab.js";
 import { loadPeriods } from "../shell/data.js";
 import { getPreferences, setPreference } from "../shell/preferences.js";
-import { attachHoverTooltip, hideHoverTooltip } from "../shell/ui.js";
+import { CLOSE_POPUPS_EVENT, attachHoverTooltip, hideHoverTooltip } from "../shell/ui.js";
 
 const FILTERS = [
   { category: "summative", label: "Summatives", look: "calendar-filter--filled" },
@@ -260,6 +260,13 @@ function CourseColors({ legend }) {
   // legend's own list is hidden there, so the colors come from what it last drew.
   const colorNamesRef = useRef(null);
   colorNamesRef.current = legend ? legend.colorNames : null;
+  // Closed when another popup (a pill's details) opens over the calendar.
+  useEffect(() => {
+    window.addEventListener(CLOSE_POPUPS_EVENT, closePicker);
+    return () => window.removeEventListener(CLOSE_POPUPS_EVENT, closePicker);
+    // closePicker only reads refs and setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const onPick = (event) => {
       const { anchor, name } = event.detail;

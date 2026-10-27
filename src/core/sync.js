@@ -16,6 +16,10 @@ export function emptyAppData() {
     // Course names and dates, not scores, so unencrypted.
     addedAssessments: [],
     completedTasks: [],
+    // School-wide assessments this student removed from their own calendar (ids).
+    hiddenAssessments: [],
+    // School-wide assessments that began as this student's own suggestion (ids).
+    confirmedAssessments: [],
     domainSnapshot: [],
     gpaClasses: [],
     domainScores: {},
@@ -67,6 +71,8 @@ export function normalizeCloudData(cloud, key) {
     hiddenCourses: cloud.hiddenCourses || [],
     addedAssessments: cloud.addedAssessments || [],
     completedTasks: cloud.completedTasks || [],
+    hiddenAssessments: cloud.hiddenAssessments || [],
+    confirmedAssessments: cloud.confirmedAssessments || [],
     domainSnapshot,
     gpaClasses,
     domainScores,

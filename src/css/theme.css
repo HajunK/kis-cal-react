@@ -49,6 +49,12 @@
   --color-segment-active: #90c2ff;
 
   --color-filter-check: #828282;
+  /* Black or white on a course color (pills, checks): --ink-cut is the lightness black takes
+     over from white at; --ink-floor and --ink-tint lift the dark theme's black and tint it
+     with the color. Pure black here. */
+  --ink-cut: 0.78;
+  --ink-floor: 0;
+  --ink-tint: 0;
   --color-filter-fill: #eeeeee;
   --color-filter-border: #a8a8a8;
   --color-filter-text: #111111;
@@ -124,6 +130,10 @@
   /* Muted a step below the light theme's contrast, which glares on a dark
      surface; the circle stays light enough for the black check. */
   --color-filter-check: #a3a3a3;
+  /* The dark theme's course colors are lighter, so black takes over from white sooner. */
+  --ink-cut: 0.7;
+  --ink-floor: 0.2;
+  --ink-tint: 0.35;
   --color-filter-fill: #404040;
   --color-filter-border: #6e6e6e;
   --color-filter-text: #ececec;

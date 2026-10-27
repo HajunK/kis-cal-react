@@ -8,6 +8,9 @@ import {
   courseColorNames,
   courseColorVars,
   dayPillRank,
+  lateLabel,
+  addedByLabel,
+  pillDetails,
   latestAugustFirst,
   matchEntries,
   normalizeCompletedRecords,
@@ -257,5 +260,108 @@ describe("calendarDateRange", () => {
   it("counts the end from the start of this week, whatever day it is", () => {
     expect(calendarDateRange(4, new Date(2026, 9, 17)).end).toBe("2026-11-07"); // a Saturday
     expect(calendarDateRange(4, new Date(2026, 9, 11)).end).toBe("2026-11-07"); // the Sunday
+  });
+});
+
+describe("lateLabel", () => {
+  const sec = 1000;
+  const min = 60 * sec;
+  const hour = 60 * min;
+  const day = 24 * hour;
+
+  it("shows only the largest whole unit", () => {
+    expect(lateLabel(2 * day + 3 * hour + 16 * min)).toBe("2d late");
+    expect(lateLabel(8 * hour + 24 * min)).toBe("8h late");
+    expect(lateLabel(5 * min + 40 * sec)).toBe("5m late");
+    expect(lateLabel(14 * sec)).toBe("14s late");
+  });
+
+  it("changes unit exactly at the boundaries", () => {
+    expect(lateLabel(59 * sec + 999)).toBe("59s late");
+    expect(lateLabel(60 * sec)).toBe("1m late");
+    expect(lateLabel(hour - 1)).toBe("59m late");
+    expect(lateLabel(hour)).toBe("1h late");
+    expect(lateLabel(day - 1)).toBe("23h late");
+    expect(lateLabel(day)).toBe("1d late");
+  });
+
+  it("never says 0s", () => {
+    expect(lateLabel(0)).toBe("1s late");
+    expect(lateLabel(-5)).toBe("1s late");
+  });
+});
+
+describe("pillDetails", () => {
+  const formatDate = (date) => `${date.getMonth() + 1}/${date.getDate()}`;
+  const at = (hours, minutes) => new Date(2026, 9, 28, hours, minutes);
+
+  it("describes an assignment with its due time and who added it", () => {
+    const entry = { id: "a", date: "2026-10-28", courseName: "Biology", type: "Assignment", title: "Lab report", dueTime: "08:20" };
+    const details = pillDetails(entry, { courseLabel: "Biology", periodIndex: 1, dueAt: at(8, 20), formatDate, addedBy: "You", done: false });
+    expect(details.title).toBe("Lab report");
+    expect(details.subtitle).toBe("Biology");
+    expect(details.rows).toEqual([
+      ["Date", "Wednesday, 10/28"],
+      ["Due", "8:20 AM"],
+      ["Added by", "You"],
+    ]);
+  });
+
+  it("says the start of the day for an assignment with no set time, and its period when due then", () => {
+    const base = { id: "a", date: "2026-10-28", courseName: "Biology", type: "Assignment", title: "HW" };
+    const options = { courseLabel: "Biology", periodIndex: 1, formatDate, addedBy: "You" };
+    expect(pillDetails({ ...base, dueTime: "start" }, { ...options, dueAt: at(0, 0) }).rows[1]).toEqual(["Due", "Start of the day"]);
+    expect(pillDetails({ ...base, dueTime: "period" }, { ...options, dueAt: at(10, 18) }).rows[1]).toEqual(["Due", "Period 2, 10:18 AM"]);
+  });
+
+  it("describes a school assessment with its class time", () => {
+    const entry = { id: "s", date: "2026-10-28", courseName: "Geometry", type: "Summative" };
+    const details = pillDetails(entry, { courseLabel: "Geometry", periodIndex: 0, dueAt: at(8, 50), endsAt: at(10, 13), formatDate, addedBy: "Your school" });
+    expect(details.title).toBe("Geometry Summative");
+    expect(details.subtitle).toBe("Period 1");
+    expect(details.rows).toContainEqual(["Time", "8:50 AM – 10:13 AM"]);
+    expect(details.rows.at(-1)).toEqual(["Added by", "Your school"]);
+  });
+
+  it("gives just the start when no end is known", () => {
+    const entry = { id: "s", date: "2026-10-28", courseName: "Geometry", type: "Summative" };
+    const rows = pillDetails(entry, { courseLabel: "Geometry", periodIndex: 0, dueAt: at(8, 50), endsAt: null, formatDate, addedBy: "Your school" }).rows;
+    expect(rows).toContainEqual(["Time", "8:50 AM"]);
+  });
+
+  it("leaves out the time when it isn't known", () => {
+    const entry = { id: "s", date: "2026-10-28", courseName: "Geometry", type: "Formative" };
+    const rows = pillDetails(entry, { courseLabel: "Geometry", periodIndex: undefined, dueAt: null, formatDate, addedBy: "Your school" }).rows;
+    expect(rows.map(([label]) => label)).toEqual(["Date", "Added by"]);
+  });
+});
+
+describe("addedByLabel", () => {
+  it("says whose an assessment is", () => {
+    expect(addedByLabel({ added: true, confirmed: false, fromStudent: false })).toBe("You");
+    expect(addedByLabel({ added: false, confirmed: true, fromStudent: true })).toBe("You (Confirmed)");
+    expect(addedByLabel({ added: false, confirmed: false, fromStudent: true })).toBe("Classmate");
+    expect(addedByLabel({ added: false, confirmed: false, fromStudent: false })).toBe("Your school");
+  });
+
+  it("puts the student's own ahead of what the school has now", () => {
+    expect(addedByLabel({ added: true, confirmed: true, fromStudent: true })).toBe("You");
+    expect(addedByLabel({ added: false, confirmed: true, fromStudent: false })).toBe("You (Confirmed)");
+  });
+});
+
+describe("pillDetails for a Testing Block", () => {
+  const formatDate = (date) => `${date.getMonth() + 1}/${date.getDate()}`;
+  const entry = { id: "t", date: "2026-10-30", courseName: "Chemistry", type: "Testing Block" };
+
+  it("names it in the subtitle and gives only its start as the time", () => {
+    const details = pillDetails(entry, { courseLabel: "Chemistry", periodIndex: 4, dueAt: new Date(2026, 9, 30, 8, 0), formatDate, addedBy: "Your school" });
+    expect(details.subtitle).toBe("Morning Testing Block");
+    expect(details.rows).toContainEqual(["Time", "8:00 AM"]);
+  });
+
+  it("leaves out the time row when its start isn't known", () => {
+    const details = pillDetails(entry, { courseLabel: "Chemistry", periodIndex: 4, dueAt: null, formatDate, addedBy: "Your school" });
+    expect(details.rows.map(([label]) => label)).toEqual(["Date", "Added by"]);
   });
 });

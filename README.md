@@ -8,11 +8,39 @@ are stored in Firebase.
 
 ```
 npm install
-npm run dev        # http://localhost:5173, with the same redirects as Firebase Hosting
+npm run dev        # http://localhost:3000 (always that port; it says so if it's taken), with the
+                   # same redirects as Firebase Hosting; the study guides are at http://guides.localhost:3000
 npm test           # the tests (Vitest)
 npm run build      # into dist/
 firebase deploy    # builds first (see predeploy in firebase.json), then deploys dist/ and the Firestore rules
 ```
+
+`http://guides.localhost:3000` is the guides site (`guides/`, `dev/guidesServer.js`), answered the
+way its Hosting site is: files as they are, `/biology` for its folder, anything else is
+`guide.html`. Browsers send `*.localhost` to your machine themselves. Google sign-in there needs
+`guides.localhost` under Authentication > Settings > Authorized domains in the Firebase console
+(`localhost` alone covers only `localhost:3000`).
+
+## Who can read what
+
+`firestore.rules` is the real gate; the Firebase settings in the page are public by design.
+- `users/{uid}`: only that signed-in user (their added assessments, scores, preferences).
+- `suggested` (what students add that the school's calendar lacks, with the emails of who
+  suggested it): **admins only**. Students only write to it.
+- `reportedAssessments` (a student's "This is wrong" on a school-wide assessment, one document per
+  assessment with the emails of who flagged it): students write, **admins only** read. It shows on the
+  Assessments page beside the suggestions, where an admin deletes the assessment or dismisses the report.
+- `assessments`: **signed-in users only**, so it can't be pulled with just the public settings.
+  A visit without a sign-in carries on without them (`retryAssessmentsAfterSignIn` in
+  `src/shell/school.js` reads them once someone signs in).
+- `dayTypes`, `periodTimes`, `meta`: open, so the time-left pill works before signing in.
+
+Deploy the new app (`firebase deploy --only hosting`) **before** the rules
+(`firebase deploy --only firestore:rules`): the previous app doesn't know to carry on when
+the assessments are refused, so a visitor who isn't signed in would lose the schedule until it's replaced.
+Still to do, outside the code: Firebase App Check (register a reCAPTCHA v3 key in the console, activate
+it in the app, check the metrics, then enforce it for Firestore), and a made-up entry in a
+school-wide list to recognise a copy by.
 
 ## Structure
 

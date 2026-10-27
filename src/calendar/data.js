@@ -20,7 +20,7 @@ import {
   upcomingDueAt as dueAtFor,
   upcomingSortTime as sortTimeFor,
 } from "./model.js";
-import { appData, currentUid, loadAddedAssessments, loadCompletedTasks, loadPeriodDivisions, loadPeriods, saveAddedAssessments, saveCompletedTasks } from "../shell/data.js";
+import { appData, currentUid, loadAddedAssessments, loadCompletedTasks, loadConfirmedAssessments, loadPeriodDivisions, loadPeriods, saveAddedAssessments, saveCompletedTasks } from "../shell/data.js";
 import { formatPreferredDate, getPreferences } from "../shell/preferences.js";
 import { allAssessments, allDayTypes, assessmentsFetchDone, assessmentsLoaded, defaultPeriodTimes, isAssessmentVisibleForPeriod, loadAssessments } from "../shell/school.js";
 
@@ -109,6 +109,57 @@ export function unlogSuggestedAssessment(date, courseName, type) {
     });
 }
 
+// "This is wrong" on a school-wide assessment: told to the admins on the Assessments
+// page (the reportedAssessments collection, one document per assessment, tagged
+// with the emails of those who flagged it).
+export function logAssessmentReport(entry) {
+  if (!currentUid || !hasFirebase()) return;
+  const user = firebaseAuth().currentUser;
+  const email = (user && user.email) || "";
+  if (!email || !entry.id) return;
+  firestore()
+    .collection("reportedAssessments")
+    .doc(entry.id)
+    .set(
+      {
+        assessmentId: entry.id,
+        date: entry.date,
+        courseName: entry.courseName,
+        type: entry.type,
+        emails: arrayUnion(email),
+        lastReportedAt: Date.now(),
+      },
+      { merge: true }
+    )
+    .catch((error) => console.error("Failed to report assessment:", error));
+}
+
+// Taking a report back (Undo): only this student's email goes; the admins' page
+// clears an emptied report.
+export function unlogAssessmentReport(entry) {
+  if (!currentUid || !hasFirebase()) return;
+  const user = firebaseAuth().currentUser;
+  const email = (user && user.email) || "";
+  if (!email || !entry.id) return;
+  firestore()
+    .collection("reportedAssessments")
+    .doc(entry.id)
+    .update({ emails: arrayRemove(email) })
+    .catch((error) => {
+      if (error && error.code === "not-found") return;
+      console.error("Failed to take back the report:", error);
+    });
+}
+
+// The school-wide assessments that began as this student's own suggestion: those
+// their own added copies are matched with now (not yet cleaned up), and those
+// remembered from when they were (see dropAcceptedSuggestions).
+export function confirmedAssessmentIds() {
+  const periodIndexOf = new Map(myAssessmentMatchEntries().matchEntries.map((entry) => [entry.name, entry.periodIndex]));
+  const now = acceptedReplacements(loadAddedAssessments(), allAssessments, periodIndexOf, isAssessmentVisibleForPeriod);
+  return new Set([...loadConfirmedAssessments(), ...now.values()]);
+}
+
 // Admins can't touch students' data, so each student's app drops its own copy
 // once an admin accepts it (see acceptedReplacements), passing on its done
 // state. Only on confirmed data, never cache: saving pushes all of appData,
@@ -121,6 +172,8 @@ export function dropAcceptedSuggestions() {
     const replacedBy = acceptedReplacements(added, allAssessments, periodIndexOf, isAssessmentVisibleForPeriod);
     if (replacedBy.size === 0) return;
 
+    // Remembered, so it still says whose it was once the own copy is gone.
+    appData.confirmedAssessments = [...new Set([...loadConfirmedAssessments(), ...replacedBy.values()])];
     const completed = loadCompletedTasks();
     const carried = carriedCompletions(completed, replacedBy);
     if (carried.length > 0) appData.completedTasks = [...completed, ...carried];

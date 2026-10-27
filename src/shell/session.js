@@ -28,6 +28,7 @@ import {
 } from "./data.js";
 import { firebaseAuth, firestore } from "./firebase.js";
 import { applyCloudPreferences, preferencesForUser } from "./preferences.js";
+import { retryAssessmentsAfterSignIn } from "./school.js";
 
 // What the app shows about the session: whether there's data to draw yet,
 // the signed-in user (null signed out, undefined until known), and whether
@@ -329,6 +330,8 @@ export function startSession({ onConfirmed } = {}) {
   firebaseAuth().onAuthStateChanged((user) => {
     // As preferences.js, auth.js and boot.js each heard it, in that order.
     preferencesForUser(user);
+    // The school's assessments need a sign-in; read them now if they were refused.
+    if (user) retryAssessmentsAfterSignIn();
     update({ user, isAdmin: noteAdmin(user), avatar: noteAvatar(user) });
     if (user) saveEmailToFirestore(user);
 

@@ -186,6 +186,66 @@ export function upcomingDueAt(entry, periodIndex, dayTypes, periodTimes) {
   return time ? at(time.start) : null;
 }
 
+const CAL_WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// Who an assessment is from, for its details: "You" (the student added it and it
+// isn't on the school's calendar yet), "You (Confirmed)" (they suggested it and an
+// admin accepted it), "Classmate" (another student suggested it and it was accepted)
+// or "Your school" (the school put it there itself).
+export function addedByLabel({ added, confirmed, fromStudent }) {
+  if (added) return "You";
+  if (confirmed) return "You (Confirmed)";
+  if (fromStudent) return "Classmate";
+  return "Your school";
+}
+
+// What the card a clicked pill opens says, as { title, subtitle, rows, done }:
+// rows are [label, value] pairs. dueAt: when it's due (a Date) or null;
+// endsAt: when it ends (a Date) or null; formatDate: the Date format preference's;
+// addedBy: who it's from (see addedByLabel).
+export function pillDetails(entry, { courseLabel, periodIndex, dueAt, endsAt, formatDate, addedBy, done }) {
+  const assignment = assessmentCategory(entry) === "assignment";
+  const date = fromISODate(entry.date);
+  const clockOf = (when) => formatClockTime(`${when.getHours()}:${String(when.getMinutes()).padStart(2, "0")}`);
+  const period = periodIndex === undefined ? "" : `Period ${periodIndex + 1}`;
+
+  let time = "";
+  if (assignment) {
+    if (/^\d{1,2}:\d{2}$/.test(entry.dueTime || "")) time = formatClockTime(entry.dueTime);
+    else if (entry.dueTime === "period") time = dueAt ? `${period}, ${clockOf(dueAt)}` : period;
+    else time = "Start of the day";
+  } else if (entry.type === "Testing Block") {
+    // Just when it starts: the card's subtitle already says what it is.
+    time = dueAt ? clockOf(dueAt) : "";
+  } else if (dueAt) {
+    // When it runs: its start to its end (the class's, for a class's own assessment).
+    time = endsAt ? `${clockOf(dueAt)} – ${clockOf(endsAt)}` : clockOf(dueAt);
+  }
+
+  const rows = [["Date", `${CAL_WEEKDAY_LONG[date.getDay()]}, ${formatDate(date)}`]];
+  if (time) rows.push([assignment ? "Due" : "Time", time]);
+  rows.push(["Added by", addedBy]);
+  return {
+    title: upcomingTitle(entry, courseLabel),
+    subtitle: assignment ? courseLabel : entry.type === "Testing Block" ? "Morning Testing Block" : period,
+    rows,
+    done: Boolean(done),
+  };
+}
+
+// How late something is, in its largest whole unit: "14s late", "5m late",
+// "3h late", "2d late". Never under a second, so it doesn't read "0s late" the
+// instant it's due.
+export function lateLabel(ms) {
+  const seconds = Math.max(1, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s late`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m late`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h late`;
+  return `${Math.floor(hours / 24)}d late`;
+}
+
 // By the actual moment due, so midnight homework comes before a Period 1
 // formative that day. Unknown times go just after that day's midnight.
 export function upcomingSortTime(entry, periodIndex, dayTypes, periodTimes) {

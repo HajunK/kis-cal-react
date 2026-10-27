@@ -2,7 +2,8 @@
 // suggestions-admin.js made them, write for write: every student's Calendar
 // reads these collections, so their shapes mustn't change. db is a
 // Firestore instance; deleteField is FieldValue.delete.
-//   assessments/{id}: { type, date, courseName, createdAt }
+//   assessments/{id}: { type, date, courseName, createdAt, fromStudent? } (fromStudent: it
+//     began as a student's suggestion, accepted on the Suggestions page)
 //   dayTypes/{iso}: { type: "A" | "B" } (no doc: unset)
 //   periodTimes/default: { times, testingBlock, academicSupport, advisory,
 //     daySchedules: { [iso]: { included, times: { [event]: { start, end } } } } }
@@ -10,6 +11,8 @@
 //     instead, still read; see scheduleForDate in src/core/schedule.js)
 //   meta/cacheVersions: { assessments, dayTypes, periodTimes } (ms stamps)
 //   suggested/{hash}: { date, courseName, type, emails, lastAddedAt }
+//   reportedAssessments/{assessmentId}: { assessmentId, date, courseName, type,
+//     emails, lastReportedAt } (a student saying an assessment is wrong)
 
 import { fromISODate } from "../core/dates.js";
 import { DEFAULT_ACADEMIC_SUPPORT_TIMES, DEFAULT_ADVISORY_TIMES, DEFAULT_SCHEDULE_TIMES, DEFAULT_TESTING_BLOCK_TIMES } from "./bellSchedule.js";
@@ -155,6 +158,34 @@ export function watchSuggestions(db, onChange) {
   );
 }
 
+// Reports that a school-wide assessment is wrong, live, in the shape the
+// suggestions list draws: the id is prefixed (it can't collide with a suggestion's)
+// and kind marks it. Emptied reports (a student took theirs back) are cleared, as
+// emptied suggestions are. Returns the unsubscribe.
+export function watchReports(db, onChange) {
+  return db.collection("reportedAssessments").onSnapshot(
+    (snapshot) => {
+      const docs = snapshot.docs.map((doc) => ({ ...doc.data(), reportId: doc.id, id: `report-${doc.id}`, kind: "report" }));
+      docs
+        .filter((entry) => (entry.emails || []).length === 0)
+        .forEach((entry) => db.collection("reportedAssessments").doc(entry.reportId).delete().catch(() => {}));
+      onChange(docs.filter((entry) => (entry.emails || []).length > 0).map((entry) => ({ ...entry, lastAddedAt: entry.lastReportedAt })));
+    },
+    (error) => console.error("Failed to load reports:", error)
+  );
+}
+
+// The report was wrong: it just goes.
+export function dismissReport(db, report) {
+  return db.collection("reportedAssessments").doc(report.reportId).delete();
+}
+
+// The report was right: the assessment is deleted from the school's calendar
+// (every student's, and the cache stamp moves), then the report goes.
+export function deleteReportedAssessment(db, report) {
+  return deleteAssessment(db, report.assessmentId).then(() => dismissReport(db, report));
+}
+
 // The type an accepted suggestion goes in as when the admin has no choice to
 // make: what students suggested, except a summative on a Tuesday, Wednesday or
 // Thursday, which is always in class (the Testing Block is only Mondays and
@@ -172,12 +203,54 @@ export function acceptedType(suggestion) {
 export function acceptSuggestion(db, suggestion, type, onAdded) {
   return db
     .collection("assessments")
-    .add({ type, date: suggestion.date, courseName: suggestion.courseName, createdAt: Date.now() })
+    .add({ type, date: suggestion.date, courseName: suggestion.courseName, createdAt: Date.now(), fromStudent: true })
     .then((ref) => {
       bumpCacheVersion(db, "assessments");
       onAdded(ref.id);
       return db.collection("suggested").doc(suggestion.id).delete();
     });
+}
+
+// Takes an accepted suggestion back: the suggestion goes back in "suggested" with the
+// emails it had, then the assessment it became comes off the school calendar. In that
+// order, so a failure part way leaves both (it can be run again) rather than neither.
+// entry is an accepted-list entry (see acceptedSuggestions.js).
+export function undoAcceptedSuggestion(db, entry) {
+  return putSuggestionBack(db, { ...entry, type: entry.suggestedType }).then(() => deleteAssessment(db, entry.assessmentId));
+}
+
+// A suggestion back in "suggested" with the emails it had. If a student has
+// suggested it again since, theirs is kept with the rest.
+export function putSuggestionBack(db, entry) {
+  const ref = db.collection("suggested").doc(entry.id);
+  return ref.get().then((doc) => {
+    const now = doc.exists ? doc.data().emails || [] : [];
+    return ref.set({
+      date: entry.date,
+      courseName: entry.courseName,
+      type: entry.type,
+      emails: [...new Set([...(entry.emails || []), ...now])],
+      lastAddedAt: Math.max(entry.lastAddedAt || 0, doc.exists ? doc.data().lastAddedAt || 0 : 0) || Date.now(),
+    });
+  });
+}
+
+// A dismissed report back for the admins to act on, with the emails it had (and any a
+// student has added since). entry is a dismissed-list entry whose id is "report-<id>".
+export function putReportBack(db, entry) {
+  const reportId = entry.id.replace(/^report-/, "");
+  const ref = db.collection("reportedAssessments").doc(reportId);
+  return ref.get().then((doc) => {
+    const now = doc.exists ? doc.data().emails || [] : [];
+    return ref.set({
+      assessmentId: reportId,
+      date: entry.date,
+      courseName: entry.courseName,
+      type: entry.type,
+      emails: [...new Set([...(entry.emails || []), ...now])],
+      lastReportedAt: Math.max(entry.lastAddedAt || 0, doc.exists ? doc.data().lastReportedAt || 0 : 0) || Date.now(),
+    });
+  });
 }
 
 export function declineSuggestion(db, suggestion) {

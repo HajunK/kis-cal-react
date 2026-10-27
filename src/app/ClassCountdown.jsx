@@ -4,7 +4,7 @@ import { currentUid, loadPeriods } from "../shell/data.js";
 import { refreshPrivacyBlur } from "../shell/preferences.js";
 import { currentScheduleBlock } from "../shell/schedule.js";
 import { loadScheduleData } from "../shell/school.js";
-import { animateNumberChange } from "../shell/ui.js";
+import { CLOSE_POPUPS_EVENT, animateNumberChange } from "../shell/ui.js";
 import { closeTodaySchedule, isTodayScheduleOpen, openTodaySchedule, renderTodaySchedule, setCountdownPill } from "./todaySchedule.js";
 
 // The time-left pill in the tab bar, which opens today's schedule (from
@@ -66,6 +66,9 @@ export function ClassCountdown() {
       }, 1000 - (Date.now() % 1000) + 20);
     };
 
+    // The open schedule folds away when another popup (a pill's details) opens.
+    window.addEventListener(CLOSE_POPUPS_EVENT, closeTodaySchedule);
+
     loadScheduleData(() =>
       // Out of this effect, which can't draw at once.
       queueMicrotask(() => {
@@ -82,6 +85,7 @@ export function ClassCountdown() {
     );
     return () => {
       live = false;
+      window.removeEventListener(CLOSE_POPUPS_EVENT, closeTodaySchedule);
       clearTimeout(timer);
       closeTodaySchedule();
     };

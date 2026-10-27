@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { openLoginKeysModal, openMyCoursesModal, openSettingsModal } from "../popups/popupStore.js";
 import { firebaseAuth, googleProvider } from "../shell/firebase.js";
 import { flushPendingSave } from "../shell/data.js";
+import { CLOSE_POPUPS_EVENT } from "../shell/ui.js";
+import { flushPreferenceSave } from "../shell/preferences.js";
 import { AVATAR_IMAGE_KEY } from "../shell/session.js";
 
 // The tab bar's right end, from auth.js: the account picture, which opens the
@@ -159,9 +161,11 @@ function AccountMenu({ open, anchor, withCourses, onClose, onGone }) {
     };
     document.addEventListener("click", onClick);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener(CLOSE_POPUPS_EVENT, onClose);
     return () => {
       document.removeEventListener("click", onClick);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(CLOSE_POPUPS_EVENT, onClose);
     };
   }, [open, anchor, onClose]);
 
@@ -186,7 +190,7 @@ function AccountMenu({ open, anchor, withCourses, onClose, onGone }) {
       {item("Settings", openSettingsModal)}
       {item("Login Key", openLoginKeysModal)}
       <div className="popup-menu-divider" />
-      {item("Sign out", () => (flushPendingSave(), firebaseAuth().signOut()))}
+      {item("Sign out", () => (flushPendingSave(), flushPreferenceSave(), firebaseAuth().signOut()))}
     </div>,
     document.body
   );

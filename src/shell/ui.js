@@ -435,6 +435,22 @@ export function animateNumberChange(element, newText, revealStyle) {
   numberAnimations.set(element, timer);
 }
 
+// Something that opens over the page and wants the rest out of its way (the
+// Calendar's pill details) calls closeOtherPopups; each popup that can be open
+// listens for CLOSE_POPUPS_EVENT and closes itself.
+export const CLOSE_POPUPS_EVENT = "app:close-popups";
+export function closeOtherPopups() {
+  hideHoverTooltip();
+  window.dispatchEvent(new CustomEvent(CLOSE_POPUPS_EVENT));
+}
+
+// Runs fn once the frame that's about to be drawn has been: for what a change
+// sets going in the background (saving it, telling the cloud), which must never
+// hold up what the student just pressed.
+export function runAfterPaint(fn) {
+  requestAnimationFrame(() => setTimeout(fn, 0));
+}
+
 let sharedToastEl = null;
 let sharedToastHideTimer = null;
 const SHARED_TOAST_VISIBLE_MS = 4000;

@@ -158,7 +158,7 @@ describe("AssessmentsAdmin", () => {
     fireEvent.click(screen.getAllByText("Decline")[0]);
     await settle();
     expect(writesTo(page, "assessments")).toEqual([
-      { op: "add", collection: "assessments", value: { type: "Testing Block", date: MONDAY, courseName: "Biology", createdAt: expect.any(Number) } },
+      { op: "add", collection: "assessments", value: { type: "Testing Block", date: MONDAY, courseName: "Biology", createdAt: expect.any(Number), fromStudent: true } },
     ]);
     expect(writesTo(page, "suggested")).toEqual([
       { op: "delete", collection: "suggested", id: "s1" },
@@ -182,7 +182,7 @@ describe("AssessmentsAdmin", () => {
     fireEvent.click(accept);
     await settle();
     expect(writesTo(page, "assessments")).toEqual([
-      { op: "add", collection: "assessments", value: { type: "In-Class", date: "2026-10-14", courseName: "Physics", createdAt: expect.any(Number) } },
+      { op: "add", collection: "assessments", value: { type: "In-Class", date: "2026-10-14", courseName: "Physics", createdAt: expect.any(Number), fromStudent: true } },
     ]);
   });
 

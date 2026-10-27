@@ -154,6 +154,10 @@ describe("a change made elsewhere", () => {
   it("is saved once however many times it's asked for, after a moment, or at once when flushed", async () => {
     const { data } = await signedIn();
     const usersWrites = () => fb.writes.filter((write) => write.collection === "users").length;
+    // Anything the sign-in itself left waiting is made first, so it isn't counted below.
+    data.flushPendingSave();
+    await flush();
+    await flush();
     const before = usersWrites();
     data.appData.periods[0] = "Chinese";
     data.pushDataToCloud();
@@ -173,6 +177,27 @@ describe("a change made elsewhere", () => {
     data.flushPendingSave();
     await flush();
     expect(usersWrites()).toBe(before + 1);
+  });
+
+  it("saves a changed preference after a moment, not while the change is being made, and once for several", async () => {
+    localStorage.setItem("lastKnownUid", "u1");
+    const { data } = await signedIn();
+    const preferences = await import("./preferences.js");
+    const usersWrites = () => fb.writes.filter((write) => write.collection === "users" && write.value.preferences);
+    const before = usersWrites().length;
+    preferences.setPreference("privacyBlurMode", "always");
+    preferences.setPreference("dateFormat", "numeric");
+    // On the page at once, but not yet saved.
+    expect(preferences.getPreferences()).toMatchObject({ privacyBlurMode: "always", dateFormat: "numeric" });
+    expect(document.documentElement.dataset.privacyBlur).toBe("true");
+    expect(usersWrites().length).toBe(before);
+    preferences.flushPreferenceSave();
+    expect(usersWrites().length).toBe(before + 1);
+    expect(usersWrites().at(-1).value.preferences).toMatchObject({ privacyBlurMode: "always", dateFormat: "numeric" });
+    expect(JSON.parse(localStorage.getItem("prefs_u1")).prefs).toMatchObject({ privacyBlurMode: "always" });
+    preferences.flushPreferenceSave();
+    expect(usersWrites().length).toBe(before + 1);
+    expect(data.savesInFlight()).toBe(0);
   });
 
   it("isn't this tab's own save coming back", async () => {

@@ -92,6 +92,22 @@ export function loadAssessments(callback) {
   if (!assessmentsFetchDone) assessmentsLoadListeners.push(callback);
 }
 
+// The assessments are for signed-in students only (see firestore.rules), so a
+// visit without a sign-in is refused them. That isn't an error: it goes on without
+// any (the bell schedule and day types are still read, and the Calendar has no
+// courses to show them against), and signing in reads them again (see
+// retryAssessmentsAfterSignIn).
+let assessmentsDenied = false;
+
+export function retryAssessmentsAfterSignIn() {
+  if (!assessmentsDenied) return;
+  assessmentsDenied = false;
+  // Not loaded again until they are, so the tabs drawn for this sign-in wait for them.
+  assessmentsLoaded = false;
+  assessmentsFetchDone = false;
+  fetchAssessments();
+}
+
 function fetchAssessments() {
   if (!hasFirebase()) return;
   const finish = () => {
@@ -109,7 +125,14 @@ function fetchAssessments() {
         writeLocalCacheVersion("assessments", version);
         finish();
       })
-      .catch((error) => console.error("Failed to load assessments:", error))
+      .catch((error) => {
+        if (error && error.code === "permission-denied") {
+          assessmentsDenied = true;
+          finish();
+          return;
+        }
+        console.error("Failed to load assessments:", error);
+      })
   );
 }
 

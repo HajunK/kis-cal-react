@@ -31,7 +31,8 @@ export function fitName(windowEl, textEl, full, short, held = () => false) {
   nameFitObserver.observe(windowEl);
 }
 
-export function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseColors) {
+// onClick(entry, pill): the pill was clicked (see handlePillClick in calendar.js).
+export function buildAssessmentPill(entry, resolvedNames, onClick, courseColors) {
   const pill = document.createElement("span");
   const category = assessmentCategory(entry);
   // Reassessments share the summative look.
@@ -47,7 +48,8 @@ export function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseC
     // A Testing Block counts as a summative. _noTooltip skips it where the
     // pill's text already says the same.
     attachHoverTooltip(pill, { summative: "Summative", formative: "Formative", assignment: "Assignment" }[category], {
-      when: () => !pill._noTooltip,
+      // Not while its details are open (it's selected then), which say it already.
+      when: () => !pill._noTooltip && !pill.classList.contains("assessment-chip--selected"),
     });
   }
   // Lets animatePillChanges match this pill across rebuilds.
@@ -99,10 +101,7 @@ export function buildAssessmentPill(entry, resolvedNames, onContextMenu, courseC
   } else {
     pill.appendChild(nameEl);
   }
-  pill.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    onContextMenu(entry, pill);
-  });
+  pill.addEventListener("click", () => onClick(entry, pill));
   return pill;
 }
 
@@ -307,7 +306,7 @@ export function cancelMarqueeReturn(textEl) {
   textEl.style.opacity = "";
 }
 
-export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onContextMenu, courseColors) {
+export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onClick, courseColors) {
   const iso = toISODate(date);
   const today = new Date();
 
@@ -355,7 +354,7 @@ export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames,
   const pillList = document.createElement("div");
   pillList.className = "assessment-week-day-pills";
   entries.forEach((entry) =>
-    pillList.appendChild(buildAssessmentPill(entry, resolvedNames, onContextMenu, courseColors))
+    pillList.appendChild(buildAssessmentPill(entry, resolvedNames, onClick, courseColors))
   );
   cell.appendChild(pillList);
 

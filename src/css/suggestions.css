@@ -53,7 +53,9 @@
 
 .suggestions-empty {
   margin: 0;
-  font-size: 15px;
+  padding: 36px 0;
+  text-align: center;
+  font-size: 17px;
   color: var(--color-gray-dark);
 }
 
@@ -113,6 +115,16 @@
   overflow-wrap: break-word;
 }
 
+/* Marks a row that is a report that the school's own assessment is wrong, not a
+   suggestion to add one. */
+.suggestions-flag {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-f-red);
+}
+
 .suggestions-cell--count {
   text-align: center;
 }
@@ -159,6 +171,12 @@
   opacity: 0.9;
 }
 
+/* Remove, on a report that an assessment is wrong: red, as it takes the assessment
+   off everyone's calendar. */
+.suggestions-accept-btn--remove {
+  background: var(--color-f-red);
+}
+
 .suggestions-decline-btn {
   background: var(--color-gray-lighter);
   color: var(--color-text-primary);
@@ -179,4 +197,80 @@
   height: auto;
   max-height: 654px;
   margin-top: 32px;
+}
+
+/* "Accepted (N)" under the list, closing off what was accepted lately as
+   Completed does in the Calendar's Upcoming (.upcoming-completed-toggle). */
+.suggestions-accepted {
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.suggestions-accepted-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Only as wide as its text, so the hover patch sits around that, pulled left by
+     its own padding so the text lines up with the columns above. */
+  width: fit-content;
+  margin-left: -12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--color-gray-dark);
+  font: inherit;
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestions-accepted-toggle:hover {
+  background: var(--color-hover-overlay);
+}
+
+.suggestions-accepted-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s ease;
+}
+
+.suggestions-accepted-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+/* A few rows at a time, scrolling past that so the open list can't push the
+   card past its height. */
+.suggestions-accepted-rows {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.suggestions-accepted-rows .suggestions-row {
+  border-bottom: 1px solid var(--color-gray-lighter);
+}
+
+.suggestions-accepted-rows .suggestions-row:last-child {
+  border-bottom: none;
+}
+
+/* Done, so faded like a completed item. */
+.suggestions-row--accepted > :not(.suggestions-cell--accepted-actions) {
+  opacity: 0.55;
+}
+
+.suggestions-cell--accepted-actions {
+  align-items: center;
+}
+
+.suggestions-accepted-at {
+  color: var(--color-gray-dark);
+  white-space: nowrap;
 }

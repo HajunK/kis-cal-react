@@ -70,6 +70,28 @@ export function saveAddedAssessments(entries) {
   pushDataToCloud();
 }
 
+// School-wide assessments the student has removed from their own calendar, by id.
+// Only theirs: the assessment itself is the school's, and stays for everyone else.
+export function loadHiddenAssessments() {
+  return appData.hiddenAssessments || [];
+}
+
+export function saveHiddenAssessments(ids) {
+  appData.hiddenAssessments = ids;
+  pushDataToCloud();
+}
+
+// School-wide assessments that began as this student's own suggestion, by id (see
+// confirmedAssessmentIds in calendar/data.js).
+export function loadConfirmedAssessments() {
+  return appData.confirmedAssessments || [];
+}
+
+export function saveConfirmedAssessments(ids) {
+  appData.confirmedAssessments = ids;
+  pushDataToCloud();
+}
+
 export function loadCompletedTasks() {
   return appData.completedTasks || [];
 }

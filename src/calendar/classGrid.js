@@ -18,8 +18,8 @@ export const ASSESSMENT_CALENDAR_WEEK_COUNT = 4;
 // not the course, since the row already names it.
 const CLASS_GRID_DAY_PX = 123;
 
-function classGridPill(entry, resolvedNames, onContextMenu, courseColors) {
-  const pill = buildAssessmentPill(entry, resolvedNames, onContextMenu, courseColors);
+function classGridPill(entry, resolvedNames, onClick, courseColors) {
+  const pill = buildAssessmentPill(entry, resolvedNames, onClick, courseColors);
   const category = assessmentCategory(entry);
   const label =
     category === "assignment"
@@ -90,7 +90,7 @@ function sizeClassGridRows(grid) {
   grid.style.gridTemplateRows = `var(--class-grid-head-h) ${rows.join(" ")}`;
 }
 
-export function renderClassGrid(grid, entries, matchEntries, resolvedNames, courseColors, onContextMenu, animatePills) {
+export function renderClassGrid(grid, entries, matchEntries, resolvedNames, courseColors, onPillClick, animatePills) {
   const periods = loadPeriods();
   const courses = [];
   periods.forEach((name) => {
@@ -251,7 +251,7 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
       cell.dataset.course = course;
       const pills = cell.firstChild;
       (byCell.get(`${course}|${iso}`) || []).forEach((entry) =>
-        pills.appendChild(classGridPill(entry, resolvedNames, onContextMenu, courseColors))
+        pills.appendChild(classGridPill(entry, resolvedNames, onPillClick, courseColors))
       );
     });
   });

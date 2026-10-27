@@ -12,7 +12,7 @@ import { attachHoverMarquee } from "./pills.js";
 import { currentUid, loadAddedAssessments, loadPeriods, saveAddedAssessments } from "../shell/data.js";
 import { formatPreferredDate } from "../shell/preferences.js";
 import { allAssessments, allDayTypes, isAssessmentVisibleForPeriod, scheduledTimeOn, scheduleForDate } from "../shell/school.js";
-import { attachHoverTooltip, hideHoverTooltip, showCursorTooltip, showToast, uiIconPath } from "../shell/ui.js";
+import { CLOSE_POPUPS_EVENT, attachHoverTooltip, hideHoverTooltip, runAfterPaint, showCursorTooltip, showToast, uiIconPath } from "../shell/ui.js";
 
 const ADD_POPUP_TYPES = [
   { value: "Assignment", noun: "assignment" },
@@ -693,12 +693,12 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     saveAddedAssessments([...loadAddedAssessments(), entry]);
     // Assignments are personal. A matching school-wide entry for another
     // section means the admin already has it.
-    if (!isAssignment() && !matchingSchoolWideEntry()) {
-      logSuggestedAssessment(entry.date, entry.courseName, entry.type);
-    }
+    const suggest = !isAssignment() && !matchingSchoolWideEntry();
 
     closePopup();
     if (refreshAssessmentCalendar) refreshAssessmentCalendar(true, true);
+    // Told to the cloud once the calendar has started drawing the new entry.
+    if (suggest) runAfterPaint(() => logSuggestedAssessment(entry.date, entry.courseName, entry.type));
   }
 
   const MENU_TYPES = ["Assignment", "Summative", "Formative", "Reassessment"];
@@ -820,6 +820,15 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       if (menu) closeMenu();
       else if (datePick) endDatePick();
       else if (popup) closePopup();
+    },
+    { signal }
+  );
+  // Another popup (a pill's details) asks for the way to be cleared.
+  window.addEventListener(
+    CLOSE_POPUPS_EVENT,
+    () => {
+      if (menu) closeMenu();
+      if (popup) closePopup();
     },
     { signal }
   );

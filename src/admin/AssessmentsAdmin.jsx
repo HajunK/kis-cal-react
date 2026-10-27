@@ -12,14 +12,22 @@ import {
   clearDaySchedule,
   declineSuggestion,
   deleteAssessment,
+  deleteReportedAssessment,
+  dismissReport,
   ensureCacheVersions,
   fetchAssessments,
   fetchDayTypes,
   fetchPeriodTimes,
   saveDayType,
+  putReportBack,
+  putSuggestionBack,
   seedDefaultSchedule,
+  undoAcceptedSuggestion,
+  watchReports,
   watchSuggestions,
 } from "./adminData.js";
+import { loadAcceptedSuggestions, recordAcceptedSuggestion, removeAcceptedSuggestion } from "./acceptedSuggestions.js";
+import { loadDismissedSuggestions, recordDismissedSuggestion, removeDismissedSuggestion } from "./dismissedSuggestions.js";
 import { BellScheduleModal } from "./BellScheduleModal.jsx";
 import { DEFAULT_SCHEDULE_TIMES, dayHasTestingBlock } from "./bellSchedule.js";
 
@@ -409,6 +417,13 @@ export function AssessmentsAdmin({ page }) {
           model.assessments.push(assessment);
           render();
         }}
+        // An accept taken back: the assessment it made comes off the calendar here too.
+        onUndone={(id) => {
+          const index = model.assessments.findIndex((entry) => entry.id === id);
+          if (index === -1) return;
+          model.assessments.splice(index, 1);
+          render();
+        }}
       />
 
       {scheduleModal && (
@@ -751,8 +766,10 @@ function DivisionField({ courseText, division, onPick }) {
 }
 
 // Assessments students added that the school calendar is missing, soonest
-// first, with how many suggested each. Accepting adds it to the calendar.
-function Suggestions({ page, isAdmin, model, onAccepted }) {
+// first, with how many suggested each. Accepting adds it to the calendar. Beside
+// them, the school's own assessments students say are wrong ("This is wrong"):
+// deleting one takes it off the calendar, dismissing it leaves it be.
+function Suggestions({ page, isAdmin, model, onAccepted, onUndone }) {
   const list = useRef([]);
   // As last drawn; null until the collection first loads.
   const [view, setView] = useState(null);
@@ -762,9 +779,19 @@ function Suggestions({ page, isAdmin, model, onAccepted }) {
   useEffect(() => {
     if (!isAdmin || watching) return;
     setWatching(true);
-    watchSuggestions(page.db, (suggestions) => {
-      list.current = suggestions;
+    // Two collections, listed as one.
+    const latest = { suggestions: [], reports: [] };
+    const combine = () => {
+      list.current = [...latest.suggestions, ...latest.reports];
       render();
+    };
+    watchSuggestions(page.db, (suggestions) => {
+      latest.suggestions = suggestions;
+      combine();
+    });
+    watchReports(page.db, (reports) => {
+      latest.reports = reports;
+      combine();
     });
     // Once, the first time an admin is signed in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -798,19 +825,82 @@ function Suggestions({ page, isAdmin, model, onAccepted }) {
       }
     });
   };
+  // What was accepted lately, listed under the suggestions for a few days (see
+  // acceptedSuggestions.js). Re-read each minute so one drops off when its time is up.
+  const [accepted, setAccepted] = useState(() => loadAcceptedSuggestions());
+  const [acceptedOpen, setAcceptedOpen] = useState(false);
+  // Likewise what was dismissed (suggestions declined, reports dismissed).
+  const [dismissed, setDismissed] = useState(() => loadDismissedSuggestions());
+  const [dismissedOpen, setDismissedOpen] = useState(false);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setAccepted(loadAcceptedSuggestions());
+      setDismissed(loadDismissedSuggestions());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
   const accept = (suggestion, type) =>
     optimistic(
       suggestion,
       () =>
-        acceptSuggestion(page.db, suggestion, type, (id) =>
-          onAccepted({ id, type, date: suggestion.date, courseName: suggestion.courseName })
-        ),
+        acceptSuggestion(page.db, suggestion, type, (id) => {
+          recordAcceptedSuggestion(suggestion, type, Date.now(), id);
+          setAccepted(loadAcceptedSuggestions());
+          onAccepted({ id, type, date: suggestion.date, courseName: suggestion.courseName });
+        }),
       { log: "Failed to accept suggestion:", alert: "Something went wrong accepting that suggestion. Please try again." }
     );
+  // Takes an accepted one back: it's a suggestion again (it comes back to the list
+  // by itself) and its assessment comes off the school calendar.
+  const undoAccepted = (entry) => {
+    removeAcceptedSuggestion(entry.id);
+    setAccepted(loadAcceptedSuggestions());
+    undoAcceptedSuggestion(page.db, entry)
+      .then(() => onUndone(entry.assessmentId))
+      .catch((error) => {
+        console.error("Failed to undo accepting:", error);
+        page.alert("Something went wrong taking that back. Please try again.");
+        // Still accepted, as far as anyone can tell: put back in the list.
+        recordAcceptedSuggestion({ ...entry, type: entry.suggestedType, emails: entry.emails }, entry.type, entry.acceptedAt, entry.assessmentId);
+        setAccepted(loadAcceptedSuggestions());
+      });
+  };
+  // Listed under Dismissed at once, and taken off it again if the write fails.
+  const dismissing = (suggestion, write, failure) => {
+    recordDismissedSuggestion(suggestion);
+    setDismissed(loadDismissedSuggestions());
+    optimistic(suggestion, () => write().catch((error) => {
+      removeDismissedSuggestion(suggestion.id);
+      setDismissed(loadDismissedSuggestions());
+      throw error;
+    }), failure);
+  };
+  // A dismissed one back in the main list, to act on again (the watchers bring it).
+  const restore = (entry) => {
+    removeDismissedSuggestion(entry.id);
+    setDismissed(loadDismissedSuggestions());
+    (entry.kind === "report" ? putReportBack(page.db, entry) : putSuggestionBack(page.db, entry)).catch((error) => {
+      console.error("Failed to restore:", error);
+      page.alert("Something went wrong restoring that. Please try again.");
+      recordDismissedSuggestion(entry, entry.dismissedAt);
+      setDismissed(loadDismissedSuggestions());
+    });
+  };
   const decline = (suggestion) =>
-    optimistic(suggestion, () => declineSuggestion(page.db, suggestion), {
-      log: "Failed to decline suggestion:",
-      alert: "Something went wrong declining that suggestion. Please try again.",
+    suggestion.kind === "report"
+      ? dismissing(suggestion, () => dismissReport(page.db, suggestion), {
+          log: "Failed to dismiss report:",
+          alert: "Something went wrong dismissing that report. Please try again.",
+        })
+      : dismissing(suggestion, () => declineSuggestion(page.db, suggestion), {
+          log: "Failed to decline suggestion:",
+          alert: "Something went wrong declining that suggestion. Please try again.",
+        });
+  // A report that's right: the assessment is deleted for everyone.
+  const deleteReported = (report) =>
+    optimistic(report, () => deleteReportedAssessment(page.db, report), {
+      log: "Failed to delete reported assessment:",
+      alert: "Something went wrong deleting that assessment. Please try again.",
     });
 
   const suggestions = view ? view.suggestions : null;
@@ -827,11 +917,8 @@ function Suggestions({ page, isAdmin, model, onAccepted }) {
         <span className="assessment-calendar-spinner" />
       </div>
 
-      <p className="suggestions-empty" id="suggestions-empty" hidden={!(suggestions && suggestions.length === 0)}>
-        Nothing suggested right now.
-      </p>
-
-      <div className="suggestions-list" id="suggestions-list" hidden={!(suggestions && suggestions.length > 0)}>
+      {/* The column labels stay with nothing suggested, so the table is still there. */}
+      <div className="suggestions-list" id="suggestions-list" hidden={suggestions === null}>
         <div className="suggestions-row suggestions-row--header">
           <span className="suggestions-cell suggestions-cell--added">Added</span>
           <span className="suggestions-cell suggestions-cell--date">Date</span>
@@ -842,11 +929,102 @@ function Suggestions({ page, isAdmin, model, onAccepted }) {
           <span className="suggestions-cell suggestions-cell--actions" />
         </div>
         <div className="suggestions-rows" id="suggestions-rows">
+          {suggestions && suggestions.length === 0 && (
+            <p className="suggestions-empty" id="suggestions-empty">
+              Nothing suggested right now.
+            </p>
+          )}
           {suggestions && suggestions.length > 0 && (
-            <SuggestionRows key={view.generation} suggestions={suggestions} page={page} model={model} onAccept={accept} onDecline={decline} />
+            <SuggestionRows
+              key={view.generation}
+              suggestions={suggestions}
+              page={page}
+              model={model}
+              onAccept={accept}
+              onDecline={decline}
+              onDeleteReported={deleteReported}
+            />
           )}
         </div>
       </div>
+
+      {accepted.length > 0 && (
+        <div className="suggestions-accepted" id="suggestions-accepted">
+          {/* "Accepted (N)" and its arrow, as Completed in the Calendar's Upcoming. */}
+          <button
+            type="button"
+            className="suggestions-accepted-toggle"
+            aria-expanded={acceptedOpen}
+            onClick={() => setAcceptedOpen((open) => !open)}
+          >
+            <span>Accepted ({accepted.length})</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5 8l5 5 5-5" />
+            </svg>
+          </button>
+          {acceptedOpen && (
+            <div className="suggestions-accepted-rows">
+              {accepted.map((entry) => (
+                <div key={entry.id} className="suggestions-row suggestions-row--accepted">
+                  <span className="suggestions-cell suggestions-cell--added">{formatAddedAt(entry.lastAddedAt, page.formatDate)}</span>
+                  <span className="suggestions-cell suggestions-cell--date">{page.formatDate(fromISODate(entry.date))}</span>
+                  <span className="suggestions-cell suggestions-cell--course">{entry.courseName}</span>
+                  <span className="suggestions-cell suggestions-cell--type">{entry.type}</span>
+                  <span className="suggestions-cell suggestions-cell--count">{String(entry.count)}</span>
+                  <span className="suggestions-cell suggestions-cell--emails">{(entry.emails || []).map((email) => email.split("@")[0]).join(", ")}</span>
+                  <div className="suggestions-cell suggestions-cell--actions suggestions-cell--accepted-actions">
+                    <span className="suggestions-accepted-at">Accepted {formatAddedAt(entry.acceptedAt, page.formatDate)}</span>
+                    {entry.assessmentId && (
+                      <button type="button" className="suggestions-decline-btn suggestions-undo-btn" onClick={() => undoAccepted(entry)}>
+                        Undo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {dismissed.length > 0 && (
+        <div className="suggestions-accepted" id="suggestions-dismissed">
+          <button
+            type="button"
+            className="suggestions-accepted-toggle"
+            aria-expanded={dismissedOpen}
+            onClick={() => setDismissedOpen((open) => !open)}
+          >
+            <span>Dismissed ({dismissed.length})</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5 8l5 5 5-5" />
+            </svg>
+          </button>
+          {dismissedOpen && (
+            <div className="suggestions-accepted-rows">
+              {dismissed.map((entry) => (
+                <div key={entry.id} className="suggestions-row suggestions-row--accepted">
+                  <span className="suggestions-cell suggestions-cell--added">{formatAddedAt(entry.lastAddedAt, page.formatDate)}</span>
+                  <span className="suggestions-cell suggestions-cell--date">{page.formatDate(fromISODate(entry.date))}</span>
+                  <span className="suggestions-cell suggestions-cell--course">{entry.courseName}</span>
+                  <span className="suggestions-cell suggestions-cell--type">
+                    {entry.type}
+                    {entry.kind === "report" && <span className="suggestions-flag">Reported wrong</span>}
+                  </span>
+                  <span className="suggestions-cell suggestions-cell--count">{String(entry.count)}</span>
+                  <span className="suggestions-cell suggestions-cell--emails">{(entry.emails || []).map((email) => email.split("@")[0]).join(", ")}</span>
+                  <div className="suggestions-cell suggestions-cell--actions suggestions-cell--accepted-actions">
+                    <span className="suggestions-accepted-at">Dismissed {formatAddedAt(entry.dismissedAt, page.formatDate)}</span>
+                    <button type="button" className="suggestions-decline-btn suggestions-undo-btn" onClick={() => restore(entry)}>
+                      Restore
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -861,12 +1039,13 @@ function formatAddedAt(ms, formatDate) {
   return `${formatDate(date)}, ${time}`;
 }
 
-function SuggestionRows({ suggestions, page, model, onAccept, onDecline }) {
+function SuggestionRows({ suggestions, page, model, onAccept, onDecline, onDeleteReported }) {
   return suggestions
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
     .map((suggestion) => {
       const emails = suggestion.emails || [];
+      const reported = suggestion.kind === "report";
       // A summative on a day with a Testing Block could be in class or in the
       // Testing Block, so the admin picks.
       const choices =
@@ -881,18 +1060,28 @@ function SuggestionRows({ suggestions, page, model, onAccept, onDecline }) {
           <span className="suggestions-cell suggestions-cell--added">{formatAddedAt(suggestion.lastAddedAt, page.formatDate)}</span>
           <span className="suggestions-cell suggestions-cell--date">{page.formatDate(fromISODate(suggestion.date))}</span>
           <span className="suggestions-cell suggestions-cell--course">{suggestion.courseName}</span>
-          <span className="suggestions-cell suggestions-cell--type">{suggestion.type}</span>
+          <span className="suggestions-cell suggestions-cell--type">
+            {suggestion.type}
+            {reported && <span className="suggestions-flag">Reported wrong</span>}
+          </span>
           <span className="suggestions-cell suggestions-cell--count">{String(emails.length)}</span>
           {/* The domain is the same for everyone, so it's only noise. */}
           <span className="suggestions-cell suggestions-cell--emails">{emails.map((email) => email.split("@")[0]).join(", ")}</span>
           <div className="suggestions-cell suggestions-cell--actions">
-            {choices.map(([label, type]) => (
-              <button key={label} type="button" className="suggestions-accept-btn" onClick={() => onAccept(suggestion, type)}>
-                {label}
+            {reported ? (
+              // Accepts the report: the assessment comes off the calendar.
+              <button type="button" className="suggestions-accept-btn suggestions-accept-btn--remove" onClick={() => onDeleteReported(suggestion)}>
+                Remove
               </button>
-            ))}
+            ) : (
+              choices.map(([label, type]) => (
+                <button key={label} type="button" className="suggestions-accept-btn" onClick={() => onAccept(suggestion, type)}>
+                  {label}
+                </button>
+              ))
+            )}
             <button type="button" className="suggestions-decline-btn" onClick={() => onDecline(suggestion)}>
-              Decline
+              {reported ? "Dismiss" : "Decline"}
             </button>
           </div>
         </div>

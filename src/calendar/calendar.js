@@ -8,23 +8,29 @@
 //   viewMode(): "calendar" | "byClass"
 
 import { shortCourseName } from "../core/catalog.js";
-import { toISODate, todayISODate } from "../core/dates.js";
+import { fromISODate, toISODate, todayISODate } from "../core/dates.js";
 import { ASSESSMENT_CALENDAR_WEEK_COUNT, renderClassGrid } from "./classGrid.js";
 import {
   completedTaskRecords,
+  confirmedAssessmentIds,
   courseColorAssignments,
   courseColorNames,
   myAssessmentMatchEntries,
+  logAssessmentReport,
+  logSuggestedAssessment,
+  unlogAssessmentReport,
   unlogSuggestedAssessment,
   upcomingDateLabel,
   upcomingDueAt,
   upcomingSortTime,
 } from "./data.js";
 import { ICON_CHEVRON_DOWN } from "./icons.js";
-import { CAL_WEEKDAY_LABELS, assessmentCategory, calendarDateRange, latestAugustFirst, sortDayEntries, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
+import { CAL_WEEKDAY_LABELS, assessmentCategory, addedByLabel, calendarDateRange, lateLabel, latestAugustFirst, pillDetails, sortDayEntries, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
 import { animatePillChanges, buildDayCell, fitName, pillListGap, renderedPillsByDate } from "./pills.js";
-import { loadAddedAssessments, loadCompletedTasks, loadPeriods, saveAddedAssessments, saveCompletedTasks } from "../shell/data.js";
-import { getPreferences } from "../shell/preferences.js";
+import { loadAddedAssessments, loadCompletedTasks, loadConfirmedAssessments, loadHiddenAssessments, loadPeriods, saveAddedAssessments, saveCompletedTasks, saveConfirmedAssessments, saveHiddenAssessments } from "../shell/data.js";
+import { pickCalendarDate } from "./datePick.js";
+import { closePillMenu, openPillMenu, selectedPill } from "./pillMenu.js";
+import { formatPreferredDate, getPreferences } from "../shell/preferences.js";
 import {
   allDayTypes,
   assessmentEndsAt,
@@ -37,7 +43,7 @@ import {
   loadPeriodTimes,
   periodTimesLoaded,
 } from "../shell/school.js";
-import { animateNumberChange, hideHoverTooltip, hideToast, showToast } from "../shell/ui.js";
+import { animateNumberChange, attachHoverTooltip, hideHoverTooltip, hideToast, runAfterPaint, showToast } from "../shell/ui.js";
 
 const CALENDAR_SCROLL_SETTLE_MS = 150;
 
@@ -114,18 +120,110 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     const entries = loadAddedAssessments();
     const removed = entries.find((entry) => entry.id === id);
     saveAddedAssessments(entries.filter((entry) => entry.id !== id));
-    // Assignments are never suggested to admins.
-    if (removed && removed.type !== "Assignment") unlogSuggestedAssessment(removed.date, removed.courseName, removed.type);
     render(true, false);
+    // Assignments are never suggested to admins. Told to the cloud after the
+    // pill has started to go, not before.
+    if (removed && removed.type !== "Assignment") runAfterPaint(() => unlogSuggestedAssessment(removed.date, removed.courseName, removed.type));
   }
 
-  // Only the student's own entries can be removed.
-  function handlePillContextMenu(entry, pillEl) {
-    if (!currentAddedIds.has(entry.id)) {
-      showToast("Only assessments added by you can be removed.");
+  // A school-wide assessment can't be taken off the school's calendar, only this
+  // student's view of it: it's remembered as hidden for them, and can be brought
+  // back from the toast.
+  function hideSchoolWideAssessment(entry) {
+    saveHiddenAssessments([...loadHiddenAssessments(), entry.id]);
+    render(true, false);
+    // "This is wrong": the admins are told, on the Assessments page, once the
+    // pill has started to go.
+    runAfterPaint(() => logAssessmentReport(entry));
+    const message = document.createDocumentFragment();
+    message.append("Removed from your calendar. ");
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "toast-link";
+    undo.textContent = "Undo";
+    undo.addEventListener("click", () => {
+      hideToast();
+      saveHiddenAssessments(loadHiddenAssessments().filter((id) => id !== entry.id));
+      render(true, false);
+      runAfterPaint(() => unlogAssessmentReport(entry));
+    });
+    message.append(undo);
+    showToast(message);
+  }
+
+  // Moves something the student added to another day. Not onto a day that already
+  // has the same assessment (which the Add popup refuses too); its suggestion to the
+  // admins moves with it.
+  function moveAddedAssessment(entry, iso) {
+    if (!iso || iso === entry.date) return;
+    const sameAs = (other) => other.id !== entry.id && other.date === iso && other.courseName === entry.courseName && other.type === entry.type;
+    const assignment = assessmentCategory(entry) === "assignment";
+    if (!assignment && (loadAddedAssessments().some(sameAs) || pillContext.schoolWide.some(sameAs))) {
+      showToast("This is already on your calendar.");
       return;
     }
-    deleteAddedAssessment(entry.id);
+    saveAddedAssessments(loadAddedAssessments().map((other) => (other.id === entry.id ? { ...other, date: iso } : other)));
+    render(true, false);
+    if (!assignment) {
+      const onSchoolCalendar = pillContext.schoolWide.some((other) => other.date === iso && other.courseName === entry.courseName && other.type === entry.type);
+      runAfterPaint(() => {
+        unlogSuggestedAssessment(entry.date, entry.courseName, entry.type);
+        if (!onSchoolCalendar) logSuggestedAssessment(iso, entry.courseName, entry.type);
+      });
+    }
+  }
+
+  // The pill stays lit while everything else dims and a new day is picked.
+  function reschedulePill(entry, pillEl, event) {
+    pillEl.classList.add("assessment-chip--selected");
+    pickCalendarDate({
+      color: getComputedStyle(pillEl).getPropertyValue("--chip-color") || undefined,
+      cursor: event && { clientX: event.clientX, clientY: event.clientY },
+      onEnd: () => pillEl.classList.remove("assessment-chip--selected"),
+      onPick: (iso) => moveAddedAssessment(entry, iso),
+    });
+  }
+
+  // What the pills of the last render need to describe themselves: its course names
+  // and which period an entry falls in.
+  let pillContext = { resolvedNames: new Map(), periodOfEntry: () => Infinity, schoolWide: [] };
+
+  // Clicking a pill selects it and opens its details, with Delete for every pill:
+  // the student's own are deleted, a school-wide one is removed from their calendar
+  // only.
+  function handlePillClick(entry, pillEl) {
+    if (selectedPill() === pillEl) {
+      closePillMenu();
+      return;
+    }
+    const strippedName = stripDivisionSuffix(entry.courseName);
+    const courseLabel = pillContext.resolvedNames.has(strippedName) ? strippedName : entry.courseName;
+    const period = pillContext.periodOfEntry(entry);
+    const periodIndex = Number.isFinite(period) ? period : undefined;
+    const details = pillDetails(entry, {
+      courseLabel,
+      periodIndex,
+      dueAt: upcomingDueAt(entry, periodIndex),
+      endsAt: assessmentCategory(entry) === "assignment" ? null : assessmentEndsAt(entry, periodIndex),
+      formatDate: formatPreferredDate,
+      addedBy: addedByLabel({
+        added: currentAddedIds.has(entry.id),
+        confirmed: confirmedAssessmentIds().has(entry.id),
+        fromStudent: Boolean(entry.fromStudent),
+      }),
+      done: completedTaskRecords().some((record) => record.id === entry.id),
+    });
+    const added = currentAddedIds.has(entry.id);
+    openPillMenu(pillEl, {
+      details,
+      // The school's own isn't the student's to delete; "This is wrong" takes it off
+      // their calendar.
+      deleteLabel: added ? "Delete" : "This is wrong",
+      deleteIcon: added ? "trash" : "flag",
+      onDelete: () => (added ? deleteAddedAssessment(entry.id) : hideSchoolWideAssessment(entry)),
+      // Only for what the student added: the school's own dates aren't theirs to move.
+      onReschedule: added ? (event) => reschedulePill(entry, pillEl, event) : undefined,
+    });
   }
 
   const CALENDAR_REVEAL_MS = 300;
@@ -213,12 +311,22 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     let effectiveAddedEntries = addedEntries;
     if (staleAdded.length > 0) {
       const staleIds = new Set(staleAdded.map((entry) => entry.id));
+      // The school's entries that took their place are remembered as the student's
+      // own, so their details can still say so ("You (Confirmed)").
+      const staleKeys = new Set(staleAdded.map((entry) => `${entry.date}|${entry.courseName}|${entry.type}`));
+      const taken = schoolWideEntries.filter((entry) => staleKeys.has(`${entry.date}|${entry.courseName}|${entry.type}`)).map((entry) => entry.id);
+      saveConfirmedAssessments([...new Set([...loadConfirmedAssessments(), ...taken])]);
       saveAddedAssessments(loadAddedAssessments().filter((entry) => !staleIds.has(entry.id)));
       effectiveAddedEntries = addedEntries.filter((entry) => !staleIds.has(entry.id));
     }
 
     currentAddedIds = new Set(effectiveAddedEntries.map((entry) => entry.id));
-    renderUpcoming(schoolWideEntries.concat(effectiveAddedEntries), resolvedNames, courseColors, matchEntries);
+    // Pills the student removed from their own calendar.
+    const hiddenIds = new Set(loadHiddenAssessments());
+    const shownSchoolWide = schoolWideEntries.filter((entry) => !hiddenIds.has(entry.id));
+    // A rebuilt pill isn't the one that was selected.
+    closePillMenu();
+    renderUpcoming(shownSchoolWide.concat(effectiveAddedEntries), resolvedNames, courseColors, matchEntries);
     // The periods of each course name (one name can be in two: an A day class and
     // a B day class), and the one that meets on an entry's day is its period.
     const periodsOfCourse = new Map();
@@ -227,10 +335,11 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       const periods = periodsOfCourse.get(entry.courseName) || [];
       return periods.find((index) => isAssessmentVisibleForPeriod(entry, index)) ?? periods[0] ?? Infinity;
     };
+    pillContext = { resolvedNames, periodOfEntry, schoolWide: shownSchoolWide };
     // Each day's pills in order: Testing Blocks, In-Classes, Formatives, other
     // types, assignments; the same kind by the class's period.
     const matchingEntries = sortDayEntries(
-      schoolWideEntries.concat(effectiveAddedEntries).filter((entry) => !hiddenCategories.has(assessmentCategory(entry))),
+      shownSchoolWide.concat(effectiveAddedEntries).filter((entry) => !hiddenCategories.has(assessmentCategory(entry))),
       periodOfEntry
     );
     // Includes colors, so a new color repaints the pills.
@@ -251,14 +360,15 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
         // date.
         const animateClassPills = !classGrid.hidden && classGrid.childElementCount > 0;
         showView(classGrid);
-        renderClassGrid(classGrid, matchingEntries, matchEntries, resolvedNames, courseColors, handlePillContextMenu, animateClassPills);
+        renderClassGrid(classGrid, matchingEntries, matchEntries, resolvedNames, courseColors, handlePillClick, animateClassPills);
         return;
       }
       classGrid.hidden = true;
     }
 
     if (!weeksContainer.hidden && matchNamesKey === previousMatchNamesKey) {
-      const currentPillIds = new Set(matchingEntries.map((entry) => entry.id));
+      // By day too: an entry moved to another date is the same entry but a different pill.
+      const currentPillIds = new Set(matchingEntries.map((entry) => `${entry.id}|${entry.date}`));
       const unchanged =
         currentPillIds.size === previousPillIds.size && [...currentPillIds].every((id) => previousPillIds.has(id));
       if (unchanged) return;
@@ -316,10 +426,10 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
           thisWeekStart.getMonth(),
           thisWeekStart.getDate() + weekIndex * 7 + dayIndex
         );
-        buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, handlePillContextMenu, courseColors);
+        buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, handlePillClick, courseColors);
       }
     }
-    previousPillIds = new Set(matchingEntries.map((entry) => entry.id));
+    previousPillIds = new Set(matchingEntries.map((entry) => `${entry.id}|${entry.date}`));
     previousMatchNamesKey = matchNamesKey;
 
     // Before the pill animations, which measure heights and can't in a hidden
@@ -525,6 +635,11 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   function tickUpcomingCountdowns() {
     const now = Date.now();
     let passed = false;
+    upcomingList.querySelectorAll(".upcoming-item[data-late-since]").forEach((item) => {
+      const label = item.querySelector(".upcoming-date-chip-label");
+      const text = lateLabel(now - Number(item.dataset.lateSince));
+      if (label.textContent !== text) label.textContent = text;
+    });
     upcomingList.querySelectorAll(".upcoming-item[data-due-at]").forEach((item) => {
       const countdown = item.querySelector(".upcoming-countdown");
       const left = Number(item.dataset.dueAt) - now;
@@ -606,8 +721,14 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     const time = entry.dueTime ? upcomingTimeLabel(entry.dueTime, periodIndex) : "";
     const chipLabel = chip.appendChild(document.createElement("span"));
     chipLabel.className = "upcoming-date-chip-label";
-    chipLabel.textContent =
-      upcomingDateLabel(entry.date) + (time ? `, ${time}` : "") + (overdue ? " - Overdue" : "");
+    // Overdue says how late instead of when it was due, and counts on (see
+    // tickUpcomingCountdowns). Without a known time it's late from the end of its day.
+    const lateSince = overdue ? (upcomingDueAt(entry, periodIndex) || new Date(fromISODate(entry.date).getTime() + 86400000)).getTime() : null;
+    if (lateSince !== null) item.dataset.lateSince = String(lateSince);
+    const dueText = upcomingDateLabel(entry.date) + (time ? `, ${time}` : "");
+    chipLabel.textContent = overdue ? lateLabel(Date.now() - lateSince) : dueText;
+    // The chip no longer says when it was due, so hovering it does.
+    if (overdue) attachHoverTooltip(chip, dueText);
     // Not for something already done.
     const endsAt = done || assessmentCategory(entry) === "assignment" ? null : assessmentEndsAt(entry, periodIndex);
     if (endsAt) item.dataset.endsAt = String(endsAt.getTime());

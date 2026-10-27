@@ -16,10 +16,13 @@ service cloud.firestore {
 
     // School-wide assessment calendar (formative/summative dates per
     // course), set by admins and read by every student to build their own
-    // upcoming-assessments view. Anyone can read (not sensitive — just
-    // course names and dates); only an admin email can write.
+    // upcoming-assessments view. Only a signed-in user can read it, so it can't
+    // be pulled by someone with just the site's public Firebase settings; only
+    // an admin email can write. (The day types, bell schedule and cache stamps
+    // below stay open: a visitor who hasn't signed in still sees the time left
+    // in class.)
     match /assessments/{assessmentId} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow write: if isAdmin();
     }
 
@@ -59,9 +62,23 @@ service cloud.firestore {
     // Suggestions page (any count) or a student's own unlogSuggestedAssessment
     // cleanup, allowed only once no emails would be left — request.resource
     // is null on a delete, so this is its own rule rather than folded into
-    // create/update above.
+    // create/update above. Only an admin can read them: each lists the emails of
+    // the students who suggested it, and students only ever write here (the
+    // writes below don't need a read).
     match /suggested/{suggestionId} {
-      allow read: if true;
+      allow read: if isAdmin();
+      // An admin can put one back with its students' emails (taking an accept back);
+      // a student only ever adds their own.
+      allow create: if isAdmin()
+        && request.resource.data.type in ['Summative', 'Formative', 'Reassessment']
+        && request.resource.data.date is string
+        && request.resource.data.courseName is string
+        && request.resource.data.emails is list;
+      allow update: if isAdmin()
+        && request.resource.data.type in ['Summative', 'Formative', 'Reassessment']
+        && request.resource.data.date is string
+        && request.resource.data.courseName is string
+        && request.resource.data.emails is list;
       allow create: if request.auth != null
         && request.resource.data.type in ['Summative', 'Formative', 'Reassessment']
         && request.resource.data.date is string
@@ -72,6 +89,46 @@ service cloud.firestore {
         && request.resource.data.date is string
         && request.resource.data.courseName is string
         && request.resource.data.emails.hasOnly(resource.data.emails.concat([request.auth.token.email]));
+      allow delete: if request.auth != null
+        && (resource.data.emails.size() <= 1 || isAdmin());
+    }
+
+    // A student saying a school-wide assessment is wrong ("This is wrong" on its
+    // details card). The document is named for the assessment, so each is flagged
+    // once, tagged with the emails of the students who flagged it (as `suggested`
+    // above: a write may only add or remove its own email, and only an admin sees
+    // them). It's shown to admins on the Assessments page, who delete the
+    // assessment or dismiss the report.
+    match /reportedAssessments/{reportId} {
+      allow read: if isAdmin();
+      // An admin can put a dismissed report back, with all its students' emails.
+      allow create, update: if isAdmin()
+        && request.resource.data.assessmentId == reportId
+        && request.resource.data.date is string
+        && request.resource.data.courseName is string
+        && request.resource.data.type is string
+        && request.resource.data.emails is list
+        && request.resource.data.lastReportedAt is number;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['assessmentId', 'date', 'courseName', 'type', 'emails', 'lastReportedAt'])
+        && request.resource.data.assessmentId == reportId
+        && request.resource.data.date is string
+        && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.courseName is string
+        && request.resource.data.courseName.size() <= 120
+        && request.resource.data.type is string
+        && request.resource.data.type.size() <= 40
+        && request.resource.data.emails.size() == 1
+        && request.resource.data.emails.hasOnly([request.auth.token.email])
+        && request.resource.data.lastReportedAt is number;
+      allow update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['assessmentId', 'date', 'courseName', 'type', 'emails', 'lastReportedAt'])
+        && request.resource.data.assessmentId == reportId
+        && request.resource.data.date is string
+        && request.resource.data.courseName is string
+        && request.resource.data.type is string
+        && request.resource.data.emails.hasOnly(resource.data.emails.concat([request.auth.token.email]))
+        && request.resource.data.lastReportedAt is number;
       allow delete: if request.auth != null
         && (resource.data.emails.size() <= 1 || isAdmin());
     }
