@@ -214,3 +214,14 @@ like `/biology` need Hosting's rewrite; a plain file server only serves the home
 page). Deploy just this site with `firebase deploy --only hosting:kiscal-guides`,
 and the app's with `firebase deploy --only hosting:kisj-grade-calculator`. A plain
 `firebase deploy --only hosting` publishes both.
+
+## HS cafeteria menu scraper
+
+The scheduled Python backend downloads only `[HS]` menu posts from KIS Jeju,
+OCRs their PDF or Korean/English image attachments, and publishes dated JSON to
+the existing Firestore project. Setup, data format, deployment and operating
+commands are in [backend/README.md](backend/README.md).
+
+Use `backend/deploy/publish_rules.py` for menu-rule deployment. It reads and
+preserves the current live rules, which include changes newer than this checkout.
+Do not deploy this checkout's entire rules file over the live project for this feature.
