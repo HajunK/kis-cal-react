@@ -8,7 +8,7 @@ import { SCHEDULE_BLOCKS } from "../core/schedule.js";
 import { courseColorNames } from "../calendar/data.js";
 import { loadPeriods } from "../shell/data.js";
 import { parseTimeToMinutes } from "../shell/schedule.js";
-import { allDayTypes, defaultPeriodTimes, scheduleForDate } from "../shell/school.js";
+import { allDayTypes, customEventsForDate, defaultPeriodTimes, scheduleForDate } from "../shell/school.js";
 import { animateNumberChange } from "../shell/ui.js";
 
 let todaySchedulePopup = null;
@@ -53,7 +53,9 @@ export function scheduleEventsOn(iso) {
     // periods ("Period 1/5").
     add(SCHEDULE_BLOCKS[Number(event.key.slice(5))].label, event);
   });
-  return events;
+  // The ones an admin named, in among the rest by when they start.
+  customEventsForDate(iso).forEach((event) => add(event.label, event));
+  return events.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
 }
 
 // The next weekday with a schedule, up to two weeks out.
@@ -223,6 +225,8 @@ const TODAY_SCHEDULE_SPRING = "cubic-bezier(0.32, 1.08, 0.42, 1)";
 // and back to today does the reverse.
 const SCHEDULE_SLIDE_MS = 220;
 const SCHEDULE_SLIDE_SHIFT = 24;
+// The popup's custom properties that carry the current event's color (see .today-schedule).
+const SCHEDULE_COLOR_PROPERTIES = ["--event-color", "--schedule-accent-soft", "--schedule-accent-wash", "--schedule-event-text"];
 
 function swapScheduleDay(popup) {
   const direction = popup._viewingNext ? -1 : 1;
@@ -239,6 +243,10 @@ function swapScheduleDay(popup) {
     headingBox: { top: heading.offsetTop, left: heading.offsetLeft, width: heading.getBoundingClientRect().width },
     height: days.offsetHeight,
   };
+  // The colors the day being left is drawn in (its current event's course color and the shades
+  // made from it): the new day sets its own on the popup, which the old pane, still sliding
+  // out, would otherwise take on, turning blue as it goes.
+  const colors = animated ? SCHEDULE_COLOR_PROPERTIES.map((name) => [name, getComputedStyle(popup).getPropertyValue(name)]) : [];
   popup._viewingNext = !popup._viewingNext;
   renderTodaySchedule(popup);
   if (!before) return;
@@ -266,6 +274,7 @@ function swapScheduleDay(popup) {
 
   const leavingDay = before.days;
   leavingDay.classList.add("today-schedule-pane--leaving");
+  colors.forEach(([name, value]) => value && leavingDay.style.setProperty(name, value));
   const to = days.offsetHeight;
   days.appendChild(leavingDay);
   if (before.height !== to) days.animate([{ height: `${before.height}px` }, { height: `${to}px` }], { duration: SCHEDULE_SLIDE_MS, easing: "ease" });

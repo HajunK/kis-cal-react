@@ -1,3 +1,5 @@
+// First, so it is listening before anything else runs.
+import "./debugAlerts.js";
 // The stylesheets, in the order the page used to link them (Vite bundles
 // them into one file, hashed and minified).
 import "../css/tokens.css";
@@ -14,6 +16,7 @@ import "../css/domain.css";
 import "../css/domain-scores.css";
 import "../css/gpa.css";
 import "../css/suggestions.css";
+import "../css/menu.css";
 import "../css/grade-protection.css";
 import "../css/theme.css";
 import { useSyncExternalStore } from "react";
@@ -25,9 +28,11 @@ import { dropAcceptedSuggestions } from "../calendar/data.js";
 import "../shell/preferences.js";
 import { hasFirebase, whenFirebaseReady } from "../shell/firebase.js";
 import { startSchoolData } from "../shell/school.js";
-import { showCachedGuess, showWithoutSignIn, startSession } from "../shell/session.js";
+import { preloadGradeIcons } from "../shell/ui.js";
+import { showCachedGuess, showWithoutSignIn, startSession, viewAllCourses } from "../shell/session.js";
 import { AppShell } from "./AppShell.jsx";
 import { startCalendarDemo } from "./demo.js";
+import { isAdminSite } from "./site.js";
 
 // KIS Cal, one app: the tab bar, the tabs (routes) and the popups. Firebase's
 // scripts load just after this, deferred; its parts start once they have.
@@ -36,7 +41,10 @@ import { startCalendarDemo } from "./demo.js";
 // timers and saves) does real things once, which StrictMode's practice run
 // would do twice. GPA, which was, still is.
 
-const demo = location.pathname.replace(/\/+$/, "") === "/calendar-demo";
+// The Calendar demo: /calendar-demo, or /calendar?demo=1 (the same, with no
+// account).
+const path = location.pathname.replace(/\/+$/, "");
+const demo = path === "/calendar-demo" || (path === "/calendar" && new URLSearchParams(location.search).has("demo"));
 
 let firebaseReady = false;
 const firebaseListeners = new Set();
@@ -74,6 +82,8 @@ if (import.meta.env.DEV || import.meta.env.VITE_DRIVER) {
   );
 }
 
+// The admin site's Calendar shows every course, not the admin's own.
+if (isAdminSite()) viewAllCourses();
 if (demo) startCalendarDemo();
 // A returning student's tabs from this device's copy, before Firebase
 // answers.
@@ -81,6 +91,8 @@ else showCachedGuess();
 
 const root = document.getElementById("app");
 flushSync(() => createRoot(root).render(<App />));
+// After the first draw, so the page isn't held up by them.
+preloadGradeIcons();
 
 if (!demo) {
   whenFirebaseReady(() => {

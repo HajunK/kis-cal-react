@@ -9,6 +9,9 @@
 //     daySchedules: { [iso]: { included, times: { [event]: { start, end } } } } }
 //     (dates saved before times went with the event have { slots, included }
 //     instead, still read; see scheduleForDate in src/core/schedule.js)
+//   periodTimes/dayLabels: { labels: { [iso]: text } } (a label an admin typed for a day; kept
+//     in its own document so nothing that writes the schedule can touch it; students read it
+//     with the schedule, so saving one bumps the periodTimes cache version)
 //   meta/cacheVersions: { assessments, dayTypes, periodTimes } (ms stamps)
 //   suggested/{hash}: { date, courseName, type, emails, lastAddedAt }
 //   reportedAssessments/{assessmentId}: { assessmentId, date, courseName, type,
@@ -53,6 +56,27 @@ export function fetchPeriodTimes(db) {
         daySchedules: (data && data.daySchedules) || {},
       };
     });
+}
+
+// The labels typed for days, by date.
+export function fetchDayLabels(db) {
+  return db
+    .collection("periodTimes")
+    .doc("dayLabels")
+    .get()
+    .then((doc) => {
+      const labels = doc.exists ? doc.data().labels : null;
+      return labels && typeof labels === "object" ? labels : {};
+    });
+}
+
+// text "" removes the day's label. Merged, so the other days' labels are kept.
+export function saveDayLabel(db, iso, text, deleteField) {
+  return db
+    .collection("periodTimes")
+    .doc("dayLabels")
+    .set({ labels: { [iso]: text || deleteField() } }, { merge: true })
+    .then(() => bumpCacheVersion(db, "periodTimes"));
 }
 
 // Students' pages only refetch a collection when its stamp changes (see

@@ -11,9 +11,11 @@ describe("ending a link/unlink swap", () => {
     const input = document.querySelector("input");
     const ghost = document.createElement("span");
     row.appendChild(ghost);
+    const originalSpan = document.createElement("span");
+    row.appendChild(originalSpan);
     row.classList.add("swap-animating");
     input.style.color = "transparent";
-    input._swap = { ghostAnim: { cancel: vi.fn() }, spanAnim: { cancel: vi.fn() }, ghost, row, dateBtn: null };
+    input._swap = { ghostAnim: { cancel: vi.fn() }, spanAnim: { cancel: vi.fn() }, spanColorAnim: { cancel: vi.fn() }, ghost, originalSpan, row, dateBtn: null };
 
     endFormativeSwap(input);
 

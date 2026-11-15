@@ -4,6 +4,7 @@
 // Assessments tab shows, which anyone may read, so nothing about the project
 // needs to change. Per browser: it's switched on in Settings, and the choice is
 // kept on this device only.
+import { adminSiteUrl, isAdminSite } from "../app/site.js";
 import { firestore, hasFirebase } from "./firebase.js";
 
 const FLAG = "suggestionAlerts";
@@ -29,10 +30,13 @@ function show(suggestion, id) {
     icon: "/icons/logos/page-icon.png",
     tag: `suggestion-${id}`,
   });
-  // Brings this tab forward, on the Assessments tab.
+  // Brings this tab forward, on the Assessments page: this site's, or the admin site's from the
+  // student one.
   alert.onclick = () => {
     window.focus();
-    if (location.pathname !== "/assessments") {
+    if (!isAdminSite()) {
+      window.location.assign(adminSiteUrl());
+    } else if (location.pathname !== "/assessments") {
       history.pushState(null, "", "/assessments");
       window.dispatchEvent(new PopStateEvent("popstate"));
     }

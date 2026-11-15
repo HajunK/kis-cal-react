@@ -252,7 +252,10 @@ function CourseColors({ legend }) {
   const openPickerFor = (anchor, name, color, side = "left") => {
     const picker = { id: Date.now() + Math.random(), anchor, name, color, side, open: true };
     openRef.current = picker;
-    setPickers((list) => [...list, picker]);
+    // Only this one: switching from another course's picker replaces it at once,
+    // rather than leaving it fading out while this one opens (which read as the
+    // picker opening twice).
+    setPickers([picker]);
   };
 
   // A course's row in the Courses view asks for the picker too, which opens past

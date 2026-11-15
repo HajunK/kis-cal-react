@@ -100,12 +100,39 @@ export function scheduleEventsFor(iso, sched, dayTypes, custom = sched.daySchedu
   if (custom && custom.slots && !custom.times) {
     Object.entries(custom.slots).forEach(([slot, key]) => (slotOf[key] = slot));
   }
-  return scheduleEventOrder(dayType).map((key) => {
+  const events = scheduleEventOrder(dayType).map((key) => {
     const included = custom && Array.isArray(custom.included) ? custom.included.includes(key) : normal.includes(key) && normallyIncluded(key, weekday);
     const own = custom && custom.times && custom.times[key];
     const time = own || (slotOf[key] ? eventTimes(slotOf[key], sched) : usualTimes(key, sched));
     return { key, time: { start: time.start || "", end: time.end || "" }, included };
   });
+  // The date's own events, named by the admin, kept apart from the usual ones.
+  return [...events, ...savedCustomEvents(custom).map(customEventRow)];
+}
+
+// Events an admin typed a name for (daySchedules[iso].customEvents, [{ id, name,
+// start, end }]). They are never in included/times: the app students already
+// have open reads those as the usual events and would stumble on a name it
+// doesn't know. Anything not shaped right is ignored.
+export const CUSTOM_KEY_PREFIX = "custom:";
+export const MAX_CUSTOM_NAME_LENGTH = 40;
+export function savedCustomEvents(custom) {
+  if (!custom || !Array.isArray(custom.customEvents)) return [];
+  return custom.customEvents.filter((event) => event && typeof event.id === "string" && typeof event.name === "string" && event.name.trim() !== "");
+}
+const customEventRow = (event) => ({
+  key: `${CUSTOM_KEY_PREFIX}${event.id}`,
+  label: event.name,
+  custom: true,
+  time: { start: typeof event.start === "string" ? event.start : "", end: typeof event.end === "string" ? event.end : "" },
+  included: true,
+});
+export const isCustomEventKey = (key) => key.startsWith(CUSTOM_KEY_PREFIX);
+
+// A new event for the popup: no times yet, which have to be filled in to save.
+export function newCustomEvent(name) {
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  return customEventRow({ id, name: name.trim().slice(0, MAX_CUSTOM_NAME_LENGTH), start: "", end: "" });
 }
 
 export function dayHasTestingBlock(iso, sched, dayTypes) {
@@ -144,7 +171,14 @@ export function sortScheduleEvents(events) {
 // The date's events and their times, in time order, as saved.
 export function scheduleDay(events) {
   const on = sortScheduleEvents(events);
-  return { included: on.map(({ key }) => key), times: Object.fromEntries(on.map(({ key, time }) => [key, { start: time.start, end: time.end }])) };
+  const usual = on.filter(({ custom }) => !custom);
+  return {
+    included: usual.map(({ key }) => key),
+    times: Object.fromEntries(usual.map(({ key, time }) => [key, { start: time.start, end: time.end }])),
+    customEvents: on
+      .filter(({ custom }) => custom)
+      .map(({ key, label, time }) => ({ id: key.slice(CUSTOM_KEY_PREFIX.length), name: label, start: time.start, end: time.end })),
+  };
 }
 
 // null when the date is set as normal (its usual events at their usual
@@ -155,7 +189,13 @@ export function customDaySchedule(iso, day, sched, dayTypes) {
   const normal = scheduleEventsFor(iso, sched, dayTypes, null).filter(({ included }) => included);
   const sameEvents = normal.length === day.included.length && normal.every(({ key }) => day.included.includes(key));
   const sameTimes = normal.every(({ key, time }) => day.times[key] && day.times[key].start === time.start && day.times[key].end === time.end);
-  return sameEvents && sameTimes ? null : { included: day.included, times: day.times };
+  const customEvents = day.customEvents || [];
+  if (sameEvents && sameTimes && customEvents.length === 0) return null;
+  const result = { included: day.included, times: day.times };
+  // Sent whenever the date has any, or had any saved (an emptied list has to be
+  // sent, as the doc is saved with merge and would keep the old one).
+  if (customEvents.length > 0 || savedCustomEvents(sched.daySchedules[iso]).length > 0) result.customEvents = customEvents;
+  return result;
 }
 
 // Every event the day has needs both times.

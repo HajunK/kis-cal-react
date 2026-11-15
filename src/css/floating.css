@@ -1,27 +1,100 @@
-/* Floats above the page, so it uses the popover shadow rather than a flat
-   card's. */
+/* Floats above the page as glass, like the Calendar's menus (see
+   .calendar-glass in calendar.css), so what's behind shows through. */
 .signin-toast {
+  --glass-tint: rgba(255, 255, 255, 0.7);
+  --glass-edge-glow: rgba(255, 255, 255, 0.6);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  --glass-outline: rgba(0, 0, 0, 0.08);
+  --glass-shadow: rgba(0, 0, 0, 0.14);
   position: fixed;
   left: 50%;
-  bottom: 32px;
-  z-index: 100;
-  transform: translate(-50%, 16px);
+  top: 32px;
+  z-index: 400;
+  /* Hidden, it's small and wholly above the top edge: it grows out of it and
+     shrinks back into it. */
+  transform: translate(-50%, calc(-100% - 40px)) scale(0.4);
+  transform-origin: top center;
   opacity: 0;
   pointer-events: none;
   max-width: calc(100% - 64px);
-  background: var(--color-surface);
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: blur(3px) saturate(180%) brightness(1.03);
+  backdrop-filter: blur(3px) saturate(180%) brightness(1.03);
   color: var(--color-text-primary);
   padding: 20px 32px;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px var(--color-shadow-popover);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 0 0 1px var(--glass-rim),
+    inset 0 0 6px var(--glass-edge-glow),
+    0 0 0 1px var(--glass-outline),
+    0 12px 32px var(--glass-shadow);
   font-size: 17px;
   text-align: center;
-  transition: transform 0.25s ease, opacity 0.25s ease;
+  /* Leaving: speeds up as it goes, and only fades once it's nearly out of
+     sight. */
+  transition: transform 0.3s cubic-bezier(0.6, 0, 0.9, 0.3), opacity 0.1s linear 0.2s;
+}
+
+:root[data-theme="dark"] .signin-toast {
+  --glass-tint: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  --glass-edge-glow: rgba(255, 255, 255, 0.08);
+  --glass-rim: rgba(255, 255, 255, 0.12);
+  --glass-outline: transparent;
+  --glass-shadow: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(3px) saturate(180%) brightness(1.2);
+  backdrop-filter: blur(3px) saturate(180%) brightness(1.2);
 }
 
 .signin-toast--visible {
-  transform: translate(-50%, 0);
-  opacity: 1;
+  /* Arriving: quick at first, then settling. */
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease, color 0.2s ease;
+  /* --toast-depth is how many toasts are in front of it: each one back sits 12px further
+     out and a step smaller and fainter, like a stack of iOS notifications. */
+  transform: translate(-50%, calc(var(--toast-depth, 0) * 12px)) scale(calc(1 - var(--toast-depth, 0) * 0.05));
+  opacity: calc(1 - var(--toast-depth, 0) * 0.15);
+}
+
+/* Holds the toast. When it rises from an element's line (see showToast's `from`) everything
+   below that line is cut off, so it comes up from behind what's under the line and goes
+   back behind it. */
+.signin-toast-clip {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+
+/* Cut off with a box that clips (contain: paint) rather than a clip-path: a clip-path would
+   make this box the backdrop the toast blurs, which is empty, instead of the page behind. */
+.signin-toast-clip--from-element {
+  inset: 0 0 calc(100% - var(--toast-y)) 0;
+  contain: paint;
+}
+
+/* From the line under the Upcoming list (see showToast's `from`): centered on it and resting
+   just above it, growing out of it and shrinking back into it. */
+.signin-toast--from-element {
+  left: var(--toast-x);
+  top: var(--toast-y);
+  /* The same width for every one, that of the longest: "Added to your Upcoming list. Undo"
+     (about 16.3em, plus the padding either side), and the same 56px height, the one line
+     centered in it. Always one line. */
+  box-sizing: border-box;
+  border-radius: 17px;
+  font-size: 16px;
+  width: calc(16.4em + 64px);
+  height: 56px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 56px;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 16px + 100% + 40px)) scale(0.4);
+  transform-origin: bottom center;
+}
+
+/* The ones behind peek out below the front one, toward the line they came from. */
+.signin-toast--from-element.signin-toast--visible {
+  transform: translate(-50%, calc(-100% - 16px + var(--toast-depth, 0) * 8px)) scale(calc(1 - var(--toast-depth, 0) * 0.05));
 }
 
 .toast-link {
@@ -38,6 +111,17 @@
    link in a showing toast takes clicks. */
 .signin-toast--visible .toast-link {
   pointer-events: auto;
+}
+
+/* Only the front toast's link: the others are behind it, and their words are hidden until
+   one comes forward. */
+.signin-toast--visible.signin-toast--behind .toast-link {
+  pointer-events: none;
+}
+
+.signin-toast--behind,
+.signin-toast--behind .toast-link {
+  color: transparent;
 }
 
 /* Bottom-left so it never competes with .signin-toast; low z-index since it's

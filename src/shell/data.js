@@ -32,6 +32,19 @@ export const sessionStore = {
 export function setSession(uid, data) {
   currentUid = uid;
   appData = data;
+  notifyDataChanged();
+}
+
+// Told whenever the student's data is saved or replaced, so something
+// showing a result of an earlier change (an Undo toast) can tell when that
+// change has been reversed some other way. Returns the way to stop listening.
+const dataListeners = new Set();
+export function onDataChanged(listener) {
+  dataListeners.add(listener);
+  return () => dataListeners.delete(listener);
+}
+function notifyDataChanged() {
+  [...dataListeners].forEach((listener) => listener());
 }
 
 export function redrawSession() {
@@ -59,6 +72,7 @@ export function loadHiddenCourses() {
 export function saveHiddenCourses(names) {
   appData.hiddenCourses = names;
   pushDataToCloud();
+  notifyDataChanged();
 }
 
 export function loadAddedAssessments() {
@@ -68,6 +82,7 @@ export function loadAddedAssessments() {
 export function saveAddedAssessments(entries) {
   appData.addedAssessments = entries;
   pushDataToCloud();
+  notifyDataChanged();
 }
 
 // School-wide assessments the student has removed from their own calendar, by id.
@@ -79,6 +94,7 @@ export function loadHiddenAssessments() {
 export function saveHiddenAssessments(ids) {
   appData.hiddenAssessments = ids;
   pushDataToCloud();
+  notifyDataChanged();
 }
 
 // School-wide assessments that began as this student's own suggestion, by id (see
@@ -90,6 +106,19 @@ export function loadConfirmedAssessments() {
 export function saveConfirmedAssessments(ids) {
   appData.confirmedAssessments = ids;
   pushDataToCloud();
+  notifyDataChanged();
+}
+
+// Ones the student added to their Upcoming list by hand, by id: they show there
+// even when over or far off (see renderUpcoming in calendar.js).
+export function loadPinnedAssessments() {
+  return appData.pinnedAssessments || [];
+}
+
+export function savePinnedAssessments(ids) {
+  appData.pinnedAssessments = ids;
+  pushDataToCloud();
+  notifyDataChanged();
 }
 
 export function loadCompletedTasks() {
@@ -99,6 +128,7 @@ export function loadCompletedTasks() {
 export function saveCompletedTasks(ids) {
   appData.completedTasks = ids;
   pushDataToCloud();
+  notifyDataChanged();
 }
 
 // Firestore is the source of truth; the local cache only spares each load a
@@ -182,7 +212,16 @@ const SAVE_DELAY_MS = 1000;
 let saveTimer = null;
 let savingUid = null;
 
+// The admin site's Calendar shows every course with the school's real assessments, in
+// data made up for the view (session.js): nothing of it is saved, nor added to.
+let viewOnly = false;
+export const setViewOnly = (value) => {
+  viewOnly = value;
+};
+export const isViewOnly = () => viewOnly;
+
 export function pushDataToCloud() {
+  if (viewOnly) return;
   if (!currentUid) {
     showSignInToast();
     return;
@@ -208,6 +247,11 @@ export function flushPendingSave() {
   clearTimeout(saveTimer);
   saveTimer = null;
   const uid = savingUid;
+  // Nothing real is in appData in a view-only session.
+  if (viewOnly) {
+    cloudWritesInFlight--;
+    return;
+  }
   // Not for an account that has since signed out (its data is gone from appData).
   if (uid !== currentUid) {
     cloudWritesInFlight--;

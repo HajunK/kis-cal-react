@@ -15,6 +15,7 @@ npm run build      # into dist/
 firebase deploy    # builds first (see predeploy in firebase.json), then deploys dist/ and the Firestore rules
 ```
 
+`http://admin.localhost:3000` is the admin site (the Assessments page, see below).
 `http://guides.localhost:3000` is the guides site (`guides/`, `dev/guidesServer.js`), answered the
 way its Hosting site is: files as they are, `/biology` for its folder, anything else is
 `guide.html`. Browsers send `*.localhost` to your machine themselves. Google sign-in there needs
@@ -115,6 +116,28 @@ the site is closed).
 It watches the `suggested` list the Assessments tab already reads (anyone may read
 it), so there's nothing to deploy: no function, no rules change. The choice is
 kept per browser. The code is src/shell/notifications.js.
+
+## Admin site (admin.kiscal.app)
+
+The Assessments page (the school-wide calendar, suggestions and reports) is its own site, not
+a tab of the student app. It's the same app: its own Hosting site (`kiscal-admin`, listed in
+firebase.json beside the student site's, and built from the same `dist/`), and the app
+decides by address (`src/app/site.js`): on `admin.` it shows only the Assessments page, with
+no other tab; anywhere else it has no Assessments page. An admin's account menu has an
+**Admin** item that goes there, and the admin site's has **KIS Cal** to come back.
+`kisj-grade-calculator`'s old `/assessments` and `/suggestions` addresses redirect to it.
+
+- Locally: `http://admin.localhost:3000` (browsers send `*.localhost` to your machine). Google
+  sign-in there needs `admin.localhost` under Authentication > Settings > Authorized domains.
+- Signing in is separate from the student site's (a different address keeps its own sign-in).
+- It's the same app and the same Firebase project, so firestore.rules still decide who can do
+  what; the page tells anyone who isn't an admin so.
+- First time only: `firebase hosting:sites:create kiscal-admin`, then in the console
+  (Hosting > Add custom domain) connect `admin.kiscal.app` and add the DNS records it shows, and
+  add `admin.kiscal.app` to Authentication > Settings > Authorized domains. Deploy it with
+  `firebase deploy --only hosting:kiscal-admin`; the student site's redirect to it should go
+  out after it's up (`firebase deploy --only hosting:kisj-grade-calculator`), or admins have
+  nowhere to go.
 
 ## Guides site (guides.kiscal.app)
 

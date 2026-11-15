@@ -668,19 +668,26 @@ img.letter-grade--preview[data-slug] {
    number finished rolling, which dimmed it for a moment. Opacity is kept
    in the list for the big badge's crossfade copy (.letter-grade-lg-fade),
    which this would otherwise override. */
-.privacy-blur-changing .class-card .score-value,
-.privacy-blur-changing .class-card .score-original,
-.privacy-blur-changing .class-card .grade-value {
+/* Only the elements on screen (marked data-privacy-anim by
+   evaluatePrivacyBlur) ease, and with the blur promoted to its own layer:
+   easing every score on the page, off-screen ones included, made the toggle
+   lag more the more scores there were. */
+.privacy-blur-changing .class-card :is(.score-value, .score-original, .grade-value)[data-privacy-anim] {
   transition: filter 0.2s ease, color 0.2s ease;
+  will-change: filter;
 }
 
-.privacy-blur-changing .class-card img.letter-grade:not(.letter-grade--preview) {
+.privacy-blur-changing .class-card img.letter-grade[data-privacy-anim]:not(.letter-grade--preview) {
   transition: background-color 0.2s ease, opacity 200ms ease;
 }
 
-html[data-privacy-blur] .class-card .score-value,
-html[data-privacy-blur] .class-card .score-original {
+html[data-privacy-blur] .class-card .score-value {
   filter: blur(4px);
+}
+
+/* The small original score beside a linked formative, a touch less blurred. */
+html[data-privacy-blur] .class-card .score-original {
+  filter: blur(3px);
 }
 
 /* :not([data-empty]): a "--" placeholder has nothing to hide. */
@@ -691,9 +698,9 @@ html[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
 /* Hover reveals ease in and out, but only once the page has settled
    (privacy-blur-settled, set by evaluatePrivacyBlur): before that, the blur
    coming on as the page loads would play as an animation. */
-html.privacy-blur-settled[data-privacy-blur] .class-card .score-value,
-html.privacy-blur-settled[data-privacy-blur] .class-card .score-original,
-html.privacy-blur-settled[data-privacy-blur] .class-card .grade-value:not([data-empty]) {
+html.privacy-blur-settled[data-privacy-blur]:not(.privacy-blur-changing) .class-card .score-value,
+html.privacy-blur-settled[data-privacy-blur]:not(.privacy-blur-changing) .class-card .score-original,
+html.privacy-blur-settled[data-privacy-blur]:not(.privacy-blur-changing) .class-card .grade-value:not([data-empty]) {
   transition: filter 0.2s ease, color 0.2s ease;
 }
 

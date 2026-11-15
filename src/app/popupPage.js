@@ -18,6 +18,27 @@ import { prefsCacheKeyFor } from "../shell/preferences.js";
 import { resolveDeviceKey } from "../shell/session.js";
 import { showToast, uiIconPath } from "../shell/ui.js";
 
+// The QR code script (vendored, so a filter can't block it), fetched once the
+// page is quiet or when the Login Key popup asks, not with every page load.
+let qrScript = null;
+export function loadQrScript() {
+  if (typeof window.qrcode === "function") return Promise.resolve();
+  if (!qrScript) {
+    qrScript = new Promise((resolve) => {
+      const el = document.createElement("script");
+      el.src = "/js/vendor/qrcode-generator.js";
+      el.async = true;
+      el.onload = () => resolve();
+      el.onerror = () => {
+        qrScript = null;
+        resolve();
+      };
+      document.head.appendChild(el);
+    });
+  }
+  return qrScript;
+}
+
 export function popupPage(withToast) {
   return {
     appData: () => appData,
@@ -33,6 +54,7 @@ export function popupPage(withToast) {
     encKeyStorageKey,
     // May ask for the login key (see DecryptionPrompt).
     resolveDeviceKey,
+    loadQrScript,
     qrcode: () => (typeof window.qrcode === "function" ? window.qrcode : null),
     uiIconPath,
     toast: makePopupToast((message) => {

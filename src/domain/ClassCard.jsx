@@ -42,11 +42,13 @@ import { toggleScoreDatePicker } from "./ScoreDatePicker.jsx";
 import { attachScoreScrollBlur, attachScoreScrollThumb, linkScoreListScroll } from "./scoreLists.js";
 import { openMyCoursesModal } from "../popups/popupStore.js";
 import { formatPreferredDate, getPreferences } from "../shell/preferences.js";
-import { ROLL_DURATION_MS, attachHoverTooltip } from "../shell/ui.js";
+import { ROLL_DURATION_MS, attachHoverTooltip, runAfterPaint } from "../shell/ui.js";
 
 // Label clicks on the icon focus the input too; mousedown, which always comes
 // first, records which was clicked, so the whole value is selected.
 let scoreFocusViaIcon = null;
+// The grade was clicked to leave the row (see onMouseDownIcon): its click is not to focus the field.
+let iconLeaving = false;
 
 // One Domain card: its course, grade, breakdown and score boxes. Its scores
 // are cardState.js's state; what moves (rolls, the Formative swap, the badge)
@@ -108,7 +110,7 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
       },
       showLinkTip: (row) => {
         const el = input("formative", row);
-        if (el) showFormativeLinkTipOnce(el);
+        if (el) showFormativeLinkTipOnce(el, row);
       },
       // Under Privacy Blur the changed Formative is briefly revealed;
       // otherwise its number rolls.
@@ -119,7 +121,10 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
           revealScoreRowBriefly(el.closest("li"));
         } else {
           rollScoreInput(el, before, after);
-          dissolveScoreIcon(el.parentElement.querySelector(".letter-grade"), iconSrc(iconBefore));
+          dissolveScoreIcon(el.parentElement.querySelector(".letter-grade"), iconSrc(iconBefore), {
+            className: `letter-grade${iconBefore ? (iconBefore.preview ? " letter-grade--preview" : "") : " letter-grade--empty"}`,
+            slug: iconBefore ? iconBefore.slug : "",
+          });
         }
       },
       // As recalculateCard did: draw the grade, then save the GPA list and
@@ -127,8 +132,16 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
       recalculated: (draft, results) => {
         const settled = settledRef.current;
         fx.push(() => showCardGrades(elRef.current, results, settled));
-        page.graded(item.id, results);
-        page.persist(item.id, name, serializeCard(draft, name), { mount });
+        const data = serializeCard(draft, name);
+        const save = () => {
+          page.graded(item.id, results);
+          page.persist(item.id, name, data, { mount });
+        };
+        // Saving (and redrawing a twin card) is heavy, so a change the student
+        // just made, a link toggled say, plays its animation first and saves
+        // after that frame. Opening the page saves at once, as it always did.
+        if (mount) save();
+        else runAfterPaint(save);
       },
     };
     return ctx;
@@ -136,7 +149,19 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
 
   // Runs a change on a copy of the card, draws it at once, then plays what it
   // queued (rolls, swaps...), which measure what's drawn.
-  const change = (fn) => {
+  // dissolve: a link or unlink click, the only change whose score icons fade from
+  // the old letter grade to the new one; every other change is instant.
+  const change = (fn, { dissolve = false } = {}) => {
+    // Each score icon as it is now, so one whose tier changes dissolves into its
+    // new one (the small icons' version of the big badge's crossfade).
+    const iconsBefore = dissolve
+      ? new Map(
+          [...elRef.current.querySelectorAll(".assessment-box > .score-list li")].map((li) => {
+            const icon = li.querySelector("img.letter-grade");
+            return [li, icon && { src: icon.src, className: icon.className, slug: icon.dataset.slug || "" }];
+          })
+        )
+      : null;
     const draft = cloneCard(cardRef.current);
     const fx = [];
     const result = fn(draft, ctxFor(fx));
@@ -144,6 +169,13 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
     pendingFx.current.push(...fx);
     flushSync(() => setCard(draft));
     drain();
+    if (iconsBefore) {
+      const blank = iconSrc(null);
+      iconsBefore.forEach((old, li) => {
+        const icon = li.isConnected && li.querySelector("img.letter-grade");
+        if (icon && old && old.src !== blank) dissolveScoreIcon(icon, old.src, old);
+      });
+    }
     return result;
   };
 
@@ -205,7 +237,24 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
 
   const handlers = (box, row) => ({
     onMouseDownIcon: (event) => {
-      scoreFocusViaIcon = event.currentTarget.parentElement.querySelector(SCORE_INPUT);
+      const input = event.currentTarget.parentElement.querySelector(SCORE_INPUT);
+      // With every digit already selected, the grade's click lets go of the row altogether: the
+      // field is left (committing it, as any leaving does), so the row is back to its hover
+      // state, not just without the highlight on the digits. The click that follows would
+      // focus the field again through its label, so that's stopped (onClickIcon).
+      if (input && document.activeElement === input && input.value && input.selectionStart === 0 && input.selectionEnd === input.value.length) {
+        event.preventDefault();
+        scoreFocusViaIcon = null;
+        iconLeaving = true;
+        input.blur();
+        return;
+      }
+      scoreFocusViaIcon = input;
+    },
+    onClickIcon: (event) => {
+      if (!iconLeaving) return;
+      iconLeaving = false;
+      event.preventDefault();
     },
     onFocus: (event) => {
       const el = event.currentTarget;
@@ -273,7 +322,7 @@ export function ClassCard({ item, inClass, currentLabel, page }) {
   });
 
   const toggleLink = (row) => {
-    change((draft, ctx) => toggleFormativeLink(draft, row, ctx));
+    change((draft, ctx) => toggleFormativeLink(draft, row, ctx), { dissolve: true });
     // Linking or unlinking changes the grade, so under Privacy Blur it shows for
     // a moment, as it does after typing a score and pressing Enter.
     revealDomainScoreBriefly(elRef.current);
@@ -413,6 +462,7 @@ function ScoreRow({ cell, on }) {
           height={34}
           data-slug={icon ? icon.slug : undefined}
           onMouseDown={on.onMouseDownIcon}
+          onClick={on.onClickIcon}
         />
         {/* Not a real placeholder, so it can sit further left without
             moving the caret's starting point. */}
@@ -458,18 +508,13 @@ function ScoreRow({ cell, on }) {
   );
 }
 
-// Says what a click would do; the row's original score shows while it's
+// The row's original score shows while it's
 // hovered, as the button sits outside the row and CSS :hover on the row
 // can't react to it. Placed by repositionFormativeLinkButtons.
 function LinkButton({ row, applied, card, onToggle }) {
   const attach = (el) => {
     if (!el) return;
     el._row = row;
-    el._label = applied ? "Unlink" : "Link";
-    if (!el._tooltip) {
-      el._tooltip = true;
-      attachHoverTooltip(el, () => el._label);
-    }
   };
   const rowEl = () => cellInput(card.current, "formative", row)?.closest("li");
   // Under Privacy Blur, hovering the button shows the two scores it joins, the
@@ -485,10 +530,17 @@ function LinkButton({ row, applied, card, onToggle }) {
   };
   // Not left on if the button goes while hovered (the card redrawing under it).
   useEffect(() => () => reveal(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const bridgeRef = useRef(null);
   return (
+    <>
+    {/* Fills the gap between the two highlighted rows while the button is hovered,
+        so the highlights read as one. Placed with the button, just before it. */}
+    <span className="formative-link-bridge" ref={bridgeRef} aria-hidden="true" />
     <button
       type="button"
       className="formative-link-btn"
+      // No tooltip, but still named for screen readers.
+      aria-label={applied ? "Unlink" : "Link"}
       ref={attach}
       // Prevents blurring the focused field, so a click never races the
       // blur-triggered recalculation.
@@ -503,13 +555,16 @@ function LinkButton({ row, applied, card, onToggle }) {
       onMouseEnter={() => {
         rowEl()?.classList.add("force-original");
         reveal(true);
+        bridgeRef.current?.classList.add("formative-link-bridge--on");
       }}
       onMouseLeave={() => {
         rowEl()?.classList.remove("force-original");
         reveal(false);
+        bridgeRef.current?.classList.remove("formative-link-bridge--on");
       }}
     >
       <img className="formative-link-icon" alt="" src={uiIcon(applied ? "unlink.png" : "link.png")} />
     </button>
+    </>
   );
 }

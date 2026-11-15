@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { scheduleForDate } from "../core/schedule.js";
-import { customDaySchedule, dayHasTestingBlock, scheduleDay, scheduleDayComplete, scheduleEventsFor, sortScheduleEvents } from "./bellSchedule.js";
+import {
+  customDaySchedule,
+  dayHasTestingBlock,
+  newCustomEvent,
+  savedCustomEvents,
+  scheduleDay,
+  scheduleDayComplete,
+  scheduleEventsFor,
+  sortScheduleEvents,
+} from "./bellSchedule.js";
 
 const SCHED = { times: null, testingBlock: null, academicSupport: null, advisory: null, daySchedules: {} };
 // 2026-10-12 is a Monday, 2026-10-13 a Tuesday.
@@ -155,3 +164,55 @@ function normal() {
     advisory: { start: "08:20", end: "08:45" },
   };
 }
+
+describe("events typed in by an admin", () => {
+  const saved = { ...SCHED, daySchedules: {} };
+  const onTuesday = (events) => scheduleDay(events);
+
+  it("start with a trimmed, capped name, no times, and a key of their own", () => {
+    const event = newCustomEvent("  Pep Rally  ");
+    expect(event).toMatchObject({ label: "Pep Rally", custom: true, included: true, time: { start: "", end: "" } });
+    expect(event.key.startsWith("custom:")).toBe(true);
+    expect(newCustomEvent("x".repeat(100)).label).toHaveLength(40);
+    expect(newCustomEvent("a").key).not.toBe(newCustomEvent("a").key);
+  });
+
+  it("are saved apart from the usual events, which stay exactly as they were", () => {
+    const events = [...scheduleEventsFor(TUESDAY, saved, {}), { ...newCustomEvent("Pep Rally"), time: { start: "10:00", end: "10:15" } }];
+    const result = customDaySchedule(TUESDAY, onTuesday(events), saved, {});
+    expect(result.customEvents).toEqual([{ id: expect.any(String), name: "Pep Rally", start: "10:00", end: "10:15" }]);
+    expect(result.included.some((key) => key.startsWith("custom:"))).toBe(false);
+    expect(Object.keys(result.times).some((key) => key.startsWith("custom:"))).toBe(false);
+    // What an app that doesn't know about them reads of the day is unchanged.
+    expect(scheduleForDate(TUESDAY, {}, { ...saved, daySchedules: { [TUESDAY]: result } }).map((event) => event.key)).not.toContain("custom:x");
+  });
+
+  it("make a day differ from normal even when everything else is usual", () => {
+    const events = [...scheduleEventsFor(TUESDAY, saved, {}), { ...newCustomEvent("Pep Rally"), time: { start: "10:00", end: "10:15" } }];
+    expect(customDaySchedule(TUESDAY, onTuesday(events), saved, {})).not.toBe(null);
+  });
+
+  it("come back as rows when the day is opened again, and need both times like any other", () => {
+    const custom = { included: [], times: {}, customEvents: [{ id: "a1", name: "Pep Rally", start: "10:00", end: "10:15" }] };
+    const rows = scheduleEventsFor(TUESDAY, { ...saved, daySchedules: { [TUESDAY]: custom } }, {});
+    expect(rows.at(-1)).toMatchObject({ key: "custom:a1", label: "Pep Rally", included: true, time: { start: "10:00", end: "10:15" } });
+    expect(scheduleDayComplete([{ ...rows.at(-1), time: { start: "10:00", end: "" } }])).toBe(false);
+  });
+
+  it("send an emptied list when the day had some, so the saved ones are not kept, and drop them on reset", () => {
+    const had = { included: ["period2"], times: { period2: { start: "10:18", end: "11:41" } }, customEvents: [{ id: "a1", name: "Pep Rally", start: "10:00", end: "10:15" }] };
+    const sched = { ...saved, daySchedules: { [TUESDAY]: had } };
+    // The custom event removed, another usual one taken off so the day still differs.
+    const events = scheduleEventsFor(TUESDAY, sched, {}).filter((event) => !event.custom).map((event) => (event.key === "period2" ? { ...event, included: false } : event));
+    expect(customDaySchedule(TUESDAY, onTuesday(events), sched, {}).customEvents).toEqual([]);
+    // Reset to normal: the whole day is deleted by the caller (null).
+    expect(customDaySchedule(TUESDAY, onTuesday(scheduleEventsFor(TUESDAY, sched, {}, null)), sched, {})).toBe(null);
+    expect(scheduleEventsFor(TUESDAY, sched, {}, null).some((event) => event.custom)).toBe(false);
+  });
+
+  it("ignore saved entries that are not shaped right", () => {
+    expect(savedCustomEvents({ customEvents: [null, { id: 1, name: "x" }, { id: "a", name: " " }, { id: "b", name: "ok" }] })).toEqual([{ id: "b", name: "ok" }]);
+    expect(savedCustomEvents({ customEvents: "no" })).toEqual([]);
+    expect(savedCustomEvents(undefined)).toEqual([]);
+  });
+});

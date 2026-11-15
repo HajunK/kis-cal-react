@@ -35,6 +35,17 @@ export function fakeFirestore(collections = {}) {
           );
           return () => {};
         },
+        // One equality filter, for a listener that follows just the documents matching it.
+        where(field, _op, wanted) {
+          return {
+            onSnapshot: (next) => {
+              queueMicrotask(() =>
+                next({ docs: [...docsOf(name)].filter(([, value]) => value[field] === wanted).map(([id, value]) => ({ id, data: () => structuredClone(value) })) })
+              );
+              return () => {};
+            },
+          };
+        },
         get() {
           return (
             maybeFail("get") ||

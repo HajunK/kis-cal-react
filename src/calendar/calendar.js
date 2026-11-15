@@ -27,7 +27,7 @@ import {
 import { ICON_CHEVRON_DOWN } from "./icons.js";
 import { CAL_WEEKDAY_LABELS, assessmentCategory, addedByLabel, calendarDateRange, lateLabel, latestAugustFirst, pillDetails, sortDayEntries, startOfWeek, stripDivisionSuffix, upcomingTimeLabel, upcomingTitle } from "./model.js";
 import { animatePillChanges, buildDayCell, fitName, pillListGap, renderedPillsByDate } from "./pills.js";
-import { loadAddedAssessments, loadCompletedTasks, loadConfirmedAssessments, loadHiddenAssessments, loadPeriods, saveAddedAssessments, saveCompletedTasks, saveConfirmedAssessments, saveHiddenAssessments } from "../shell/data.js";
+import { onDataChanged, loadAddedAssessments, loadCompletedTasks, loadConfirmedAssessments, loadHiddenAssessments, loadPeriods, loadPinnedAssessments, saveAddedAssessments, saveCompletedTasks, saveConfirmedAssessments, saveHiddenAssessments, savePinnedAssessments } from "../shell/data.js";
 import { pickCalendarDate } from "./datePick.js";
 import { closePillMenu, openPillMenu, selectedPill } from "./pillMenu.js";
 import { formatPreferredDate, getPreferences } from "../shell/preferences.js";
@@ -41,11 +41,14 @@ import {
   isAssessmentVisibleForPeriod,
   loadAssessmentData,
   loadPeriodTimes,
+  onPeriodTimesFetched,
   periodTimesLoaded,
 } from "../shell/school.js";
-import { animateNumberChange, attachHoverTooltip, hideHoverTooltip, hideToast, runAfterPaint, showToast } from "../shell/ui.js";
+import { animateNumberChange, attachHoverTooltip, hideHoverTooltip, dismissToast, hideToast, runAfterPaint, showToast } from "../shell/ui.js";
 
 const CALENDAR_SCROLL_SETTLE_MS = 150;
+// What the Upcoming list's toasts rise from: the line under the list.
+const UPCOMING_TOAST_ORIGIN = ".calendar-side-divider";
 
 const ASSESSMENT_CALENDAR_WEEKDAYS_PER_WEEK = 7;
 
@@ -56,8 +59,13 @@ const UPCOMING_SCROLLBAR_MIN_PX = 10;
 const UPCOMING_BLUR_REACH_PX = 160;
 const UPCOMING_FADE_MS = 150;
 const UPCOMING_SLIDE_MS = 260;
+const COMPLETED_DROP_MS = 220;
+const COMPLETED_DROP_STAGGER_MS = 28;
+// Closing is quicker than opening.
+const COMPLETED_CLOSE_MS = 120;
+const COMPLETED_CLOSE_STAGGER_MS = 14;
 
-const COMPLETED_SHOWN_DAYS = 14;
+const COMPLETED_SHOWN_DAYS = 7;
 
 const UPCOMING_COUNTDOWN_MS = 12 * 60 * 60 * 1000;
 
@@ -129,12 +137,14 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   // A school-wide assessment can't be taken off the school's calendar, only this
   // student's view of it: it's remembered as hidden for them, and can be brought
   // back from the toast.
-  function hideSchoolWideAssessment(entry) {
+  // report: false for "I'm not reassessing", which only takes it off their
+  // calendar without telling the admins anything.
+  function hideSchoolWideAssessment(entry, report = true) {
     saveHiddenAssessments([...loadHiddenAssessments(), entry.id]);
     render(true, false);
     // "This is wrong": the admins are told, on the Assessments page, once the
     // pill has started to go.
-    runAfterPaint(() => logAssessmentReport(entry));
+    if (report) runAfterPaint(() => logAssessmentReport(entry));
     const message = document.createDocumentFragment();
     message.append("Removed from your calendar. ");
     const undo = document.createElement("button");
@@ -145,10 +155,11 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       hideToast();
       saveHiddenAssessments(loadHiddenAssessments().filter((id) => id !== entry.id));
       render(true, false);
-      runAfterPaint(() => unlogAssessmentReport(entry));
+      if (report) runAfterPaint(() => unlogAssessmentReport(entry));
     });
     message.append(undo);
-    showToast(message);
+    // Down as well once it's back on their calendar some other way.
+    showUndoToast(message, () => !loadHiddenAssessments().includes(entry.id), {});
   }
 
   // Moves something the student added to another day. Not onto a day that already
@@ -223,6 +234,11 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       onDelete: () => (added ? deleteAddedAssessment(entry.id) : hideSchoolWideAssessment(entry)),
       // Only for what the student added: the school's own dates aren't theirs to move.
       onReschedule: added ? (event) => reschedulePill(entry, pillEl, event) : undefined,
+      // Not on the Upcoming list (over, far off or completed long ago): can be put there.
+      onAddToUpcoming: upcomingShownIds.has(entry.id) ? undefined : () => addToUpcoming(entry),
+      // A school-wide reassessment the student isn't taking: off their calendar, not
+      // reported as wrong. Not for their own, which only they see (Delete does that).
+      onOptOut: entry.type === "Reassessment" && !added ? () => hideSchoolWideAssessment(entry, false) : undefined,
     });
   }
 
@@ -487,6 +503,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     const reach = Math.max(0, Math.min(UPCOMING_BLUR_REACH_PX, Math.floor(upcomingList.getBoundingClientRect().top)));
     upcomingBlur.style.setProperty("--upcoming-blur-reach", `${reach}px`);
     upcomingBlur.style.top = `${upcomingList.offsetTop - reach}px`;
+    cutAvatarFromBlur();
     if (upcomingBlurCopies.length === 0) return;
     const marginLeft = `${upcomingList.offsetLeft - upcomingBlur.offsetLeft}px`;
     // clientWidth, so the copy's rows wrap like the real ones beside the scrollbar.
@@ -501,6 +518,32 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       copy.style.transform = transform;
     });
     outlineAddButtonIfCovered();
+  }
+
+  // The strip is stacked above the whole tab bar, the schedule pill and profile picture in
+  // it, so they're cut out of the strip: a mask the strip's size with a hole at each, in
+  // the strip's own coordinates (the pill is a rounded bar, so a circle won't do).
+  function cutAvatarFromBlur() {
+    const strip = upcomingBlur.getBoundingClientRect();
+    const holes = [".class-countdown-pill", ".auth-avatar-btn"]
+      .map((selector) => document.querySelector(selector))
+      .filter((el) => el && el.getClientRects().length > 0)
+      .map((el) => el.getBoundingClientRect())
+      .filter((box) => box.width > 0)
+      .map((box) => {
+        const x = box.left - strip.left - 1;
+        const y = box.top - strip.top - 1;
+        const w = box.width + 2;
+        const h = box.height + 2;
+        const r = h / 2;
+        return `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 0 ${h}h${-(w - 2 * r)}a${r} ${r} 0 0 1 0 ${-h}Z`;
+      });
+    if (holes.length === 0 || strip.width === 0) {
+      upcomingBlur.style.removeProperty("--avatar-hole-mask");
+      return;
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${strip.width}" height="${strip.height}"><path fill-rule="evenodd" d="M0 0H${strip.width}V${strip.height}H0Z${holes.join("")}"/></svg>`;
+    upcomingBlur.style.setProperty("--avatar-hole-mask", `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
   }
 
   // Outlined while a date chip or countdown touches it, so it doesn't blend
@@ -526,12 +569,24 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     }).observe(upcomingList, { childList: true, subtree: true, characterData: true, attributes: true });
     upcomingList.addEventListener("scroll", placeUpcomingBlur, { passive: true });
     new ResizeObserver(placeUpcomingBlur).observe(upcomingList);
+    // The picture stays at the top of the window while the page moves under it.
+    window.addEventListener("scroll", cutAvatarFromBlur, { passive: true });
+    window.addEventListener("resize", cutAvatarFromBlur);
+    // The pill's width follows its text, and it comes and goes with the class.
+    const pillForHole = document.querySelector(".class-countdown-pill");
+    if (pillForHole) {
+      new ResizeObserver(cutAvatarFromBlur).observe(pillForHole);
+      new MutationObserver(cutAvatarFromBlur).observe(pillForHole, { attributes: true, attributeFilter: ["hidden"] });
+    }
   }
 
   // Not saved: it starts closed.
   let completedExpanded = false;
   // For its roll.
   let shownCompletedCount = null;
+  // Ids of what the Upcoming list holds as of its last draw, Completed included.
+  let upcomingShownIds = new Set();
+  let drawingUpcoming = false;
 
   function renderUpcoming(entries, resolvedNames, courseColors, matchEntries) {
     if (!upcomingList) return;
@@ -541,16 +596,22 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     const range = calendarDateRange(ASSESSMENT_CALENDAR_WEEK_COUNT);
     entries = entries.filter((entry) => entry.date >= range.start && entry.date <= range.end);
     const today = todayISODate();
-    const completed = new Map(completedTaskRecords().map((record) => [record.id, record.completedAt]));
+    const completedRecords = completedTaskRecords();
+    const completed = new Map(completedRecords.map((record) => [record.id, record.completedAt]));
+    // Taken out of the Completed section by its trash; still done.
+    const dismissed = new Set(completedRecords.filter((record) => record.dismissed).map((record) => record.id));
     const periodIndexOf = new Map(matchEntries.map((entry) => [entry.name, entry.periodIndex]));
     const tomorrow = toISODate(new Date(Date.now() + 86400000));
     // Everything due by tomorrow always shows; UPCOMING_LIMIT only caps what
     // comes later.
     let laterShown = 0;
+    // Added by hand: shown even when over or beyond the limit.
+    const pinned = new Set(loadPinnedAssessments());
     const due = entries
       .filter((entry) => !completed.has(entry.id))
       .filter(
         (entry) =>
+          pinned.has(entry.id) ||
           assessmentCategory(entry) === "assignment" ||
           assessmentStillUpcoming(entry, periodIndexOf.get(entry.courseName))
       )
@@ -558,12 +619,15 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
         (a, b) =>
           upcomingSortTime(a, periodIndexOf.get(a.courseName)) - upcomingSortTime(b, periodIndexOf.get(b.courseName))
       )
-      .filter((entry) => entry.date <= tomorrow || laterShown++ < UPCOMING_LIMIT);
+      .filter((entry) => pinned.has(entry.id) || entry.date <= tomorrow || laterShown++ < UPCOMING_LIMIT);
+    upcomingShownIds = new Set(due.map((entry) => entry.id));
 
     const recentCutoff = Date.now() - COMPLETED_SHOWN_DAYS * 86400000;
     const recentlyCompleted = entries
-      .filter((entry) => completed.has(entry.id) && completed.get(entry.id) >= recentCutoff)
+      .filter((entry) => completed.has(entry.id) && !dismissed.has(entry.id) && completed.get(entry.id) >= recentCutoff)
       .sort((a, b) => completed.get(b.id) - completed.get(a.id));
+    // Whatever the list holds, Completed included, can't be added to it.
+    recentlyCompleted.forEach((entry) => upcomingShownIds.add(entry.id));
 
     const itemFor = (entry, done) => {
       const strippedName = stripDivisionSuffix(entry.courseName);
@@ -612,22 +676,63 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
         animateNumberChange(countEl, count);
       }
       shownCompletedCount = count;
+      // The finished tasks, then a note on how long they stay.
+      const appendCompleted = () => {
+        recentlyCompleted.forEach((entry) => upcomingList.appendChild(itemFor(entry, true)));
+        const note = upcomingList.appendChild(document.createElement("li"));
+        note.className = "upcoming-completed-note";
+        note.dataset.rowKey = "completed-note";
+        note.textContent = `Each task clears ${COMPLETED_SHOWN_DAYS} days after completion.`;
+      };
       // In place rather than rebuilt, so the arrow turns instead of being
       // replaced.
+      const completedRows = () => [...upcomingList.querySelectorAll(".upcoming-item--completed, .upcoming-completed-note")];
+      // Each row drops in from just under the heading, a beat after the one
+      // above it; closing plays it in reverse, speeding up sharply as it goes, the last
+      // row first.
+      const dropped = { opacity: 0, transform: "translateY(-14px)" };
+      const rested = { opacity: 1, transform: "none" };
       toggle.addEventListener("click", () => {
         completedExpanded = !completedExpanded;
         toggle.setAttribute("aria-expanded", String(completedExpanded));
         if (completedExpanded) {
-          recentlyCompleted.forEach((entry) => upcomingList.appendChild(itemFor(entry, true)));
+          // Rows still leaving from a quick close are cleared first.
+          completedRows().forEach((row) => row.remove());
+          appendCompleted();
+          completedRows().forEach((row, index) => {
+            // Deaf to the pointer while it moves, so a row sliding under it doesn't
+            // show its trash.
+            row.style.pointerEvents = "none";
+            const arriving = row.animate([dropped, rested], { duration: COMPLETED_DROP_MS, delay: index * COMPLETED_DROP_STAGGER_MS, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "backwards" });
+            arriving.finished.catch(() => {}).finally(() => (row.style.pointerEvents = ""));
+          });
         } else {
-          upcomingList.querySelectorAll(".upcoming-item--completed").forEach((item) => item.remove());
+          const rows = completedRows();
+          rows.forEach((row, index) => {
+            row.style.pointerEvents = "none";
+            const leaving = row.animate([rested, dropped], {
+              duration: COMPLETED_CLOSE_MS,
+              delay: (rows.length - 1 - index) * COMPLETED_CLOSE_STAGGER_MS,
+              easing: "cubic-bezier(0.4, 0, 0.8, 0.6)",
+              fill: "both",
+            });
+            // Unless it was opened again meanwhile, which has cleared it.
+            leaving.finished.then(() => !completedExpanded && row.remove()).catch(() => {});
+          });
         }
       });
-      if (completedExpanded) recentlyCompleted.forEach((entry) => upcomingList.appendChild(itemFor(entry, true)));
+      if (completedExpanded) appendCompleted();
     } else {
       shownCompletedCount = null;
     }
-    tickUpcomingCountdowns();
+    // The tick may ask for this very list to be rebuilt; not from inside this draw,
+    // or an item that never stops asking would recurse until the stack runs out.
+    drawingUpcoming = true;
+    try {
+      tickUpcomingCountdowns();
+    } finally {
+      drawingUpcoming = false;
+    }
   }
 
   // Rebuilds the list when an item's moment comes, so it can turn overdue or
@@ -672,7 +777,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     const ended = [...upcomingList.querySelectorAll(".upcoming-item[data-ends-at]")].some(
       (item) => Number(item.dataset.endsAt) <= now
     );
-    if ((passed || ended) && lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
+    if ((passed || ended) && lastUpcomingArgs && !drawingUpcoming) renderUpcoming(...lastUpcomingArgs);
   }
   if (upcomingList) {
     const ticker = setInterval(tickUpcomingCountdowns, 1000);
@@ -713,7 +818,11 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       item.classList.add("upcoming-item--single-line");
     }
 
-    const due = item.appendChild(document.createElement("div"));
+    // A completed row's date chip and trash slide as one (see .upcoming-trailing
+    // in calendar.css).
+    const trailing = done ? item.appendChild(document.createElement("div")) : item;
+    if (done) trailing.className = "upcoming-trailing";
+    const due = trailing.appendChild(document.createElement("div"));
     due.className = "upcoming-due";
     const chip = due.appendChild(document.createElement("span"));
     chip.className = "upcoming-date-chip";
@@ -729,9 +838,34 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
     chipLabel.textContent = overdue ? lateLabel(Date.now() - lateSince) : dueText;
     // The chip no longer says when it was due, so hovering it does.
     if (overdue) attachHoverTooltip(chip, dueText);
-    // Not for something already done.
-    const endsAt = done || assessmentCategory(entry) === "assignment" ? null : assessmentEndsAt(entry, periodIndex);
+    // Not for something already done, or pinned: that stays listed after it ends,
+    // so its end would rebuild the list again and again (see tickUpcomingCountdowns).
+    const pinned = loadPinnedAssessments().includes(entry.id);
+    const endsAt = done || pinned || assessmentCategory(entry) === "assignment" ? null : assessmentEndsAt(entry, periodIndex);
     if (endsAt) item.dataset.endsAt = String(endsAt.getTime());
+    if (done) {
+      // Takes it off their calendar; the row's own click (un-checking it) isn't
+      // meant.
+      // Two stacked copies of the icon in the wall's strip: the real, clickable
+      // one fading out toward the wall, and a blurred one fading in (see
+      // .upcoming-delete-wall in calendar.css), so what's still going behind the
+      // wall softens as it goes.
+      const sharpWall = trailing.appendChild(document.createElement("div"));
+      sharpWall.className = "upcoming-delete-wall";
+      const remove = sharpWall.appendChild(document.createElement("button"));
+      remove.type = "button";
+      remove.className = "upcoming-delete";
+      remove.setAttribute("aria-label", "Remove");
+      remove.innerHTML = '<span class="upcoming-delete-icon" aria-hidden="true"></span>';
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeCompletedItem(entry, item);
+      });
+      const blurWall = trailing.appendChild(document.createElement("div"));
+      blurWall.className = "upcoming-delete-wall upcoming-delete-wall--blur";
+      blurWall.setAttribute("aria-hidden", "true");
+      blurWall.innerHTML = '<span class="upcoming-delete upcoming-delete--blur"><span class="upcoming-delete-icon"></span></span>';
+    }
     const dueAt = done ? null : upcomingDueAt(entry, periodIndex);
     if (dueAt) {
       item.dataset.dueAt = String(dueAt.getTime());
@@ -747,6 +881,82 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
         .join("");
     }
     return item;
+  }
+
+  // An Undo toast comes down by itself once what it would undo has been undone
+  // some other way (the ring clicked again, say): `reversed` is checked after every
+  // change to the student's data.
+  function showUndoToast(message, reversed, options = { from: UPCOMING_TOAST_ORIGIN }) {
+    const toast = showToast(message, options);
+    const stop = onDataChanged(() => {
+      if (toast.leaving) return stop();
+      if (!reversed()) return;
+      stop();
+      dismissToast(toast);
+    });
+    return toast;
+  }
+
+  // "Add to Upcoming list" on a pill that isn't there: pinned, and un-checked if
+  // it was done. The toast's Undo takes it back off.
+  function addToUpcoming(entry) {
+    const wasDone = completedTaskRecords().find((record) => record.id === entry.id);
+    savePinnedAssessments([...new Set([...loadPinnedAssessments(), entry.id])]);
+    if (wasDone) {
+      saveCompletedTasks(completedTaskRecords().filter((record) => record.id !== entry.id));
+      markCalendarPillDone(entry.id, false);
+    }
+    if (lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
+
+    const message = document.createDocumentFragment();
+    message.append("Added to your Upcoming list. ");
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "toast-link";
+    undo.textContent = "Undo";
+    undo.addEventListener("click", () => {
+      hideToast();
+      savePinnedAssessments(loadPinnedAssessments().filter((id) => id !== entry.id));
+      if (wasDone) {
+        saveCompletedTasks([...completedTaskRecords(), wasDone]);
+        markCalendarPillDone(entry.id, true);
+      }
+      if (lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
+    });
+    message.append(undo);
+    showUndoToast(message, () => !loadPinnedAssessments().includes(entry.id));
+  }
+
+  // The trash on a completed row: only the Completed section lets go of it. It
+  // stays done, and nothing on the calendar changes; its record is just marked
+  // dismissed. The toast's Undo puts it back in the section.
+  function removeCompletedItem(entry, item) {
+    const mark = (dismissed, row = null) => {
+      saveCompletedTasks(
+        completedTaskRecords().map((record) => {
+          if (record.id !== entry.id) return record;
+          const { dismissed: _, ...rest } = record;
+          return dismissed ? { ...rest, dismissed: true } : rest;
+        })
+      );
+      // The row fades out where it was and the ones below it slide up into its place, as
+      // when a row moves down to Completed; Undo just rebuilds the list.
+      if (row) moveUpcomingItem(row);
+      else if (lastUpcomingArgs) renderUpcoming(...lastUpcomingArgs);
+    };
+    mark(true, item);
+    const message = document.createDocumentFragment();
+    message.append("Removed from Completed. ");
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "toast-link";
+    undo.textContent = "Undo";
+    undo.addEventListener("click", () => {
+      hideToast();
+      mark(false);
+    });
+    message.append(undo);
+    showUndoToast(message, () => completedTaskRecords().some((record) => record.id === entry.id && !record.dismissed));
   }
 
   // As in Google Tasks. The toast's Undo puts it back.
@@ -768,7 +978,7 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       uncompleteUpcomingItem(id);
     });
     message.append(undo);
-    showToast(message);
+    showUndoToast(message, () => !completedTaskRecords().some((record) => record.id === id));
   }
 
   // Rebuilds first, then plays every moved row from its old position (FLIP), so
@@ -870,6 +1080,9 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
   // Upcoming's due times and countdowns need the bell schedule; on a first
   // visit, with none cached, it can arrive after the first draw.
   if (!periodTimesLoaded) loadPeriodTimes(() => !signal.aborted && render());
+  // From the cache, it's drawn again once the fetch confirms it (the day labels may
+  // have changed).
+  else onPeriodTimesFetched(() => !signal.aborted && render());
 
   return render;
 }

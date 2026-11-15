@@ -1,7 +1,7 @@
 .suggestions-card {
   width: 100%;
   max-width: 800px;
-  height: 654px;
+  min-height: 654px;
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
@@ -95,8 +95,8 @@
 }
 
 .suggestions-rows {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 0;
+  min-height: 240px;
   overflow-y: auto;
 }
 
@@ -195,8 +195,15 @@
   box-sizing: border-box;
   max-width: none;
   height: auto;
-  max-height: 654px;
+  min-height: 0;
   margin-top: 32px;
+}
+
+/* Only the pending list scrolls; Accepted and Dismissed grow the card. */
+.admin-calendar-layout + .suggestions-card .suggestions-rows {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 440px;
 }
 
 /* "Accepted (N)" under the list, closing off what was accepted lately as
@@ -246,11 +253,9 @@
   transform: rotate(180deg);
 }
 
-/* A few rows at a time, scrolling past that so the open list can't push the
-   card past its height. */
+/* Every row is shown; the card grows to fit rather than the list scrolling. */
 .suggestions-accepted-rows {
-  max-height: 200px;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .suggestions-accepted-rows .suggestions-row {
@@ -273,4 +278,223 @@
 .suggestions-accepted-at {
   color: var(--color-gray-dark);
   white-space: nowrap;
+}
+
+/* The Cafeteria tab's day panel (see CafeteriaAdmin.jsx): the day's two menus, then how the
+   votes went as one bar. */
+.cafeteria-result {
+  gap: 20px;
+}
+
+.cafeteria-menus {
+  display: flex;
+  gap: 24px;
+}
+
+.cafeteria-menu {
+  flex: 1;
+  min-width: 0;
+  --menu-color: var(--color-dark-blue);
+}
+
+.cafeteria-menu--b {
+  --menu-color: var(--color-red);
+}
+
+.cafeteria-menu-name {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--menu-color, var(--color-text-primary));
+}
+
+/* The gray line the Assessments panel's entries are separated by: under the date, and between
+   the menus and the votes. */
+.cafeteria-divider {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--color-gray-light);
+}
+
+.cafeteria-dishes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--color-text-primary);
+}
+
+.cafeteria-no-menu {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-gray-dark);
+}
+
+.cafeteria-tally {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+.cafeteria-tally-side {
+  --menu-color: var(--color-dark-blue);
+  display: flex;
+  flex-direction: column;
+}
+
+.cafeteria-tally-side--b {
+  --menu-color: var(--color-red);
+  align-items: flex-end;
+}
+
+.cafeteria-tally-count {
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--menu-color);
+}
+
+.cafeteria-tally-name {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--menu-color);
+}
+
+/* A flat bar, empty in the middle until the two sides meet. */
+.cafeteria-votebar {
+  position: relative;
+  flex: none;
+  height: 28px;
+  /* The panel's gap (20px) is too wide here: the bar sits close under the names. */
+  margin-top: -12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+}
+
+.cafeteria-votebar-a,
+.cafeteria-votebar-b {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.cafeteria-votebar-a {
+  left: 0;
+  background: var(--color-dark-blue);
+}
+
+.cafeteria-votebar-b {
+  right: 0;
+  background: var(--color-red);
+}
+
+/* The dotted line down the middle of the bar, where a menu has won: dots in the card's color
+   over the bar, as the bar's ends are clipped round. */
+.cafeteria-votebar-half {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  /* 2px dots every 4px, 1px clear at each end of a period so the row is even top and bottom. */
+  background: repeating-linear-gradient(to bottom, transparent 0 1px, var(--color-surface) 1px 3px, transparent 3px 4px);
+}
+
+.cafeteria-hint {
+  top: 0;
+}
+
+/* The calendar's underline for a day's votes (see CafeteriaAdmin.jsx). */
+.cafeteria-day-line {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  width: 24px;
+  height: 4px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+}
+
+.cafeteria-day-line--empty {
+  background: var(--color-gray-light);
+}
+
+.cafeteria-day-line-a,
+.cafeteria-day-line-b {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.cafeteria-day-line-a {
+  left: 0;
+  background: var(--color-dark-blue);
+}
+
+.cafeteria-day-line-b {
+  right: 0;
+  background: var(--color-red);
+}
+
+/* A slight gap between the two where both have votes. */
+.cafeteria-day-line-a + .cafeteria-day-line-b {
+  box-shadow: inset 2px 0 0 var(--color-surface);
+}
+
+/* The Cafeteria calendar's days are plain rounded rectangles (not squircles), and the picked
+   day is just a gray outline, hollow, so the day's underline of votes shows on it. */
+.cafeteria-calendar .assessment-calendar-day {
+  border-radius: 12px;
+  corner-shape: round;
+}
+
+.cafeteria-calendar .assessment-calendar-day--selected {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--color-gray-light);
+  color: var(--color-text-primary);
+}
+
+.cafeteria-calendar .assessment-calendar-day--selected .assessment-calendar-day-number--today,
+:root[data-theme="dark"] .cafeteria-calendar .assessment-calendar-day--selected .assessment-calendar-day-number--today {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+/* Buttons for adding votes tagged to no one, to try the page out. */
+.cafeteria-test-votes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.cafeteria-test-label {
+  font-size: 13px;
+  color: var(--color-text-secondary, var(--color-gray-dark));
+}
+
+.cafeteria-test-btn {
+  padding: 6px 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cafeteria-test-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

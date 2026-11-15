@@ -28,7 +28,7 @@ vi.mock("../shell/notifications.js", () => ({
 const { turnOnAlerts, turnOffAlerts } = await import("../shell/notifications.js");
 
 beforeEach(() => {
-  store.prefs = { appearance: "system", dateFormat: "monthDay", privacyBlurMode: "never", showBreakdown: true, showUpcomingAssessments: false, replaceFormativesByDefault: true, hideAdminTabs: false };
+  store.prefs = { appearance: "system", dateFormat: "monthDay", privacyBlurMode: "never", showBreakdown: true, showUpcomingAssessments: false, replaceFormativesByDefault: true };
   setPreference.mockClear();
   vi.spyOn(window, "alert").mockImplementation(() => {});
 });
@@ -55,13 +55,20 @@ function fakePage(user = { uid: "u1", email: "student@kis.ac" }) {
   };
 }
 
+// Clicks hand their work on once the animation's frame is drawn.
+const painted = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+
 const control = (pref) => document.querySelector(`.segmented-control[data-pref="${pref}"]`);
 
 describe("SettingsPopup", () => {
-  it("shows the saved preferences and changes them", () => {
+  it("shows the saved preferences and changes them", async () => {
     render(<SettingsPopup page={fakePage()} />);
     expect(control("appearance").querySelector(".segmented-option--active").textContent).toBe("System");
     fireEvent.click(within(control("appearance")).getByText("Dark"));
+    // Active at once, but acted on only once the thumb has finished sliding.
+    expect(control("appearance").querySelector(".segmented-option--active").textContent).toBe("Dark");
+    expect(setPreference).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 300));
     expect(setPreference).toHaveBeenCalledWith("appearance", "dark");
     expect(control("appearance").querySelector(".segmented-option--active").textContent).toBe("Dark");
 
@@ -73,6 +80,7 @@ describe("SettingsPopup", () => {
     const upcoming = document.querySelector('.settings-toggle[data-pref="showUpcomingAssessments"]');
     expect([breakdown.checked, upcoming.checked]).toEqual([true, false]);
     fireEvent.click(upcoming);
+    await painted();
     expect(setPreference).toHaveBeenLastCalledWith("showUpcomingAssessments", true);
   });
 
@@ -86,14 +94,6 @@ describe("SettingsPopup", () => {
     ]);
   });
 
-  it("offers hiding the admin tabs to admins only", () => {
-    render(<SettingsPopup page={fakePage()} />);
-    expect(screen.queryByText("Hide Admins Tabs")).toBe(null);
-    cleanup();
-    render(<SettingsPopup page={fakePage({ uid: "u1", email: "hjkim29@kis.ac" })} />);
-    expect(screen.getByText("Hide Admins Tabs")).toBeTruthy();
-  });
-
   it("lets only admins switch suggestion alerts on and off", async () => {
     render(<SettingsPopup page={fakePage()} />);
     expect(screen.queryByText("Notify suggestions")).toBe(null);
@@ -105,10 +105,12 @@ describe("SettingsPopup", () => {
     const box = () => document.querySelector('input[data-pref="suggestionAlerts"]');
     expect(box().checked).toBe(false);
     fireEvent.click(box());
-    expect(turnOnAlerts).toHaveBeenCalled();
     expect(box().checked).toBe(true);
-    await act(async () => {});
+    await painted();
+    expect(turnOnAlerts).toHaveBeenCalled();
     fireEvent.click(box());
+    expect(box().checked).toBe(false);
+    await painted();
     expect(turnOffAlerts).toHaveBeenCalled();
     expect(box().checked).toBe(false);
   });
@@ -118,7 +120,7 @@ describe("SettingsPopup", () => {
     const page = fakePage({ uid: "u1", email: "hjkim29@kis.ac" });
     render(<SettingsPopup page={page} />);
     fireEvent.click(document.querySelector('input[data-pref="suggestionAlerts"]'));
-    await act(async () => {});
+    await painted();
     expect(document.querySelector('input[data-pref="suggestionAlerts"]').checked).toBe(false);
     expect(page.toasts).toEqual(["Allow notifications for this site in your browser's settings first."]);
   });

@@ -27,23 +27,37 @@ export function cellInput(card, box, row) {
 
 // A copy of the old icon fades out over the updated one, like the big badge's
 // tier change.
-export function dissolveScoreIcon(icon, oldSrc) {
+// before: { className, slug } the old icon had, so its copy keeps its own colour (a
+// grade's colour comes from its data-slug, and a preview is grey).
+export function dissolveScoreIcon(icon, oldSrc, before = null) {
   const row = icon && icon.closest("li");
   if (!row || !oldSrc || icon.src === oldSrc) return;
+  // One dissolve at a time per icon, whichever change asked first.
+  if (icon._dissolving) return;
+  icon._dissolving = true;
 
   const iconRect = icon.getBoundingClientRect();
   const rowRect = row.getBoundingClientRect();
   const ghost = icon.cloneNode();
   ghost.removeAttribute("id");
   ghost.src = oldSrc;
+  if (before) {
+    ghost.className = before.className;
+    if (before.slug) ghost.dataset.slug = before.slug;
+    else delete ghost.dataset.slug;
+  }
   ghost.style.cssText =
     `position:absolute; pointer-events:none; margin:0; left:${iconRect.left - rowRect.left}px; ` +
     `top:${iconRect.top - rowRect.top}px; width:${iconRect.width}px; height:${iconRect.height}px; ` +
-    `opacity:1; transition:opacity ${DOMAIN_BADGE_FADE_MS}ms ease;`;
+    // Above the label's own children (z-index 2), or the new icon hides it.
+    `z-index:3; opacity:1; transition:opacity ${DOMAIN_BADGE_FADE_MS}ms ease;`;
   row.appendChild(ghost);
   void ghost.offsetWidth;  // so the fade transitions
   ghost.style.opacity = "0";
-  setTimeout(() => ghost.remove(), DOMAIN_BADGE_FADE_MS + 60);
+  setTimeout(() => {
+    ghost.remove();
+    icon._dissolving = false;
+  }, DOMAIN_BADGE_FADE_MS + 60);
 }
 
 // The icon's src for a cell's icon state, as the <img> reports it.
@@ -175,6 +189,17 @@ function setColorAtOnce(input, color) {
   input.style.transition = "";
 }
 
+// Where an element's text sits on the page, top to bottom: a zero-height box set on the
+// text's baseline is exactly there.
+function baselineY(el) {
+  const probe = document.createElement("span");
+  probe.style.cssText = "display:inline-block; width:0; height:0;";
+  el.appendChild(probe);
+  const y = probe.getBoundingClientRect().top;
+  probe.remove();
+  return y;
+}
+
 export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, onUnlinked) {
   const swap = input._swap;
   if (swap) {
@@ -182,6 +207,7 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
       swap.toLinked = toLinked;
       swap.ghostAnim.reverse();
       swap.spanAnim.reverse();
+      swap.spanColorAnim.reverse();
     }
     return;
   }
@@ -206,11 +232,10 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
   const rowRect = row.getBoundingClientRect();
   const spanStyle = getComputedStyle(originalSpan);
 
+  const scale = parseFloat(style.fontSize) / parseFloat(spanStyle.fontSize);
   // Left edges, with transform-origin: left, so the small number lands where
   // the big digits start.
   const dx = inputRect.left - spanRect.left;
-  const dy = inputRect.top + inputRect.height / 2 - (spanRect.top + spanRect.height / 2);
-  const scale = parseFloat(style.fontSize) / parseFloat(spanStyle.fontSize);
 
   // Laid over the input like rollScoreInput's overlay.
   const lineHeight = Math.ceil(parseFloat(style.fontSize) * 1.2);
@@ -222,6 +247,20 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
     `left:${inputRect.left - rowRect.left + parseFloat(style.paddingLeft)}px; ` +
     `top:${inputRect.top - rowRect.top + (inputRect.height - lineHeight) / 2}px;`;
   row.appendChild(ghost);
+  // Vertically, the baselines meet, not the centers of the two boxes: they differ by up to
+  // half a pixel, and plain text is drawn on a whole pixel while scaled text sits where the
+  // transform puts it, so the number jumped as one handed over to the other. The scaled
+  // number's baseline lands on the whole pixel the real one is drawn on (the ghost, laid
+  // over the input, stands in for it). Scaling is about the box's center.
+  // The small number itself is never moved, only its transform's end: moving it to put its
+  // baseline on a whole pixel (as was done) nudged it a whole device pixel as the swap began
+  // and back as it ended. The big number's baseline is the device pixel the real text is
+  // drawn on (the screen's pixels, not CSS's), and the scaled text is aimed half a device
+  // pixel past it, the middle of the pixels that hold it. Measured for 1x and 2x screens.
+  const ratio = window.devicePixelRatio || 1;
+  const targetBaseline = Math.round(baselineY(ghost) * ratio) / ratio + 0.5 / ratio;
+  const centerY = spanRect.top + spanRect.height / 2;
+  const dy = targetBaseline - centerY - (baselineY(originalSpan) - centerY) * scale;
 
   // Keyframes in the direction this swap starts, so it plays forwards with
   // ease's quick start either way; played backwards, linking began slowly.
@@ -235,11 +274,18 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
     ]),
     timing
   );
+  // The move and the colour are separate animations on the same clock: colour
+  // can't run on the compositor, and one animation holding it would keep the move
+  // on the main thread too, where the render and the grade rolls compete with it.
   const spanAnim = originalSpan.animate(
     inStartDirection([
-      { transform: "translateY(-50%)", color: spanStyle.color },
-      { transform: `translateY(-50%) translate(${dx}px, ${dy}px) scale(${scale})`, color: style.color },
+      { transform: "translateY(-50%)" },
+      { transform: `translateY(-50%) translate(${dx}px, ${dy}px) scale(${scale})` },
     ]),
+    timing
+  );
+  const spanColorAnim = originalSpan.animate(
+    inStartDirection([{ color: spanStyle.color }, { color: style.color }]),
     timing
   );
 
@@ -252,7 +298,7 @@ export function animateFormativeSwap(input, originalSpan, toLinked, linkedText, 
     dateBtn.style.opacity = "0";
   }
 
-  input._swap = { toLinked, ghost, ghostAnim, spanAnim, row, dateBtn, originalSpan };
+  input._swap = { toLinked, ghost, ghostAnim, spanAnim, spanColorAnim, row, dateBtn, originalSpan };
   // finish fires again after each reversal; only a settled swap ends.
   ghostAnim.addEventListener("finish", () => {
     const current = input._swap;
@@ -269,6 +315,7 @@ export function endFormativeSwap(input) {
   input._swap = null;
   swap.ghostAnim.cancel();
   swap.spanAnim.cancel();
+  swap.spanColorAnim.cancel();
   swap.ghost.remove();
   setColorAtOnce(input, "");
   swap.row.classList.remove("swap-animating");
@@ -308,7 +355,8 @@ const LINK_BTN_BOTTOM_FADE_PX = 36;
 // Matches .formative-link-btn's mask-size/position and covers its shadow.
 const LINK_BTN_MASK_BLEED_PX = 12;
 
-export function positionFormativeLinkButton(groups, formativeInput, btn) {
+// summativeInput: the same row's, for the bridge between their highlights.
+export function positionFormativeLinkButton(groups, formativeInput, btn, summativeInput) {
   const list = formativeInput.closest(".score-list");
   const row = formativeInput.closest("li");
   const listRect = list.getBoundingClientRect();
@@ -321,10 +369,23 @@ export function positionFormativeLinkButton(groups, formativeInput, btn) {
   const fadeTop = hasFades ? clearTop - LINK_BTN_TOP_FADE_PX : listRect.top;
   const visible = rowRect.bottom > fadeTop && rowRect.top < listRect.bottom;
   btn.style.display = visible ? "flex" : "none";
+  // Joins the formative's highlight to the summative's while the button is
+  // hovered (see .formative-link-bridge), from one's label edge to the other's.
+  const bridge = btn.previousElementSibling;
+  const hasBridge = bridge && bridge.classList.contains("formative-link-bridge");
+  if (hasBridge) bridge.style.display = visible ? "block" : "none";
   if (!visible) return;
 
   const centerY = rowRect.top + rowRect.height / 2;
   btn.style.top = `${centerY - groupsRect.top}px`;
+  if (hasBridge && summativeInput) {
+    const from = formativeInput.closest("label").getBoundingClientRect();
+    const to = summativeInput.closest("label").getBoundingClientRect();
+    bridge.style.left = `${from.right - groupsRect.left}px`;
+    bridge.style.width = `${to.left - from.right}px`;
+    bridge.style.top = `${from.top - groupsRect.top}px`;
+    bridge.style.height = `${from.height}px`;
+  }
 
   // The rows fade under surface-colored overlays, but the button sits over
   // the box borders, which an overlay would hide too, so it gets a mask in its
@@ -352,7 +413,7 @@ export function repositionFormativeLinkButtons(card) {
   const groups = card.querySelector(".assessment-groups");
   groups.querySelectorAll(".formative-link-btn").forEach((btn) => {
     const input = cellInput(card, "formative", btn._row);
-    if (input) positionFormativeLinkButton(groups, input, btn);
+    if (input) positionFormativeLinkButton(groups, input, btn, cellInput(card, "summative", btn._row));
   });
 }
 

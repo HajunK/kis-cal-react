@@ -113,6 +113,28 @@ describe("a returning student", () => {
   });
 });
 
+describe("a change made while the server's copy is on its way", () => {
+  it("is kept over it, with the rest taken from the server, and saved", async () => {
+    localStorage.setItem("lastKnownUid", "u1");
+    localStorage.setItem("cachedAppData_u1", JSON.stringify(doc()));
+    const { session, data } = await freshModules();
+    session.showCachedGuess();
+    session.startSession({ onConfirmed });
+    fb.user = student;
+    fb.authListener(student);
+    // Typed in the moment before the server answers.
+    data.appData.periods = ["English", "Art", "", "", "", "", "", ""];
+    sendDoc("u1", doc({ hiddenCourses: ["Gym"], lastModified: 9 }));
+    await flush();
+    await flush();
+    expect(data.appData.periods[1]).toBe("Art");
+    expect(data.appData.hiddenCourses).toEqual(["Gym"]);
+    data.flushPendingSave();
+    await flush();
+    expect(fb.writes.filter((write) => write.collection === "users").length).toBeGreaterThan(0);
+  });
+});
+
 describe("a change made elsewhere", () => {
   async function signedIn() {
     const { session, data } = await freshModules();
@@ -189,8 +211,8 @@ describe("a change made elsewhere", () => {
     preferences.setPreference("dateFormat", "numeric");
     // On the page at once, but not yet saved.
     expect(preferences.getPreferences()).toMatchObject({ privacyBlurMode: "always", dateFormat: "numeric" });
-    expect(document.documentElement.dataset.privacyBlur).toBe("true");
     expect(usersWrites().length).toBe(before);
+    expect(document.documentElement.dataset.privacyBlur).toBe("true");
     preferences.flushPreferenceSave();
     expect(usersWrites().length).toBe(before + 1);
     expect(usersWrites().at(-1).value.preferences).toMatchObject({ privacyBlurMode: "always", dateFormat: "numeric" });

@@ -20,6 +20,8 @@ export function emptyAppData() {
     hiddenAssessments: [],
     // School-wide assessments that began as this student's own suggestion (ids).
     confirmedAssessments: [],
+    // Assessments and assignments this student added to their Upcoming list by hand (ids).
+    pinnedAssessments: [],
     domainSnapshot: [],
     gpaClasses: [],
     domainScores: {},
@@ -73,6 +75,7 @@ export function normalizeCloudData(cloud, key) {
     completedTasks: cloud.completedTasks || [],
     hiddenAssessments: cloud.hiddenAssessments || [],
     confirmedAssessments: cloud.confirmedAssessments || [],
+    pinnedAssessments: cloud.pinnedAssessments || [],
     domainSnapshot,
     gpaClasses,
     domainScores,

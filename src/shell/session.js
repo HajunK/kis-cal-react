@@ -8,6 +8,7 @@
 // certain whether a value is confirmed by the server or just a local echo.
 
 import { isAdminEmail } from "../core/admins.js";
+import { COURSE_CATALOG, expandCourseNames } from "../core/catalog.js";
 import { appDataIsEmpty, deepEqual, emptyAppData, normalizeCloudData } from "../core/sync.js";
 import {
   appData,
@@ -23,12 +24,13 @@ import {
   resolveDeviceKeyForBoot,
   savesInFlight,
   setSession,
+  setViewOnly,
   writeCachedAppData,
   writeLastKnownUid,
 } from "./data.js";
 import { firebaseAuth, firestore } from "./firebase.js";
-import { applyCloudPreferences, preferencesForUser } from "./preferences.js";
-import { retryAssessmentsAfterSignIn } from "./school.js";
+import { applyCloudPreferences, preferencesForUser, separateCalendarPreferences } from "./preferences.js";
+import { retryAssessmentsAfterSignIn, setShowEveryAssessment } from "./school.js";
 
 // What the app shows about the session: whether there's data to draw yet,
 // the signed-in user (null signed out, undefined until known), and whether
@@ -67,8 +69,34 @@ export const sessionState = {
 };
 
 // Data on screen for uid (null signed out). Without data, the tabs wait.
+// The admin site's Calendar: every course in the catalog, none hidden, nothing added by
+// hand, so it shows the school's real assessments whole. The account's preferences are
+// kept (the view, the theme); nothing here is ever saved (see setViewOnly).
+let allCoursesView = false;
+export function viewAllCourses() {
+  allCoursesView = true;
+  setViewOnly(true);
+  setShowEveryAssessment(true);
+  separateCalendarPreferences();
+}
+function allCourses(data) {
+  // Each course once, with no division picked: the calendar then lists every division (as
+  // "English (10)") and names the courses so, which is how an admin tells them apart. A
+  // course made of two classes (Korean) is listed whole, with its divisions, and as its two.
+  const own = COURSE_CATALOG.map((course) => course.name).filter((name) => !/^(AP )?Lunch$/.test(name));
+  const names = [...new Set([...own, ...expandCourseNames(own)])];
+  return {
+    ...emptyAppData(),
+    periods: names,
+    periodDivisions: names.map(() => ""),
+    preferences: data.preferences || {},
+    email: data.email || "",
+  };
+}
+
 function show(uid, data) {
-  setSession(uid, data || emptyAppData());
+  const shown = data || emptyAppData();
+  setSession(uid, allCoursesView ? allCourses(shown) : shown);
   state = { ...state, ready: Boolean(data) };
   redrawSession();
   update({});
@@ -257,6 +285,15 @@ function noteAvatar(user) {
   return avatar;
 }
 
+// The data's parts (periods, scores, ...) that differ from `before`.
+// lastModified and preferences are bookkeeping, not changes made by the student.
+function changedSince(before, now) {
+  const keys = new Set([...Object.keys(before), ...Object.keys(now)]);
+  keys.delete("lastModified");
+  keys.delete("preferences");
+  return [...keys].filter((key) => !deepEqual(before[key], now[key]));
+}
+
 // What's on screen is for this user: the cache at once if there is one,
 // then the server's copy, then changes made elsewhere.
 function loadUser(user) {
@@ -269,6 +306,11 @@ function loadUser(user) {
   // final.
   if (cached && (!state.ready || currentUid !== uid)) show(uid, cached);
   else if (currentUid !== uid) show(uid, null);
+
+  // What was on screen when the server's copy was asked for. The reply can
+  // take a second or more, and a change made in that time (typing a score the
+  // moment the page opens) must not be wiped out by it: see changedSince.
+  const shownAtStart = JSON.parse(JSON.stringify(appData));
 
   // Well above a normal read (under 5s), so it only triggers on a struggling
   // connection.
@@ -287,6 +329,22 @@ function loadUser(user) {
         const merged = { ...fresh, ...pending };
         writeCachedAppData(uid, merged);
         show(uid, merged);
+        pushDataToCloud();
+        return true;
+      }
+
+      // Changed here while the server's copy was on its way: those parts stay
+      // as this tab has them, on top of the server's copy for everything else,
+      // and are saved. Drawn once nothing is being typed.
+      const edited = changedSince(shownAtStart, appData);
+      if (edited.length && state.ready) {
+        const merged = { ...fresh, preferences: appData.preferences };
+        edited.forEach((key) => {
+          merged[key] = appData[key];
+        });
+        setSession(uid, merged);
+        writeCachedAppData(uid, merged);
+        redrawWhenIdle(uid);
         pushDataToCloud();
         return true;
       }

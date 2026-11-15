@@ -6,9 +6,9 @@ import { shortCourseName } from "../core/catalog.js";
 import { toISODate } from "../core/dates.js";
 import { courseColorAssignments } from "./data.js";
 import { CAL_WEEKDAY_LABELS, assessmentCategory, latestAugustFirst, startOfWeek } from "./model.js";
-import { CAL_MONTH_SHORT, CLASS_GRID_PILL_CELLS, PILL_FADE_MS, PILL_MOVE_MS, animatePillChanges, buildAssessmentPill, fitName, renderedPillsByDate } from "./pills.js";
+import { CAL_MONTH_SHORT, CLASS_GRID_PILL_CELLS, PILL_FADE_MS, PILL_MOVE_MS, animatePillChanges, buildAssessmentPill, buildDayLabel, fitName, renderedPillsByDate } from "./pills.js";
 import { loadCompletedTasks, loadPeriods } from "../shell/data.js";
-import { allDayTypes } from "../shell/school.js";
+import { allDayTypes, dayLabelFor } from "../shell/school.js";
 import { hideHoverTooltip } from "../shell/ui.js";
 
 // How many weeks past this one the calendars run.
@@ -74,20 +74,74 @@ function classCellTemplate() {
 
 const CLASS_GRID_MIN_ROW_PX = 72;
 
+// A day label's line and the gap above it.
+const CLASS_GRID_LABEL_ROOM_PX = 16;
+
+// Whether a day with a label is in view, even partly: only then does the date row keep
+// the extra line, so scrolling to days without one lets it shrink back. A day passing
+// behind the course names at the left (the frosted glass) is out of sight, so it no longer
+// counts once it is wholly behind them.
+function labelInView(grid) {
+  const columns = grid._labelColumns;
+  const corner = grid.querySelector(".class-grid-corner");
+  const courseWidth = corner ? corner.offsetWidth : 0;
+  const daysWidth = grid.clientWidth - courseWidth;
+  if (!columns || columns.length === 0 || daysWidth <= 0) return false;
+  // The days start after the course column, which stays put as they scroll, so a day is clear
+  // of it once its right edge is past the column's: that's day index scrollLeft / width.
+  const first = Math.floor(grid.scrollLeft / CLASS_GRID_DAY_PX);
+  const last = Math.ceil((grid.scrollLeft + daysWidth) / CLASS_GRID_DAY_PX) - 1;
+  return columns.some((index) => index >= first && index <= last);
+}
+
+// For a couple of frames after the grid is drawn, shown or resized, the date row takes its
+// height at once: the page placing the grid (at today, say) isn't the reader scrolling it,
+// and the row should simply be there at the height it ends up at.
+function holdEasing(grid) {
+  grid._holdingEasing = true;
+  cancelAnimationFrame(grid._holdFrame);
+  grid._holdFrame = requestAnimationFrame(() => {
+    grid._holdFrame = requestAnimationFrame(() => {
+      grid._holdingEasing = false;
+    });
+  });
+}
+
+// The date row eases to its new height (a short transition, only for this), when the
+// reader scrolls; not when the grid is drawn or the window is resized.
+function syncLabelRoom(grid, animate) {
+  const needed = labelInView(grid);
+  if (needed === Boolean(grid._labelsShown)) return;
+  grid._labelsShown = needed;
+  if (animate && !grid._holdingEasing) {
+    grid.classList.add("class-grid--easing");
+    clearTimeout(grid._easingTimer);
+    grid._easingTimer = setTimeout(() => grid.classList.remove("class-grid--easing"), 260);
+  }
+  sizeClassGridRows(grid);
+}
+
 // The course rows share the grid's height, at least 72px each. In whole
 // pixels: an even 1fr split of a window-based height gives fractional rows,
 // which left some of the 1px lines between them straddling two pixels and
 // looking thinner than the rest. The few spare pixels go one each to the top
 // rows.
+// While any day has a label the rows are sized as though the date row always had its extra
+// line, and the last row takes up what it gives back when it's without one (1fr, so it
+// follows the date row as that eases). Then easing the date row moves the rows but doesn't
+// resize them: laying out every cell of the grid at each frame is what made it stutter.
 function sizeClassGridRows(grid) {
   const count = grid._courseCount || 0;
-  const headHeight = parseFloat(getComputedStyle(grid).getPropertyValue("--class-grid-head-h")) || 52;
+  const headBase = parseFloat(getComputedStyle(grid).getPropertyValue("--class-grid-head-h")) || 52;
+  const hasLabels = Boolean(grid._labelColumns && grid._labelColumns.length > 0);
+  const headHeight = headBase + (grid._labelsShown ? CLASS_GRID_LABEL_ROOM_PX : 0);
   // One 1px row gap above each course row.
-  const room = grid.clientHeight - headHeight - count;
+  const room = grid.clientHeight - headBase - (hasLabels ? CLASS_GRID_LABEL_ROOM_PX : 0) - count;
   const base = Math.max(CLASS_GRID_MIN_ROW_PX, Math.floor(room / Math.max(count, 1)));
   const spare = base === CLASS_GRID_MIN_ROW_PX ? 0 : Math.max(0, room - base * count);
   const rows = Array.from({ length: count }, (_, index) => `${base + (index < spare ? 1 : 0)}px`);
-  grid.style.gridTemplateRows = `var(--class-grid-head-h) ${rows.join(" ")}`;
+  if (hasLabels && count > 0) rows[count - 1] = `minmax(${rows[count - 1]}, 1fr)`;
+  grid.style.gridTemplateRows = `${headHeight}px ${rows.join(" ")}`;
 }
 
 export function renderClassGrid(grid, entries, matchEntries, resolvedNames, courseColors, onPillClick, animatePills) {
@@ -126,6 +180,7 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
     periods,
     today,
     allDayTypes,
+    days.map((date) => dayLabelFor(toISODate(date))),
     loadCompletedTasks(),
   ]);
   if (!firstBuild && grid._signature === signature) {
@@ -142,9 +197,17 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
   grid.innerHTML = "";
   grid.style.gridTemplateColumns = `var(--class-grid-course-w) repeat(${days.length}, ${CLASS_GRID_DAY_PX}px)`;
   grid._courseCount = courses.length;
+  // The date row is built for a label line only if some day has one.
+  grid._labelColumns = days.flatMap((date, index) => (dayLabelFor(toISODate(date)) ? [index] : []));
+  grid.classList.toggle("class-grid--labels", grid._labelColumns.length > 0);
+  grid._labelsShown = labelInView(grid);
   sizeClassGridRows(grid);
   if (!grid._rowSizer) {
-    grid._rowSizer = new ResizeObserver(() => sizeClassGridRows(grid));
+    grid._rowSizer = new ResizeObserver(() => {
+      holdEasing(grid);
+      syncLabelRoom(grid, false);
+      sizeClassGridRows(grid);
+    });
     grid._rowSizer.observe(grid);
   }
 
@@ -175,7 +238,14 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
   grid._showCornerMonth = showCornerMonth;
   if (!grid._cornerMonthListener) {
     grid._cornerMonthListener = true;
-    grid.addEventListener("scroll", () => grid._showCornerMonth && grid._showCornerMonth(), { passive: true });
+    grid.addEventListener(
+      "scroll",
+      () => {
+        if (grid._showCornerMonth) grid._showCornerMonth();
+        syncLabelRoom(grid, true);
+      },
+      { passive: true }
+    );
   }
   // Its cells aren't inside the head, so the grid tracks the pointer's column
   // itself.
@@ -214,7 +284,10 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
     }
     const dateEl = dateRow.appendChild(document.createElement("span"));
     dateEl.className = "class-grid-head-date";
-    if (toISODate(date) === today) dateEl.classList.add("class-grid-head-date--today");
+    if (toISODate(date) === today) {
+      dateEl.classList.add("class-grid-head-date--today");
+      head.classList.add("class-grid-head--today");
+    }
     dateEl.textContent = String(date.getDate());
     const dayType = allDayTypes[head.dataset.iso];
     if (dayType === "A" || dayType === "B") {
@@ -222,6 +295,8 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
       type.className = "class-grid-head-type";
       type.textContent = dayType;
     }
+    const dayLabel = dayLabelFor(head.dataset.iso);
+    if (dayLabel) head.appendChild(buildDayLabel("class-grid-head-label", dayLabel));
   });
 
   const colors = courseColorAssignments();
@@ -260,6 +335,10 @@ export function renderClassGrid(grid, entries, matchEntries, resolvedNames, cour
   grid.scrollLeft = firstBuild ? todayLeft : scrollLeft;
   todayBtn.addEventListener("click", () => grid.scrollTo({ left: todayLeft, behavior: "smooth" }));
   grid.scrollTop = firstBuild ? 0 : scrollTop;
+  // Placed where it was left (or at today): the date row takes the height that suits it
+  // there at once.
+  holdEasing(grid);
+  syncLabelRoom(grid, false);
   showCornerMonth();
   if (pillsBefore) animatePillChanges(grid, pillsBefore, CLASS_GRID_PILL_CELLS);
   updateClassCellAdds(grid);

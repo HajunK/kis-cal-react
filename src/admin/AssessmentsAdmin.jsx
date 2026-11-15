@@ -5,6 +5,7 @@ import { aliasDivision, matchCourses } from "../popups/courseSearch.js";
 import { effectiveCourseName, findCourseCatalogEntry } from "../core/catalog.js";
 import { fromISODate, toISODate } from "../core/dates.js";
 import { Modal } from "../ui/Modal.jsx";
+import { onSwipe } from "../ui/swipe.js";
 import {
   acceptSuggestion,
   acceptedType,
@@ -16,6 +17,7 @@ import {
   dismissReport,
   ensureCacheVersions,
   fetchAssessments,
+  fetchDayLabels,
   fetchDayTypes,
   fetchPeriodTimes,
   saveDayType,
@@ -26,9 +28,11 @@ import {
   watchReports,
   watchSuggestions,
 } from "./adminData.js";
-import { loadAcceptedSuggestions, recordAcceptedSuggestion, removeAcceptedSuggestion } from "./acceptedSuggestions.js";
-import { loadDismissedSuggestions, recordDismissedSuggestion, removeDismissedSuggestion } from "./dismissedSuggestions.js";
+import { isSameAssessmentKind } from "../core/schedule.js";
+import { loadAcceptedSuggestions, recordAcceptedSuggestion, removeAcceptedSuggestion, watchAcceptedSuggestions } from "./acceptedSuggestions.js";
+import { loadDismissedSuggestions, recordDismissedSuggestion, removeDismissedSuggestion, watchDismissedSuggestions } from "./dismissedSuggestions.js";
 import { BellScheduleModal } from "./BellScheduleModal.jsx";
+import { DayLabelPopup } from "./DayLabelPopup.jsx";
 import { DEFAULT_SCHEDULE_TIMES, dayHasTestingBlock } from "./bellSchedule.js";
 
 // Matches the Domain tab's date picker's month change.
@@ -51,7 +55,7 @@ const typeSortRank = (type) => (TYPE_SORT_ORDER.includes(type) ? TYPE_SORT_ORDER
 // model, and every change redraws the calendar and day panel from it in full
 // (render()), so what wasn't redrawn before stays as it was. page: { auth, db,
 // deleteField, toast, alert, formatDate }.
-export function AssessmentsAdmin({ page }) {
+export function AssessmentsAdmin({ page, onPreview }) {
   // undefined until Firebase has restored the session.
   const [user, setUser] = useState(undefined);
   useEffect(() => page.auth.onAuthStateChanged((next) => setUser(next)), [page]);
@@ -60,6 +64,7 @@ export function AssessmentsAdmin({ page }) {
   const model = useRef({
     assessments: [],
     dayTypes: {},
+    dayLabels: {},
     sched: { times: null, testingBlock: null, academicSupport: null, advisory: null, daySchedules: {} },
     schedFetched: false,
     month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -74,6 +79,7 @@ export function AssessmentsAdmin({ page }) {
       selectedDate: model.selectedDate,
       assessments: model.assessments.slice(),
       dayTypes: { ...model.dayTypes },
+      dayLabels: { ...model.dayLabels },
     }));
   const [loaded, setLoaded] = useState(false);
 
@@ -89,12 +95,21 @@ export function AssessmentsAdmin({ page }) {
         model.schedFetched = true;
       })
       .catch((error) => console.error("Failed to load period times:", error));
+    // The calendar is first drawn with them (a failed read just leaves them out).
+    const labelsReady = fetchDayLabels(page.db)
+      .then((labels) => {
+        model.dayLabels = labels;
+      })
+      .catch((error) => console.error("Failed to load day labels:", error));
     fetchDayTypes(page.db)
       .then((dayTypes) => {
         model.dayTypes = dayTypes;
         return fetchAssessments(page.db)
           .then((assessments) => {
             model.assessments = assessments;
+            return labelsReady;
+          })
+          .then(() => {
             render();
             setLoaded(true);
           })
@@ -203,6 +218,8 @@ export function AssessmentsAdmin({ page }) {
           // collection.
           model.assessments.push({ id, ...entry, createdAt: Date.now() });
           render();
+          // Doing what a suggestion says by hand accepts it.
+          if (claimSuggestion.current) claimSuggestion.current(entry);
         })
         .catch((error) => {
           console.error("Failed to add assessment:", error);
@@ -215,7 +232,10 @@ export function AssessmentsAdmin({ page }) {
     setOtherText("");
   };
 
+  // The Suggestions list's way of taking in an assessment added here (see claim in Suggestions).
+  const claimSuggestion = useRef(null);
   const [scheduleModal, setScheduleModal] = useState(null); // { id, iso, open }
+  const [labelModal, setLabelModal] = useState(null); // { id, iso, open }
 
   // The Domain tab's date picker's month change: the old month's days slide
   // out as the new one's slide in, and the space eases between heights, since
@@ -231,6 +251,11 @@ export function AssessmentsAdmin({ page }) {
     model.selectedDate = null;
     render();
   };
+  // Swiping across the calendar moves between months (see swipe.js).
+  const cardRef = useRef(null);
+  const changeMonthRef = useRef(changeMonth);
+  changeMonthRef.current = changeMonth;
+  useEffect(() => onSwipe(cardRef.current, (direction) => changeMonthRef.current(direction)), []);
   useLayoutEffect(() => {
     if (!slide.current) return;
     const { oldDays, direction } = slide.current;
@@ -279,8 +304,22 @@ export function AssessmentsAdmin({ page }) {
       </p>
 
       <div className="admin-calendar-layout" id="admin-calendar-layout" hidden={!isAdmin}>
-        <div className="assessment-calendar-card">
-          <h2 className="assessment-calendar-title">Assessment Calendar</h2>
+        <div className="assessment-calendar-card" ref={cardRef}>
+          <div className="assessment-calendar-title-row">
+            <h2 className="assessment-calendar-title">Assessment Calendar</h2>
+            {/* The Calendar tab as students see it, with every course (src/app/AppShell.jsx). */}
+            <a
+              className="assessment-calendar-preview"
+              href="/calendar"
+              onClick={(event) => {
+                if (!onPreview || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                onPreview();
+              }}
+            >
+              Preview →
+            </a>
+          </div>
           <div className="assessment-calendar-header">
             <button
               type="button"
@@ -340,6 +379,21 @@ export function AssessmentsAdmin({ page }) {
             <div className="admin-day-panel-header-actions">
               {/* Not tied to whichever day happens to be selected, just placed
                   next to the A/B/? toggle. */}
+              <button
+                type="button"
+                className="admin-schedule-open-btn"
+                id="admin-label-open-btn"
+                aria-label="Day label"
+                hidden={!(view && view.selectedDate)}
+                onClick={(event) => {
+                  const anchor = event.currentTarget;
+                  setLabelModal((last) =>
+                    last && last.open ? { ...last, open: false } : { id: (last ? last.id : 0) + 1, iso: model.selectedDate, anchor, open: true }
+                  );
+                }}
+              >
+                <span className="admin-label-icon" aria-hidden="true" />
+              </button>
               <button
                 type="button"
                 className="admin-schedule-open-btn"
@@ -410,12 +464,24 @@ export function AssessmentsAdmin({ page }) {
       </div>
 
       <Suggestions
+        claimRef={claimSuggestion}
         page={page}
         isAdmin={isAdmin}
         model={model}
         onAccepted={(assessment) => {
           model.assessments.push(assessment);
           render();
+        }}
+        // A reported assessment deleted: off the calendar here too. Returns what puts it back.
+        onReportedDeleted={(id) => {
+          const index = model.assessments.findIndex((entry) => entry.id === id);
+          if (index === -1) return undefined;
+          const [removed] = model.assessments.splice(index, 1);
+          render();
+          return () => {
+            model.assessments.splice(Math.min(index, model.assessments.length), 0, removed);
+            render();
+          };
         }}
         // An accept taken back: the assessment it made comes off the calendar here too.
         onUndone={(id) => {
@@ -425,6 +491,23 @@ export function AssessmentsAdmin({ page }) {
           render();
         }}
       />
+
+      {labelModal && (
+        <DayLabelPopup
+          key={labelModal.id}
+          open={labelModal.open}
+          anchor={labelModal.anchor}
+          iso={labelModal.iso}
+          label={model.dayLabels[labelModal.iso]}
+          page={page}
+          onSaved={(text) => {
+            if (text) model.dayLabels[labelModal.iso] = text;
+            else delete model.dayLabels[labelModal.iso];
+            render();
+          }}
+          onClose={() => setLabelModal((last) => ({ ...last, open: false }))}
+        />
+      )}
 
       {scheduleModal && (
         <Modal
@@ -494,7 +577,11 @@ function CalendarDays({ view, onPick }) {
       <button key={iso} type="button" className={classes.join(" ")} onClick={() => onPick(iso)}>
         {/* Its own span so today's circle fits the number rather than the
             whole cell. */}
-        <span className={`assessment-calendar-day-number${isToday ? " assessment-calendar-day-number--today" : ""}`}>{day}</span>
+        <span className={`assessment-calendar-day-number${isToday ? " assessment-calendar-day-number--today" : ""}`}>
+          {day}
+          {/* A small dot to the number's left marks a day that has a label. */}
+          {view.dayLabels[iso] && <span className="assessment-calendar-day-label-dot" />}
+        </span>
         <span className="assessment-calendar-day-type">{view.dayTypes[iso] || ""}</span>
         {/* Every five become one square, like a tally, so a busy day's marks
             never outgrow the cell. */}
@@ -769,7 +856,7 @@ function DivisionField({ courseText, division, onPick }) {
 // first, with how many suggested each. Accepting adds it to the calendar. Beside
 // them, the school's own assessments students say are wrong ("This is wrong"):
 // deleting one takes it off the calendar, dismissing it leaves it be.
-function Suggestions({ page, isAdmin, model, onAccepted, onUndone }) {
+function Suggestions({ page, isAdmin, model, onAccepted, onUndone, onReportedDeleted, claimRef }) {
   const list = useRef([]);
   // As last drawn; null until the collection first loads.
   const [view, setView] = useState(null);
@@ -819,6 +906,7 @@ function Suggestions({ page, isAdmin, model, onAccepted, onUndone }) {
     write().catch((error) => {
       console.error(failure.log, error);
       page.alert(failure.alert);
+      if (failure.undo) failure.undo();
       if (index !== -1) {
         list.current.splice(index, 0, suggestion);
         render();
@@ -832,6 +920,17 @@ function Suggestions({ page, isAdmin, model, onAccepted, onUndone }) {
   // Likewise what was dismissed (suggestions declined, reports dismissed).
   const [dismissed, setDismissed] = useState(() => loadDismissedSuggestions());
   const [dismissedOpen, setDismissedOpen] = useState(false);
+  // Both lists are the admins' together: followed in Firestore, so what another admin
+  // accepted or declined shows here too.
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    const stopAccepted = watchAcceptedSuggestions(page.db, () => setAccepted(loadAcceptedSuggestions()));
+    const stopDismissed = watchDismissedSuggestions(page.db, () => setDismissed(loadDismissedSuggestions()));
+    return () => {
+      stopAccepted();
+      stopDismissed();
+    };
+  }, [isAdmin, page]);
   useEffect(() => {
     const timer = setInterval(() => {
       setAccepted(loadAcceptedSuggestions());
@@ -850,6 +949,31 @@ function Suggestions({ page, isAdmin, model, onAccepted, onUndone }) {
         }),
       { log: "Failed to accept suggestion:", alert: "Something went wrong accepting that suggestion. Please try again." }
     );
+  // An assessment the admin has just added by hand (entry: { date, courseName, type }): a
+  // suggestion for it is accepted, as if they'd accepted it. A suggested summative is
+  // met by an In-Class or Testing Block one too (see isSameAssessmentKind). Listed under
+  // Accepted without an Undo, since the assessment is the admin's own and Undo would remove it.
+  const claim = (entry) => {
+    const match = list.current.find(
+      (suggestion) =>
+        suggestion.kind !== "report" &&
+        suggestion.date === entry.date &&
+        suggestion.courseName === entry.courseName &&
+        isSameAssessmentKind(suggestion.type, entry.type)
+    );
+    if (!match) return;
+    recordAcceptedSuggestion(match, entry.type, Date.now(), null);
+    setAccepted(loadAcceptedSuggestions());
+    optimistic(match, () => declineSuggestion(page.db, match), {
+      log: "Failed to accept the suggestion that was added by hand:",
+      alert: "Something went wrong clearing that suggestion. Please try again.",
+      undo: () => {
+        removeAcceptedSuggestion(match.id);
+        setAccepted(loadAcceptedSuggestions());
+      },
+    });
+  };
+  if (claimRef) claimRef.current = claim;
   // Takes an accepted one back: it's a suggestion again (it comes back to the list
   // by itself) and its assessment comes off the school calendar.
   const undoAccepted = (entry) => {
@@ -897,11 +1021,15 @@ function Suggestions({ page, isAdmin, model, onAccepted, onUndone }) {
           alert: "Something went wrong declining that suggestion. Please try again.",
         });
   // A report that's right: the assessment is deleted for everyone.
-  const deleteReported = (report) =>
+  // It comes off the calendar at once too (and goes back if the write fails).
+  const deleteReported = (report) => {
+    const restore = onReportedDeleted(report.assessmentId);
     optimistic(report, () => deleteReportedAssessment(page.db, report), {
       log: "Failed to delete reported assessment:",
       alert: "Something went wrong deleting that assessment. Please try again.",
+      undo: restore,
     });
+  };
 
   const suggestions = view ? view.suggestions : null;
   return (

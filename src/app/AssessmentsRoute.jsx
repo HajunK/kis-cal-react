@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { AssessmentsAdmin } from "../admin/AssessmentsAdmin.jsx";
 import { makePopupToast } from "../popups/toast.js";
 import { deleteField, firebaseAuth, firestore } from "../shell/firebase.js";
@@ -10,6 +11,7 @@ import { formatPreferredDate } from "../shell/preferences.js";
 // cache-stamp check that can write, a live listener that clears emptied
 // suggestions), which StrictMode's practice run would do twice.
 export function AssessmentsRoute({ firebaseReady }) {
+  const navigate = useNavigate();
   const page = useMemo(
     () =>
       firebaseReady && {
@@ -24,5 +26,5 @@ export function AssessmentsRoute({ firebaseReady }) {
       },
     [firebaseReady]
   );
-  return <div className="page-content" id="assessments-root">{page ? <AssessmentsAdmin page={page} /> : null}</div>;
+  return <div className="page-content" id="assessments-root">{page ? <AssessmentsAdmin page={page} onPreview={() => navigate("/calendar")} /> : null}</div>;
 }

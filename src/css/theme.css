@@ -96,6 +96,9 @@
   --color-gray-dark: #bababa;
   --color-gray-light: #808080;
   --color-gray-lighter: #464646;
+  /* The gray course color, lighter here: it has no hue to set it apart, and #767676 sank into
+     the #363636 surface (its pill fill, dot and name all close to it). */
+  --color-gray: #d0d0d0;
   /* The same cool slate a step lighter, so the circles still stand off the
      #363636 cards. */
   --blurred-circle-bg: #6b7280;

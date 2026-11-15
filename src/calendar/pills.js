@@ -6,8 +6,10 @@
 import { shortCourseName } from "../core/catalog.js";
 import { toISODate } from "../core/dates.js";
 import { completedTaskRecords } from "./data.js";
+import { isViewOnly } from "../shell/data.js";
 import { assessmentCategory, stripDivisionSuffix } from "./model.js";
-import { allDayTypes } from "../shell/school.js";
+import { getPreferences } from "../shell/preferences.js";
+import { allDayTypes, dayLabelFor } from "../shell/school.js";
 import { attachHoverTooltip } from "../shell/ui.js";
 
 // Rechecked whenever the window resizes, since a hidden grid can't be measured
@@ -306,6 +308,35 @@ export function cancelMarqueeReturn(textEl) {
   textEl.style.opacity = "";
 }
 
+// Whether a click or the mouse is in the gap between two pills of a day, which isn't
+// the day's to take (no add, no tooltip, the ordinary cursor): the list's own
+// background, level with the pills it holds, not the room below the last one.
+export function isBetweenPills(event) {
+  const list = event.target;
+  if (!list.matches || !list.matches(".assessment-week-day-pills, .class-grid-cell-pills")) return false;
+  const chips = list.querySelectorAll(".assessment-chip");
+  if (chips.length < 2) return false;
+  const first = chips[0].getBoundingClientRect();
+  const last = chips[chips.length - 1].getBoundingClientRect();
+  return event.clientY > first.top && event.clientY < last.bottom;
+}
+
+// A day's label: one muted line, cut off with "…" when it doesn't fit, its whole text in a
+// tooltip then.
+// Over a day label with its own tooltip to show (its text is cut off).
+function isOverCutOffLabel(event) {
+  const label = event.target.closest && event.target.closest(".assessment-week-day-label");
+  return Boolean(label) && label.scrollWidth > label.clientWidth;
+}
+
+export function buildDayLabel(className, text) {
+  const label = document.createElement("div");
+  label.className = className;
+  label.textContent = text;
+  attachHoverTooltip(label, text, { when: () => label.scrollWidth > label.clientWidth });
+  return label;
+}
+
 export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames, onClick, courseColors) {
   const iso = toISODate(date);
   const today = new Date();
@@ -316,7 +347,13 @@ export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames,
   // Pills keep their own tooltips.
   // Not while the type menu or add popup is already open.
   attachHoverTooltip(cell, "Click to add", {
-    when: (event) => !event.target.closest(".assessment-chip") && !document.querySelector(".add-popup, .popup-menu"),
+    when: (event) =>
+      !isViewOnly() &&
+      !getPreferences().triedAddingOnCalendar &&
+      !event.target.closest(".assessment-chip") &&
+      !isBetweenPills(event) &&
+      !isOverCutOffLabel(event) &&
+      !document.querySelector(".add-popup, .popup-menu"),
   });
   if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("assessment-week-day--weekend");
 
@@ -347,6 +384,10 @@ export function buildDayCell(weeksContainer, date, entriesByDate, resolvedNames,
     head.appendChild(dayTypeLabel);
   }
   cell.appendChild(head);
+
+  // What an admin typed for the day, as a quiet line under its number.
+  const dayLabel = dayLabelFor(iso);
+  if (dayLabel) cell.appendChild(buildDayLabel("assessment-week-day-label", dayLabel));
 
   // Already in a day's order (sortDayEntries, in the calendar's render).
   const entries = entriesByDate[iso] || [];

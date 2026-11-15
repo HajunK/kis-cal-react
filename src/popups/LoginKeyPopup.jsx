@@ -32,6 +32,13 @@ export function LoginKeyPopup({ page }) {
       .catch((error) => console.error("Failed to load decryption code:", error));
   }, [page]);
 
+  // The QR script loads on demand; once it has, draw again.
+  const [, setQrLoaded] = useState(false);
+  useEffect(() => {
+    if (page.qrcode() || !page.loadQrScript) return;
+    page.loadQrScript().then(() => setQrLoaded(true));
+  }, [page]);
+
   const qrcode = page.qrcode();
   let svg = "";
   if (code && qrcode) {

@@ -31,12 +31,13 @@
   width: 28px;
   height: 28px;
   padding: 0;
+  --link-fill: var(--color-surface);
   border: none;
   border-radius: 50%;
-  background: var(--color-surface);
-  /* Floats over the boxes like the dropdowns, so it keeps the popover shadow in
-     dark mode. */
-  box-shadow: 0 2px 6px var(--color-shadow-popover);
+  background: var(--link-fill);
+  /* Floats over the boxes like the dropdowns, with a darker shadow than theirs in
+     light mode (dark mode has its own, below). */
+  box-shadow: 0 2px 6px rgba(70, 78, 90, 0.4);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -52,13 +53,44 @@
   mask-clip: no-clip;
 }
 
+/* Between a linked pair's two highlighted rows (placed by
+   positionFormativeLinkButton), shown while their button is hovered: the same
+   tint as the highlight, so the two read as one band. Under the button, which
+   is above it. */
+.formative-link-bridge {
+  position: absolute;
+  z-index: 4;
+  /* The card's own color under the tint, mostly opaque, so the boxes' borders
+     crossing the band show faintly. */
+  background:
+    linear-gradient(var(--color-focus-highlight), var(--color-focus-highlight)),
+    color-mix(in srgb, var(--color-surface) 75%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* No transition into these, so the whole highlight (both rows and the bridge)
+   appears at once; they ease out as the hover ends. */
+.formative-link-bridge--on {
+  opacity: 1;
+  transition: none;
+}
+
 .assessment-groups:hover .formative-link-btn {
   opacity: 1;
   pointer-events: auto;
 }
 
+/* Shown by the first-time tour of the link (see linkTip.js), pointed at while the pointer is
+   elsewhere. */
+.formative-link-btn--tip {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .formative-link-btn:hover {
-  background: var(--color-gray-lighter);
+  --link-fill: var(--color-gray-lighter);
 }
 
 .formative-link-icon {
@@ -290,7 +322,7 @@
   align-items: center;
   gap: 6px;
   border-radius: 17px;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-radius 0.15s ease;
 }
 
 /* Stops matching once something inside is focused, so only that cell's own
@@ -311,8 +343,24 @@
   position: relative;
 }
 
-.score-list li label:focus-within {
+.score-list li label:focus-within,
+/* Hovering a link button lights the formative and summative it refers to, as
+   focusing them does (.link-hover, set by ClassCard's LinkButton). */
+.score-list li.link-hover label {
   background: var(--color-focus-highlight);
+}
+
+/* The facing ends of the two highlights are square while the bridge joins them. */
+.assessment-fs-row > .assessment-box:first-child .score-list li.link-hover label {
+  border-radius: 17px 0 0 17px;
+}
+
+.assessment-fs-row > .assessment-box:last-child .score-list li.link-hover label {
+  border-radius: 0 17px 17px 0;
+}
+
+.score-list li.link-hover label {
+  transition: none;
 }
 
 .score-list li label:has(img[data-slug]) .score-value::selection,
@@ -453,6 +501,10 @@
   transform: translateY(-50%);
   transform-origin: left center;
   font-size: 15px;
+  /* Inter spaces its digits tighter at larger sizes (optical sizing). Cut for 24px
+     always, the size of the score it grows into, so the swap doesn't change the
+     digits' spacing as it hands over. */
+  font-variation-settings: "opsz" 24;
   color: var(--color-gray-dark);
   pointer-events: none;
 }
@@ -725,11 +777,20 @@
     inset 0 0 0 4px var(--color-surface);
 }
 
-/* Light mode offsets this shadow 2px down; against the near-black page that
-   reads as lopsided, so dark spreads it evenly. */
 :root[data-theme="dark"] .formative-link-btn {
-  box-shadow: 0 0 6px var(--color-shadow-popover);
+  /* No shadow in dark mode, only a thin translucent white ring just inside its edge. */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  /* A little darker than the card, mixed from its own color and the page's, so
+     no new color joins the palette. */
+  --link-fill: color-mix(in srgb, var(--color-surface) 78%, var(--color-background));
 }
+
+/* Only a hair lighter on hover: the row's highlight sits behind it, and a
+   stronger change made it vanish into that. */
+:root[data-theme="dark"] .formative-link-btn:hover {
+  --link-fill: color-mix(in srgb, var(--color-surface) 84%, var(--color-background));
+}
+
 
 /* The "/" of a fraction being typed (see updateFractionOverlay). */
 .score-fraction-slash {

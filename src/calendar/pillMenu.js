@@ -115,8 +115,11 @@ const CARD_RADIUS = 18;
 // in model.js). onDelete runs when "Delete" is chosen. onReschedule(event), given
 // only for what the student added, adds Reschedule beside Delete. deleteLabel
 // words that button ("Delete" unless the pill isn't the student's own), and deleteIcon
-// ("trash" or "flag", from icons/) draws its icon.
-export function openPillMenu(pill, { details, onDelete, onReschedule, deleteLabel = "Delete", deleteIcon = "trash" }) {
+// ("trash" or "flag", from icons/) draws its icon. onOptOut, given for
+// school-wide reassessments, adds "I'm not reassessing" on a row above them.
+// onAddToUpcoming, given for what isn't on the Upcoming list, adds "Add to
+// Upcoming list" on a row above those.
+export function openPillMenu(pill, { details, onDelete, onReschedule, onOptOut, onAddToUpcoming, deleteLabel = "Delete", deleteIcon = "trash" }) {
   closePillMenu();
   // Nothing else stays open beside it: the Add menu and popup, the account menu, a
   // color picker, the schedule.
@@ -145,7 +148,7 @@ export function openPillMenu(pill, { details, onDelete, onReschedule, deleteLabe
   const heading = header.appendChild(element("div", "pill-details-heading"));
   heading.appendChild(element("span", "pill-details-title", details.title));
   if (details.subtitle) heading.appendChild(element("span", "pill-details-subtitle", details.subtitle));
-  if (details.done) header.appendChild(element("span", "pill-details-done", "Done"));
+  if (details.done) header.appendChild(element("span", "pill-details-done", details.doneLabel || "Done"));
 
   const list = menu.appendChild(element("dl", "pill-details-rows"));
   details.rows.forEach(([label, value]) => {
@@ -155,6 +158,22 @@ export function openPillMenu(pill, { details, onDelete, onReschedule, deleteLabe
   });
 
   const actions = menu.appendChild(element("div", "pill-details-actions"));
+  if (onAddToUpcoming) {
+    const addToUpcoming = actions.appendChild(element("button", "pill-details-reschedule pill-details-optout", "Add to Upcoming list"));
+    addToUpcoming.type = "button";
+    addToUpcoming.addEventListener("click", () => {
+      closePillMenu();
+      onAddToUpcoming();
+    });
+  }
+  if (onOptOut) {
+    const optOut = actions.appendChild(element("button", "pill-details-reschedule pill-details-optout", "I'm not reassessing"));
+    optOut.type = "button";
+    optOut.addEventListener("click", () => {
+      closePillMenu();
+      onOptOut();
+    });
+  }
   if (onReschedule) {
     const reschedule = actions.appendChild(element("button", "pill-details-reschedule", "Reschedule"));
     reschedule.type = "button";
@@ -241,7 +260,7 @@ export function openPillMenu(pill, { details, onDelete, onReschedule, deleteLabe
     `<defs><filter id="${uid}b" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" /></filter>` +
       `<mask id="${uid}m" maskUnits="userSpaceOnUse" x="-100" y="-100" width="${width + room * 2 + 200}" height="${height + 200}">` +
       `<rect x="-100" y="-100" width="${width + room * 2 + 200}" height="${height + 200}" fill="#fff" /><path d="${outline}" fill="#000" /></mask></defs>` +
-      `<g mask="url(#${uid}m)"><path d="${outline}" class="pill-details-shadow-shape" transform="translate(0 4)" filter="url(#${uid}b)" /></g>`
+      `<g mask="url(#${uid}m)"><path d="${outline}" class="pill-details-shadow-shape" transform="translate(2 4)" filter="url(#${uid}b)" /></g>`
   );
   const glass = layer("glass");
   glass.style.clipPath = `path("${outline}")`;

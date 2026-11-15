@@ -48,13 +48,14 @@ function SuggestionAlertsRow({ page }) {
       turnOffAlerts();
       return;
     }
-    turnOnAlerts().catch((error) => {
+    return turnOnAlerts().then(() => true, (error) => {
       setOn(false);
       if (error.message === "denied") page.toast("Allow notifications for this site in your browser's settings first.");
       else {
         console.error("Couldn't turn on suggestion alerts:", error);
         page.toast("Couldn't turn on alerts. Please try again.");
       }
+      return false;
     });
   };
   return (
@@ -152,7 +153,6 @@ export function SettingsPopup({ page }) {
       {isAdmin && (
         <>
           <div className="settings-divider" />
-          {toggle("hideAdminTabs", "Hide Admins Tabs")}
           {alertsSupported() && <SuggestionAlertsRow page={page} />}
         </>
       )}

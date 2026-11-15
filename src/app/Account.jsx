@@ -6,6 +6,8 @@ import { flushPendingSave } from "../shell/data.js";
 import { CLOSE_POPUPS_EVENT } from "../shell/ui.js";
 import { flushPreferenceSave } from "../shell/preferences.js";
 import { AVATAR_IMAGE_KEY } from "../shell/session.js";
+import { isAdminEmail } from "../core/admins.js";
+import { adminSiteUrl, studentSiteUrl } from "./site.js";
 
 // The tab bar's right end, from auth.js: the account picture, which opens the
 // account menu, or "Sign in with Google" signed out. signInWithPopup uses
@@ -13,8 +15,9 @@ import { AVATAR_IMAGE_KEY } from "../shell/session.js";
 //
 // avatar is the picture's URL (from last time until sign-in answers), null
 // signed out; user is undefined until then. withCourses: whether this tab has
-// the student's courses to edit (My Courses).
-export function Account({ user, avatar, withCourses }) {
+// the student's courses to edit (My Courses). adminSite: this is the admin site
+// (site.js), whose menu leads back to KIS Cal as an admin's leads here.
+export function Account({ user, avatar, withCourses, adminSite = false }) {
   const [menu, setMenu] = useState(null); // { open, id } while drawn
   const buttonRef = useRef(null);
   const closeMenu = useCallback(() => setMenu((last) => last && { ...last, open: false }), []);
@@ -43,6 +46,8 @@ export function Account({ user, avatar, withCourses }) {
           open={menu.open}
           anchor={buttonRef}
           withCourses={withCourses}
+          adminSite={adminSite}
+          isAdmin={isAdminEmail(user && user.email)}
           onClose={closeMenu}
           onGone={dropMenu}
         />
@@ -131,7 +136,7 @@ function AvatarButton({ src, alt, open, buttonRef, onClick }) {
 
 // Attached to <body> because .tab-bar clips vertical overflow, which would cut
 // the menu off. Fades in, and out before it's gone (onGone).
-function AccountMenu({ open, anchor, withCourses, onClose, onGone }) {
+function AccountMenu({ open, anchor, withCourses, adminSite, isAdmin, onClose, onGone }) {
   const ref = useRef(null);
 
   useLayoutEffect(() => {
@@ -190,6 +195,20 @@ function AccountMenu({ open, anchor, withCourses, onClose, onGone }) {
       {item("Settings", openSettingsModal)}
       {item("Login Key", openLoginKeysModal)}
       <div className="popup-menu-divider" />
+      {/* The way to the other site, in a section of its own: the admin site's to KIS Cal, an
+          admin's from the student site to Admin. */}
+      {adminSite ? (
+        <>
+          {item("KIS Cal", () => window.location.assign(studentSiteUrl()))}
+          <div className="popup-menu-divider" />
+        </>
+      ) : null}
+      {!adminSite && isAdmin ? (
+        <>
+          {item("Admin", () => window.location.assign(adminSiteUrl()))}
+          <div className="popup-menu-divider" />
+        </>
+      ) : null}
       {item("Sign out", () => (flushPendingSave(), flushPreferenceSave(), firebaseAuth().signOut()))}
     </div>,
     document.body

@@ -4,11 +4,17 @@ import { Link, useNavigate } from "react-router-dom";
 import { Account } from "./Account.jsx";
 import { ClassCountdown } from "./ClassCountdown.jsx";
 
-export const TABS = [
+// The student site's tabs; the admin site (admin.kiscal.app, see site.js) has the
+// Assessments and Cafeteria pages.
+export const STUDENT_TAB_LINKS = [
   { route: "calendar", label: "Calendar" },
   { route: "domain", label: "Domain" },
   { route: "gpa", label: "GPA" },
-  { route: "assessments", label: "Assessments", admin: true },
+  { route: "menu", label: "Menu" },
+];
+export const ADMIN_TAB_LINKS = [
+  { route: "assessments", label: "Assessments" },
+  { route: "cafeteria", label: "Cafeteria" },
 ];
 
 // How long after a tab click its underline still slides over (the old pages
@@ -16,10 +22,10 @@ export const TABS = [
 const UNDERLINE_FROM_MS = 3000;
 
 // The bar across the top. active is the open tab's route (the demo's is the
-// Calendar). The admin tabs show for admins who haven't hidden them; the
-// countdown pill and My Courses only on the student's tabs. reloadLinks: the
-// tabs leave the app (the Calendar demo, which has no account).
-export function TabBar({ active, showAdminTabs, studentTab, user, avatar, account = true, reloadLinks = false }) {
+// Calendar). The countdown pill and My Courses show only on the student's tabs. reloadLinks: the
+// tabs leave the app (the Calendar demo, which has no account). adminSite: this
+// is the admin site, with its own tabs.
+export function TabBar({ active, studentTab, user, avatar, account = true, reloadLinks = false, adminSite = false }) {
   const barRef = useRef(null);
   const navigate = useNavigate();
   // Where the open tab's blue bar was when a tab was clicked; the newly open
@@ -72,17 +78,14 @@ export function TabBar({ active, showAdminTabs, studentTab, user, avatar, accoun
           before it arrives rather than shifting over when it does. */}
       <img className="tab-bar-logo tab-bar-logo--light" src="/icons/logos/light-logo.png" alt="" loading="lazy" />
       <img className="tab-bar-logo tab-bar-logo--dark" src="/icons/logos/dark-logo.png" alt="" loading="lazy" />
-      {TABS.map(({ route, label, admin }) => {
+      {(adminSite ? ADMIN_TAB_LINKS : STUDENT_TAB_LINKS).map(({ route, label }) => {
         const isActive = route === shown;
         return (
           <Link
             key={route}
             to={`/${route}`}
             reloadDocument={reloadLinks}
-            className={`tab${admin ? " tab--admin-only" : ""}${isActive ? " tab--active" : ""}`}
-            // "" would fall back to .tab--admin-only's display: none, so it
-            // needs an explicit value.
-            style={admin ? { display: showAdminTabs ? "inline" : "none" } : undefined}
+            className={`tab${isActive ? " tab--active" : ""}`}
             onClick={(event) => onTabClick(event, route, isActive)}
           >
             {label}
@@ -91,7 +94,7 @@ export function TabBar({ active, showAdminTabs, studentTab, user, avatar, accoun
         );
       })}
       {studentTab ? <ClassCountdown /> : null}
-      {account ? <Account user={user} avatar={avatar} withCourses={studentTab} /> : <div className="auth-container" />}
+      {account ? <Account user={user} avatar={avatar} withCourses={studentTab} adminSite={adminSite} /> : <div className="auth-container" />}
     </nav>
   );
 }

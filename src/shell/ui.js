@@ -2,7 +2,7 @@
 // paths, the number roll every tab uses, the toast at the bottom, and the
 // hover tooltips.
 
-import { gradeIconPath } from "../core/grades.js";
+import { GRADE_SCALE, gradeIconPath } from "../core/grades.js";
 
 export function themeFolder() {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -17,6 +17,22 @@ export function uiIconPath(name) {
 export function refreshGradeIcons() {
   document.querySelectorAll(".letter-grade[data-slug]").forEach((img) => {
     img.src = gradeIconPath(img.dataset.slug);
+  });
+}
+
+// Every letter grade's image, fetched and decoded once at startup, so one that a card needs
+// later (a score rising into a new tier) is already in the browser's cache and drawn at once,
+// with no wait for the file and none to decode it. The images are kept so they aren't dropped.
+// The same relative path the cards use, so it's the same cache entry.
+const preloadedGradeIcons = [];
+export function preloadGradeIcons() {
+  if (preloadedGradeIcons.length > 0 || typeof Image === "undefined") return;
+  GRADE_SCALE.forEach((tier) => {
+    const img = new Image();
+    img.src = gradeIconPath(tier.slug);
+    preloadedGradeIcons.push(img);
+    // Where decode isn't there, or the file fails, it's just fetched as before.
+    if (img.decode) img.decode().catch(() => {});
   });
 }
 
@@ -451,31 +467,94 @@ export function runAfterPaint(fn) {
   requestAnimationFrame(() => setTimeout(fn, 0));
 }
 
-let sharedToastEl = null;
-let sharedToastHideTimer = null;
+// The toasts on screen, oldest first. A new one rises in front of the ones showing, which
+// settle behind it, each a step smaller and further back, as iOS stacks notifications; as
+// one goes, the rest move forward.
+const sharedToasts = [];
+// The window-sized boxes they sit in, one per place (see .signin-toast-clip): the one for
+// toasts that rise from an element's line cuts them off there.
+const sharedToastBoxes = new Map();
 const SHARED_TOAST_VISIBLE_MS = 4000;
+const SHARED_TOAST_LEAVE_MS = 600;
+const SHARED_TOAST_MAX = 3;
 
-// message can be a node when the toast needs a link.
-export function showToast(message) {
-  if (!sharedToastEl) {
-    sharedToastEl = document.createElement("div");
-    sharedToastEl.className = "signin-toast";
-    document.body.appendChild(sharedToastEl);
-    void sharedToastEl.offsetWidth;  // so the entrance transitions
+function toastBox(fromElement) {
+  let box = sharedToastBoxes.get(fromElement);
+  if (!box) {
+    box = document.createElement("div");
+    box.className = `signin-toast-clip${fromElement ? " signin-toast-clip--from-element" : ""}`;
+    document.body.appendChild(box);
+    sharedToastBoxes.set(fromElement, box);
   }
-
-  sharedToastEl.replaceChildren(message);
-  sharedToastEl.classList.add("signin-toast--visible");
-  clearTimeout(sharedToastHideTimer);
-  sharedToastHideTimer = setTimeout(() => {
-    sharedToastEl.classList.remove("signin-toast--visible");
-  }, SHARED_TOAST_VISIBLE_MS);
+  return box;
 }
 
+// How far back each toast is (0 is the front), for the stack's offsets and sizes. Only the
+// front one is counting down to its own going: it takes all of the stack with it, and when
+// it's taken away alone (its Undo), the one behind comes forward and starts its own time.
+function layoutToasts() {
+  const showing = sharedToasts.filter((toast) => !toast.leaving);
+  showing.forEach((toast, index) => {
+    const depth = showing.length - 1 - index;
+    toast.el.style.setProperty("--toast-depth", String(depth));
+    toast.el.classList.toggle("signin-toast--behind", depth > 0);
+    clearTimeout(toast.timer);
+    toast.timer = depth === 0 ? setTimeout(() => showing.forEach(leaveToast), SHARED_TOAST_VISIBLE_MS) : null;
+  });
+}
+
+function leaveToast(toast) {
+  if (toast.leaving) return;
+  toast.leaving = true;
+  clearTimeout(toast.timer);
+  toast.el.classList.remove("signin-toast--visible");
+  layoutToasts();
+  setTimeout(() => {
+    toast.el.remove();
+    const at = sharedToasts.indexOf(toast);
+    if (at !== -1) sharedToasts.splice(at, 1);
+  }, SHARED_TOAST_LEAVE_MS);
+}
+
+// message can be a node when the toast needs a link. By default it comes down from the top
+// of the window; with `from` (a selector), it rises from that element instead, centered on
+// it and just above it (the Upcoming list's toasts, from the line under it).
+export function showToast(message, { from } = {}) {
+  const origin = from ? document.querySelector(from)?.getBoundingClientRect() : null;
+  // Toasts only stack with others that come from the same place.
+  sharedToasts.filter((toast) => toast.fromElement !== Boolean(origin)).forEach(leaveToast);
+
+  const el = document.createElement("div");
+  el.className = `signin-toast${origin ? " signin-toast--from-element" : ""}`;
+  el.style.setProperty("--toast-depth", "0");
+  if (origin) {
+    el.style.setProperty("--toast-x", `${origin.left + origin.width / 2}px`);
+    el.style.setProperty("--toast-y", `${origin.top}px`);
+  }
+  const box = toastBox(Boolean(origin));
+  if (origin) box.style.setProperty("--toast-y", `${origin.top}px`);
+  el.replaceChildren(message);
+  box.appendChild(el);
+  void el.offsetWidth;  // so the entrance transitions
+
+  const toast = { el, fromElement: Boolean(origin), leaving: false, timer: null };
+  sharedToasts.push(toast);
+  const showing = sharedToasts.filter((other) => !other.leaving);
+  showing.slice(0, Math.max(0, showing.length - SHARED_TOAST_MAX)).forEach(leaveToast);
+  el.classList.add("signin-toast--visible");
+  layoutToasts();
+  return toast;
+}
+
+// Takes a toast down that showToast returned (it does nothing once it's going).
+export const dismissToast = (toast) => toast && leaveToast(toast);
+
+// The one whose link was just used (its Undo), or else the front one.
 export function hideToast() {
-  if (!sharedToastEl) return;
-  clearTimeout(sharedToastHideTimer);
-  sharedToastEl.classList.remove("signin-toast--visible");
+  const showing = sharedToasts.filter((toast) => !toast.leaving);
+  const clicked = showing.find((toast) => toast.el.contains(document.activeElement));
+  const toast = clicked || showing[showing.length - 1];
+  if (toast) leaveToast(toast);
 }
 
 // Like Chrome's own title tooltip, but see-through and quicker. It stays put

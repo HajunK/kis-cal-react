@@ -5,12 +5,13 @@
 
 import { shortCourseName } from "../core/catalog.js";
 import { fromISODate, toISODate } from "../core/dates.js";
-import { addableCourseOptions, courseColorNames, logSuggestedAssessment, upcomingClassDays } from "./data.js";
+import { isSameAssessmentKind } from "../core/schedule.js";
+import { addableCourseOptions, courseColorNames, logSuggestedAssessment, unlogAssessmentReport, upcomingClassDays } from "./data.js";
 import { ICON_BACK, ICON_CHEVRON, ICON_CHEVRON_DOWN } from "./icons.js";
 import { formatClockTime } from "./model.js";
-import { attachHoverMarquee } from "./pills.js";
-import { currentUid, loadAddedAssessments, loadPeriods, saveAddedAssessments } from "../shell/data.js";
-import { formatPreferredDate } from "../shell/preferences.js";
+import { attachHoverMarquee, isBetweenPills } from "./pills.js";
+import { currentUid, isViewOnly, loadAddedAssessments, loadHiddenAssessments, loadPeriods, saveAddedAssessments, saveHiddenAssessments } from "../shell/data.js";
+import { formatPreferredDate, getPreferences, setPreference } from "../shell/preferences.js";
 import { allAssessments, allDayTypes, isAssessmentVisibleForPeriod, scheduledTimeOn, scheduleForDate } from "../shell/school.js";
 import { CLOSE_POPUPS_EVENT, attachHoverTooltip, hideHoverTooltip, runAfterPaint, showCursorTooltip, showToast, uiIconPath } from "../shell/ui.js";
 
@@ -31,7 +32,8 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
 
   // Saving needs a real uid. Sign-in changes reload the page, so this reflects
   // the current state.
-  if (!currentUid) {
+  // Nor in a view-only Calendar (the admin site's).
+  if (!currentUid || isViewOnly()) {
     triggerBtn.hidden = true;
     return;
   }
@@ -80,19 +82,29 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
     return (
       allAssessments.find(
         (entry) =>
-          entry.date === selectedDate && entry.courseName === selectedCourse.courseName && entry.type === selectedType
+          entry.date === selectedDate && entry.courseName === selectedCourse.courseName && isSameAssessmentKind(entry.type, selectedType)
       ) || null
     );
+  }
+
+  // The school-wide entry matching the selection that this student removed
+  // from their own calendar ("This is wrong").
+  function hiddenSchoolWideMatch() {
+    const match = matchingSchoolWideEntry();
+    if (!match || isAssignment() || !isAssessmentVisibleForPeriod(match, selectedCourse.periodIndex)) return null;
+    return loadHiddenAssessments().includes(match.id) ? match : null;
   }
 
   // Assignments can repeat.
   function isDuplicateSelection() {
     if (isAssignment() || !selectedCourse || !selectedDate) return false;
     const matchesSelection = (entry) =>
-      entry.date === selectedDate && entry.courseName === selectedCourse.courseName && entry.type === selectedType;
+      entry.date === selectedDate && entry.courseName === selectedCourse.courseName && isSameAssessmentKind(entry.type, selectedType);
     if (loadAddedAssessments().some(matchesSelection)) return true;
     const match = matchingSchoolWideEntry();
-    return Boolean(match) && isAssessmentVisibleForPeriod(match, selectedCourse.periodIndex);
+    // One the student flagged as wrong is hidden for them, so adding it is
+    // allowed (see submit).
+    return Boolean(match) && isAssessmentVisibleForPeriod(match, selectedCourse.periodIndex) && !loadHiddenAssessments().includes(match.id);
   }
 
   function canSubmit() {
@@ -401,7 +413,12 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       sync();
     });
     // Losing focus stops the field showing the part being typed into.
+    let typingTimer = 0;
     customInput.addEventListener("keydown", (event) => {
+      // The underline stays solid for 0.2s after a key, then goes back to blinking.
+      customInput.classList.add("add-popup-time-input--typing");
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => customInput.classList.remove("add-popup-time-input--typing"), 200);
       if (event.key === "Enter" && customInput.value) {
         customInput.blur();
         setOpen(false);
@@ -678,6 +695,16 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
       if (isDuplicateSelection()) showToast("This is already on your calendar.");
       return;
     }
+    // Adding back what they flagged as wrong brings the school's own entry
+    // back and takes the report back, instead of adding a copy of it.
+    const hiddenMatch = hiddenSchoolWideMatch();
+    if (hiddenMatch) {
+      saveHiddenAssessments(loadHiddenAssessments().filter((id) => id !== hiddenMatch.id));
+      closePopup();
+      if (refreshAssessmentCalendar) refreshAssessmentCalendar(true, true);
+      runAfterPaint(() => unlogAssessmentReport(hiddenMatch));
+      return;
+    }
     const entry = {
       id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       date: selectedDate,
@@ -784,10 +811,16 @@ export function initAddToCalendarPopup(refreshAssessmentCalendar, signal) {
   const calendarWeeks = document.getElementById("assessment-cal-weeks");
   const classGridEl = document.getElementById("assessment-class-grid");
   [calendarWeeks, classGridEl].filter(Boolean).forEach((grid) => {
+    // The gap between pills isn't clickable, so it has the ordinary cursor.
+    grid.addEventListener("mousemove", (event) => {
+      if (event.target.style) event.target.style.cursor = isBetweenPills(event) ? "default" : "";
+    });
     grid.addEventListener("click", (event) => {
       if (datePick) return;
       const cell = event.target.closest(".assessment-week-day, .class-grid-cell");
-      if (!cell || event.target.closest(".assessment-chip")) return;
+      if (!cell || event.target.closest(".assessment-chip") || isBetweenPills(event)) return;
+      // They know how now, so the "Click to add" tooltip is done (see buildDayCell).
+      if (!getPreferences().triedAddingOnCalendar) setPreference("triedAddingOnCalendar", true);
       // Clicking the same day again closes what it opened, like the + button.
       const sameDay = (menu || popup) && presetDate === cell.dataset.iso;
       if (menu) closeMenu();

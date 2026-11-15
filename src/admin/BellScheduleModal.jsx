@@ -1,7 +1,10 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { saveSchedule } from "./adminData.js";
 import {
+  MAX_CUSTOM_NAME_LENGTH,
   customDaySchedule,
+  isCustomEventKey,
+  newCustomEvent,
   normalSchedule,
   scheduleDay,
   scheduleDayComplete,
@@ -49,8 +52,20 @@ export function BellScheduleModal({ iso, sched, dayTypes, page, onSaved, onClose
   // Taken off, an event also drops any edit made to its times: added back, it
   // has the ones it started with.
   const remove = (key) => {
+    // One the admin named is just dropped, nothing to put back.
+    if (isCustomEventKey(key)) {
+      setEvents((list) => list.filter((event) => event.key !== key));
+      return;
+    }
     const { time, sortTime } = initial.find((event) => event.key === key);
     update(key, () => ({ included: false, time, sortTime }));
+  };
+  // A new event named by the admin, its times still to fill in: focus goes to the
+  // start.
+  const addCustom = (name) => {
+    const event = { ...newCustomEvent(name), sortTime: { start: "", end: "" } };
+    setEvents((list) => [...list, event]);
+    requestAnimationFrame(() => rowRefs.get(event.key)?.querySelector("input")?.focus());
   };
   const add = (key) => update(key, () => ({ included: true }));
   const reset = () => {
@@ -89,13 +104,15 @@ export function BellScheduleModal({ iso, sched, dayTypes, page, onSaved, onClose
         <p className="admin-schedule-date">{dayType === "A" || dayType === "B" ? `${dateLabel} · ${dayType} Day` : dateLabel}</p>
       </div>
       <div className="admin-schedule-rows">
-        {shown.map(({ key, time }) => (
+        {shown.map(({ key, time, label: customLabel }) => {
+          const label = customLabel || scheduleEventLabel(key);
+          return (
           <div className="admin-schedule-row" key={key} data-key={key} ref={(el) => rowRefs.set(key, el)}>
-            <span className="admin-schedule-row-label">{scheduleEventLabel(key)}</span>
+            <span className="admin-schedule-row-label">{label}</span>
             <input
               type="time"
               className="admin-schedule-time-input"
-              aria-label={`${scheduleEventLabel(key)} start`}
+              aria-label={`${label} start`}
               value={time.start}
               onChange={(event) => setTime(key, "start", event.target.value)}
               onBlur={() => settle(key)}
@@ -104,21 +121,22 @@ export function BellScheduleModal({ iso, sched, dayTypes, page, onSaved, onClose
             <input
               type="time"
               className="admin-schedule-time-input"
-              aria-label={`${scheduleEventLabel(key)} end`}
+              aria-label={`${label} end`}
               value={time.end}
               onChange={(event) => setTime(key, "end", event.target.value)}
               onBlur={() => settle(key)}
             />
-            <button type="button" className="admin-schedule-remove-btn" aria-label={`Remove ${scheduleEventLabel(key)}`} onClick={() => remove(key)}>
+            <button type="button" className="admin-schedule-remove-btn" aria-label={`Remove ${label}`} onClick={() => remove(key)}>
               <svg viewBox="0 0 12 12" aria-hidden="true">
                 <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
               </svg>
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
       <div className="admin-schedule-footer">
-        <AddPills keys={missing.map(({ key }) => key)} onPick={add} />
+        <AddPills keys={missing.map(({ key }) => key)} onPick={add} onCustom={addCustom} />
       </div>
       <div className="admin-schedule-actions">
         <button type="button" className="admin-schedule-save-btn" disabled={saving} onClick={save}>
@@ -288,19 +306,81 @@ function useGlide(keys, stepped) {
 // The events the day doesn't have, as hollow pills in a row (wrapping when
 // there are more than fit). Picking one adds it, and the pills after it slide
 // over to take its place.
-function AddPills({ keys, onPick }) {
+function AddPills({ keys, onPick, onCustom }) {
   const pillRefs = usePillGlide(keys);
   return (
     <div className="admin-schedule-add-pills" role="group" aria-label="Add to this day">
       {keys.map((key) => (
-        <button type="button" className="admin-schedule-add-pill" key={key} ref={(el) => pillRefs.set(key, el)} onClick={() => onPick(key)}>
+        <button
+          type="button"
+          className="admin-schedule-add-pill"
+          key={key}
+          ref={(el) => pillRefs.set(key, el)}
+          onClick={() => onPick(key)}
+        >
           <svg viewBox="0 0 12 12" aria-hidden="true">
             <path d="M6 1.5v9M1.5 6h9" />
           </svg>
-          {scheduleEventLabel(key)}
+          {shortLabel(key)}
         </button>
       ))}
+      <CustomEventPill onAdd={onCustom} />
     </div>
+  );
+}
+
+// The pills are small, so a period is "P1" (or "P1/5") rather than "Period 1".
+const shortLabel = (key) => scheduleEventLabel(key).replace(/^Period /, "P");
+
+// "+ Custom": becomes a field to type the event's name in. Enter adds it (named
+// whatever was typed), Escape or leaving the field with nothing typed puts the
+// pill back.
+function CustomEventPill({ onAdd }) {
+  const [typing, setTyping] = useState(false);
+  const [name, setName] = useState("");
+  const close = () => {
+    setTyping(false);
+    setName("");
+  };
+  const submit = () => {
+    if (name.trim() === "") return;
+    onAdd(name);
+    close();
+  };
+  if (!typing) {
+    return (
+      <button type="button" className="admin-schedule-add-pill" onClick={() => setTyping(true)}>
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M6 1.5v9M1.5 6h9" />
+        </svg>
+        Custom
+      </button>
+    );
+  }
+  return (
+    <input
+      type="text"
+      className="admin-schedule-custom-input"
+      placeholder="Name this event"
+      aria-label="Custom event name"
+      maxLength={MAX_CUSTOM_NAME_LENGTH}
+      autoFocus
+      value={name}
+      onChange={(event) => setName(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          submit();
+        } else if (event.key === "Escape") {
+          // Not the whole popup's Escape.
+          event.stopPropagation();
+          close();
+        }
+      }}
+      onBlur={() => {
+        if (name.trim() === "") close();
+      }}
+    />
   );
 }
 

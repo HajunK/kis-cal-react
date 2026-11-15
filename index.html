@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KIS Cal</title>
+  <meta name="description" content="KIS Cal: a grade calculator and assessment calendar for KIS students." />
   <link rel="icon" href="/icons/logos/page-icon.png" />
   <!-- Sets data-theme/data-hide-breakdown before the stylesheet (bundled with
        the app, and linked here by Vite when it builds) ever gets a chance to
@@ -31,7 +32,7 @@
         // draw from: the cards' outlines go up with the first paint (below),
         // rather than after the app has downloaded and started.
         var path = location.pathname.replace(/\/+$/, "");
-        var otherTab = /^\/(calendar|calendar-demo|gpa|assessments)$/.test(path);
+        var otherTab = /^admin\./i.test(location.hostname) || /^\/(calendar|calendar-demo|gpa|menu)$/.test(path);
         if (!otherTab && !(uid && localStorage.getItem("cachedAppData_" + uid))) {
           document.documentElement.dataset.bootSkeleton = "true";
         }
@@ -84,9 +85,5 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <!-- Vendored locally rather than loaded from a CDN: a third-party CDN
-       script is exactly what an ad blocker or school network filter blocks,
-       which broke this before. A same-origin file can't be. -->
-  <script defer src="/js/vendor/qrcode-generator.js"></script>
 </body>
 </html>

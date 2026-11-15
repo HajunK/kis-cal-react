@@ -28,6 +28,14 @@ export function isReassessment(entry) {
   return /reassess/i.test(entry.type);
 }
 
+// A summative is entered by the school as In-Class or Testing Block (see acceptedType in
+// admin/adminData.js), but a student adds it as Summative, so for telling whether an
+// assessment is already there these three are one kind. Any other type matches only itself.
+const SUMMATIVE_KINDS = ["Summative", "In-Class", "Testing Block"];
+export function isSameAssessmentKind(a, b) {
+  return a === b || (SUMMATIVE_KINDS.includes(a) && SUMMATIVE_KINDS.includes(b));
+}
+
 export function academicSupportTimes(periodTimes) {
   return (periodTimes && periodTimes.academicSupport) || ACADEMIC_SUPPORT_FALLBACK_TIMES;
 }
@@ -106,6 +114,22 @@ export function scheduleForDate(iso, dayTypes, periodTimes) {
       end: time.end,
     }))
     .filter(({ key }) => included(key));
+}
+
+// A date's own events, named by an admin (daySchedules[iso].customEvents,
+// [{ id, name, start, end }]): [{ label, start, end }]. Kept out of
+// scheduleForDate, whose events the rest of the app knows by key; these are
+// only for showing in the day's schedule. Anything not shaped right is
+// skipped, so a bad entry can't break the page.
+export function customEventsOn(iso, periodTimes) {
+  const weekday = fromISODate(iso).getDay();
+  if (weekday === 0 || weekday === 6 || !periodTimes) return [];
+  const day = periodTimes.daySchedules && periodTimes.daySchedules[iso];
+  if (!day || !Array.isArray(day.customEvents)) return [];
+  const clock = /^\d{1,2}:\d{2}$/;
+  return day.customEvents
+    .filter((event) => event && typeof event.name === "string" && event.name.trim() !== "" && clock.test(event.start) && clock.test(event.end))
+    .map((event) => ({ label: event.name.trim(), start: event.start, end: event.end }));
 }
 
 // When an event happens on a date, or null if it doesn't that day.

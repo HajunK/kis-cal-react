@@ -1,0 +1,440 @@
+/* The Menu tab (see MenuPage.jsx): the lunch's two menus side by side, joined at a gap, with
+   an arrow at each side to move between days. */
+/* The wheel (see WHEEL_MS in MenuPage.jsx) swings the days out past the page's sides: they're
+   cut off at the window's edge, not the page's, and don't make it scroll. */
+.page-content:has(> .menu-page) {
+  overflow-x: clip;
+}
+
+.menu-page {
+  position: relative;
+  /* The palette's blue and red (the course colors), in light and dark alike. */
+  --menu-a: var(--color-dark-blue);
+  --menu-b: var(--color-red);
+  /* The text takes the same colors, except in dark mode, where they're toned down. */
+  --menu-a-text: var(--menu-a);
+  --menu-b-text: var(--menu-b);
+  max-width: 1160px;
+  margin: 0 auto;
+  /* The heading sits 16px lower than it did, with the cards where they were (see
+     .menu-heading's bottom margin). */
+  padding-top: 24px;
+  text-align: center;
+}
+
+:root[data-theme="dark"] .menu-page {
+  /* Lighter than the palette's blue and red, which sink into the dark gray card, and not
+     toned down, which made them look disabled: bright and clear, with their hues kept. */
+  --menu-a-text: oklch(0.72 0.16 258);
+  --menu-b-text: oklch(0.72 0.17 20);
+}
+
+/* The title at the left, over the cards' left edge, and both arrows at the right, over their
+   right edge (the same 1000px as the cards). */
+.menu-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto 20px;
+}
+
+.menu-title {
+  order: 0;
+}
+
+.menu-heading .menu-arrow--prev {
+  order: 1;
+}
+
+.menu-heading .menu-arrow--next {
+  order: 2;
+}
+
+.menu-title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  margin: 0;
+  /* The size of the cards' "Menu A" and "Menu B". */
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.menu-stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.menu-cards {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  max-width: 1000px;
+}
+
+/* Each is one button, so the whole card is what's picked. Round only at the outer corners:
+   the two face each other across the gap. */
+.menu-card {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* The same height every day: a longer menu scrolls in the card (see .menu-dishes). */
+  height: 460px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 44px 40px 28px 52px;
+  background: var(--color-surface);
+  /* The other cards' shadow (none in dark mode, where they're flat). */
+  box-shadow: var(--shadow-card);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The other cards' corners: 20px, squircle (see --squircle-scale in tokens.css). */
+.menu-card--a {
+  --menu-accent: var(--menu-a);
+  --menu-accent-text: var(--menu-a-text);
+  border-radius: calc(20px * var(--squircle-scale)) 0 0 calc(20px * var(--squircle-scale));
+  corner-shape: squircle;
+}
+
+.menu-card--b {
+  --menu-accent: var(--menu-b);
+  --menu-accent-text: var(--menu-b-text);
+  border-radius: 0 calc(20px * var(--squircle-scale)) calc(20px * var(--squircle-scale)) 0;
+  corner-shape: squircle;
+}
+
+/* An inline line in the menu's own color, blue or red, not a tint: on hover, and kept on the
+   menu that's picked. */
+.menu-card:hover,
+.menu-card[aria-checked="true"] {
+  box-shadow:
+    inset 0 0 0 2px var(--menu-accent),
+    var(--shadow-card);
+}
+
+.menu-card:focus-visible {
+  outline: 2px solid var(--menu-accent);
+  outline-offset: -2px;
+}
+
+/* Where the pick's ripple is drawn: over the card, cut to its shape. */
+.menu-card-ripples {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  corner-shape: inherit;
+  pointer-events: none;
+}
+
+.menu-card-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--menu-accent);
+  pointer-events: none;
+}
+
+.menu-card-heading {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 10px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--menu-accent-text);
+  color: var(--menu-accent-text);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+/* The dishes scroll when there are more than fit, with the scrollbar there whenever they do
+   (not only while scrolling, as macOS draws them): drawn here, as a thumb in a track. None
+   when everything fits. */
+.menu-dishes {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 12px 12px 0;
+  list-style: none;
+  overflow-y: auto;
+  font-size: 20px;
+  line-height: 32px;
+}
+
+.menu-dishes::-webkit-scrollbar {
+  width: 8px;
+}
+
+.menu-dishes::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+}
+
+.menu-dishes::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--color-gray-light);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .menu-dishes {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-gray-light) var(--color-gray-lighter);
+  }
+}
+
+.menu-dishes li {
+  padding: 4px 0;
+}
+
+/* The pick: the app's check (check.png, as on the Upcoming list's done items) in a ring filled
+   with the menu's color, after its name. */
+.menu-card-check {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--menu-accent);
+}
+
+.menu-card-check::after {
+  content: "";
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  -webkit-mask: url("/icons/light/check.png") center / contain no-repeat;
+  mask: url("/icons/light/check.png") center / contain no-repeat;
+  /* Centered by its outline the check's long stroke runs too near the circle's edge at the
+     top right, so it's a little lower and to the left of that. */
+  transform: translate(-0.75px, 0.4px);
+}
+
+.menu-arrow {
+  position: relative;
+  flex: none;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--color-gray-dark);
+  cursor: pointer;
+  transition: opacity 0.25s ease, color 0.25s ease;
+}
+
+/* A ring round the button in the page's own color, half see-through: it can't be seen against
+   the page, and shows only when something (a card, the wheel's panels) goes behind the arrow,
+   setting the button apart from it. A plain outline with a hard edge, and no shadow. It's a
+   circle of its own behind the button's face, not an outline on the face, whose soft edge
+   would be drawn twice where the two meet and leave a dirty line round the button. */
+.menu-arrow::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  z-index: -2;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-background) 60%, transparent);
+}
+
+/* The button's own face. */
+.menu-arrow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 50%;
+  background: var(--color-surface);
+}
+
+/* With nowhere to go (the first or last day), the button is dimmed, its arrow gone light, and
+   doesn't answer a click; it eases to and from that as the day changes. */
+.menu-arrow:disabled {
+  opacity: 0.45;
+  color: var(--color-gray-light);
+  cursor: default;
+}
+
+.menu-arrow-icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.menu-arrow-icon--next {
+  transform: scaleX(-1);
+}
+
+.menu-empty {
+  margin: 80px 0 0;
+  color: var(--color-gray-dark);
+  font-size: 18px;
+}
+
+/* How the students are going: a bar split between the two menus, and what the pick says. */
+.menu-votes {
+  max-width: 1000px;
+  margin: 56px auto 0;
+  padding: 0 72px;
+}
+
+.menu-votebar {
+  position: relative;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-gray-light) 40%, transparent);
+}
+
+/* What the empty bar says until the results are shown; it fades as they grow in. */
+.menu-votebar-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-gray-dark);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.menu-votebar-hint--gone {
+  opacity: 0;
+}
+
+/* The two grow in from the left and the right edges, meeting in the middle at their shares. */
+.menu-votebar-a,
+.menu-votebar-b {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.menu-votebar-a {
+  left: 0;
+  background: var(--menu-a);
+}
+
+.menu-votebar-b {
+  right: 0;
+  background: var(--menu-b);
+}
+
+.menu-votes-text {
+  margin: 24px 0 0;
+  color: var(--color-text-primary);
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.menu-votes-percent {
+  font-weight: 600;
+}
+
+.menu-votes-percent--a {
+  color: var(--menu-a-text);
+}
+
+.menu-votes-percent--b {
+  color: var(--menu-b-text);
+}
+
+.menu-votes-line {
+  display: block;
+}
+
+/* The wheel's tuning panel (the Menu page with ?tune on its address). */
+.wheel-tuner {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  text-align: left;
+}
+
+.wheel-tuner label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wheel-tuner small {
+  color: var(--color-gray-dark);
+}
+
+.wheel-tuner input[type="range"] {
+  width: 100%;
+}
+
+.wheel-tuner button {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: 1px solid var(--color-gray-light);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wheel-tuner code {
+  font-size: 11px;
+  color: var(--color-gray-dark);
+  word-break: break-word;
+}
+
+/* When the days first arrive after the empty frame, the text they bring (the day in the
+   title, the dishes) fades up from nothing. Lasts ARRIVE_MS in MenuPage.jsx. */
+@keyframes menu-text-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.menu-page--arriving .menu-title-day,
+.menu-page--arriving .menu-dishes li {
+  animation: menu-text-in 0.4s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-page--arriving .menu-title-day,
+  .menu-page--arriving .menu-dishes li {
+    animation: none;
+  }
+}

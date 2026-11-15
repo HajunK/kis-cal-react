@@ -15,6 +15,7 @@ vi.mock("../shell/school.js", async () => {
       return school.periodTimes;
     },
     scheduleForDate: (iso) => core.scheduleForDate(iso, school.dayTypes, school.periodTimes),
+    customEventsForDate: (iso) => core.customEventsOn(iso, school.periodTimes),
   };
 });
 vi.mock("../shell/data.js", () => ({ loadPeriods: () => ["English", "AP Biology", "Geometry", "Korean", "Chinese", "", "Spanish", ""] }));
@@ -195,5 +196,35 @@ describe("swiping between today and the next school day", () => {
     expect(popup.querySelector(".today-schedule-heading").textContent).toContain("Tuesday");
     expect(popup.querySelectorAll(".today-schedule-pane--leaving, .today-schedule-heading--leaving")).toHaveLength(0);
     expect(recorded).toHaveLength(0);
+  });
+});
+
+describe("events an admin named", () => {
+  const withCustom = (customEvents, extra = {}) => ({
+    ...PERIOD_TIMES,
+    daySchedules: { "2026-10-13": { included: ["period2"], times: { period2: { start: "10:18", end: "11:41" } }, customEvents, ...extra } },
+  });
+
+  it("appear in the list by their name, in among the rest by start time", () => {
+    school.dayTypes = { "2026-10-13": "A" };
+    school.periodTimes = withCustom([{ id: "x1", name: "Pep Rally", start: "10:00", end: "10:15" }]);
+    expect(scheduleEventsOn("2026-10-13").map((event) => [event.label, event.start])).toEqual([
+      ["Pep Rally", "10:00"],
+      ["AP Biology", "10:18"],
+    ]);
+  });
+
+  it("are skipped when they are not shaped right, so a bad entry cannot break the list", () => {
+    school.dayTypes = { "2026-10-13": "A" };
+    school.periodTimes = withCustom([null, { id: "a", name: "  ", start: "10:00", end: "10:15" }, { id: "b", name: "No times" }, { id: "c", name: "Bad", start: "x", end: "y" }, { id: "d", name: 7, start: "10:00", end: "10:15" }]);
+    expect(scheduleEventsOn("2026-10-13").map((event) => event.label)).toEqual(["AP Biology"]);
+    school.periodTimes = withCustom("not a list");
+    expect(scheduleEventsOn("2026-10-13").map((event) => event.label)).toEqual(["AP Biology"]);
+  });
+
+  it("are not among the day's usual events, which older copies of the app read by key", () => {
+    school.dayTypes = { "2026-10-13": "A" };
+    school.periodTimes = withCustom([{ id: "x1", name: "Pep Rally", start: "10:00", end: "10:15" }]);
+    expect(coreScheduleForDate("2026-10-13", school.dayTypes, school.periodTimes).map((event) => event.key)).toEqual(["period2"]);
   });
 });

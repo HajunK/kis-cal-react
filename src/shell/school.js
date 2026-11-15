@@ -232,6 +232,40 @@ export function loadPeriodTimes(callback) {
   if (!periodTimesFetchDone) periodTimesLoadListeners.push(callback);
 }
 
+// Only once the fetch confirms (or replaces) a cached copy, not at once as loadPeriodTimes
+// does for one; for what was drawn from the cache to be drawn again.
+export function onPeriodTimesFetched(callback) {
+  if (!periodTimesFetchDone) periodTimesLoadListeners.push(callback);
+}
+
+// The labels an admin typed for days, by date (periodTimes/dayLabels, see
+// admin/adminData.js). Kept apart from the schedule, which is null when there's none.
+let schoolDayLabels = {};
+const DAY_LABELS_CACHE_KEY = "cachedDayLabels";
+
+function readCachedDayLabels() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DAY_LABELS_CACHE_KEY));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedDayLabels(labels) {
+  try {
+    localStorage.setItem(DAY_LABELS_CACHE_KEY, JSON.stringify(labels));
+  } catch {
+    // Storage is optional.
+  }
+}
+
+// The label for a date, or "".
+export function dayLabelFor(iso) {
+  const text = schoolDayLabels[iso];
+  return typeof text === "string" ? text : "";
+}
+
 function fetchPeriodTimes() {
   if (!hasFirebase()) return;
   const finish = () => {
@@ -239,14 +273,30 @@ function fetchPeriodTimes() {
     periodTimesFetchDone = true;
     periodTimesLoadListeners.splice(0).forEach((callback) => callback(defaultPeriodTimes));
   };
-  fetchUnlessCached("periodTimes", Boolean(readCachedPeriodTimes()), finish, (version) =>
-    firestore()
-      .collection("periodTimes")
-      .doc("default")
-      .get()
-      .then((doc) => {
+  // The labels are read along with the schedule (under the same cache version), and
+  // a copy cached before they existed is fetched once more for them. Their being
+  // unreadable never holds the schedule up.
+  const cachedWithLabels = Boolean(readCachedPeriodTimes()) && readCachedDayLabels() !== null;
+  fetchUnlessCached("periodTimes", cachedWithLabels, finish, (version) =>
+    Promise.all([
+      firestore().collection("periodTimes").doc("default").get(),
+      firestore()
+        .collection("periodTimes")
+        .doc("dayLabels")
+        .get()
+        .catch((error) => {
+          console.error("Failed to load day labels:", error);
+          return null;
+        }),
+    ])
+      .then(([doc, labelsDoc]) => {
         defaultPeriodTimes = doc.exists ? doc.data() : null;
         writeCachedPeriodTimes(defaultPeriodTimes);
+        if (labelsDoc) {
+          const labels = labelsDoc.exists ? labelsDoc.data().labels : null;
+          schoolDayLabels = labels && typeof labels === "object" ? labels : {};
+          writeCachedDayLabels(schoolDayLabels);
+        }
         writeLocalCacheVersion("periodTimes", version);
         finish();
       })
@@ -259,6 +309,7 @@ if (cachedPeriodTimes) {
   defaultPeriodTimes = cachedPeriodTimes;
   periodTimesLoaded = true;
 }
+schoolDayLabels = readCachedDayLabels() || {};
 
 // For Privacy Blur's During School mode (see ./preferences.js): whether it can
 // be told yet.
@@ -306,12 +357,24 @@ export function loadAssessmentData(callback) {
 // The schedule math lives in src/core/schedule.js and takes the school data
 // as arguments; these hand it what this app has loaded.
 
+// The admin site's Calendar lists every course at once, so no period's A or B days apply.
+let showEveryAssessment = false;
+export const setShowEveryAssessment = (value) => {
+  showEveryAssessment = value;
+};
+
 export function isAssessmentVisibleForPeriod(entry, periodIndex) {
+  if (showEveryAssessment) return true;
   return schedule.isAssessmentVisibleForPeriod(entry, periodIndex, allDayTypes);
 }
 
 export function scheduleForDate(iso) {
   return schedule.scheduleForDate(iso, allDayTypes, defaultPeriodTimes);
+}
+
+// The date's events an admin named (see customEventsOn in core/schedule.js).
+export function customEventsForDate(iso) {
+  return schedule.customEventsOn(iso, defaultPeriodTimes);
 }
 
 export function scheduledTimeOn(iso, key) {
@@ -391,7 +454,8 @@ export function startSchoolData() {
 }
 
 // The Calendar demo's made-up school, in place of a fetch.
-export function useDemoSchoolData({ assessments, dayTypes, periodTimes }) {
+export function useDemoSchoolData({ assessments, dayTypes, periodTimes, dayLabels = {} }) {
+  schoolDayLabels = dayLabels;
   allAssessments = assessments;
   assessmentsLoaded = true;
   assessmentsFetchDone = true;

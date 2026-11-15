@@ -6,6 +6,11 @@ import { flushSync } from "react-dom";
 // put in place without sliding, and again once Inter has loaded, since the
 // fallback font's widths differ. options: [{ value, label }]. Other props go
 // on the control (data-pref, say).
+// How long the thumb takes to slide (see place), and the beat after it before the
+// choice is acted on.
+const SLIDE_MS = 200;
+const APPLY_AFTER_MS = SLIDE_MS + 30;
+
 export function SegmentedControl({ value, options, onChange, ...props }) {
   // The option shown active: value, except right after a click, when it moves
   // at once (see onClick).
@@ -14,6 +19,7 @@ export function SegmentedControl({ value, options, onChange, ...props }) {
   const thumbRef = useRef(null);
   const optionRefs = useRef(new Map());
   const placedRef = useRef(false);
+  const applyTimer = useRef(null);
   // What `place` reads, kept current: it's also called later from the font-ready
   // callback below, set up once at the first draw, and reading `shown` there
   // would be reading the first draw's option, which put the thumb back on it
@@ -21,17 +27,29 @@ export function SegmentedControl({ value, options, onChange, ...props }) {
   const shownRef = useRef(shown);
   shownRef.current = shown;
 
+  // The slide is a transform animation, which runs on the compositor: left and width are
+  // set to where the thumb ends up, and it's moved back to where it was and eased to
+  // there. Animating left/width themselves would run on the main thread, where a new
+  // theme's restyle holds it up.
   const place = (animate) => {
     const thumb = thumbRef.current;
     const active = optionRefs.current.get(shownRef.current);
     if (!thumb || !active) return;
-    if (!animate) thumb.style.transition = "none";
-    thumb.style.left = `${active.offsetLeft}px`;
-    thumb.style.width = `${active.offsetWidth}px`;
-    if (!animate) {
-      void thumb.offsetWidth;  // so the "none" transition applies first
-      thumb.style.transition = "";
-    }
+    const control = thumb.parentElement;
+    const before = animate ? thumb.getBoundingClientRect() : null;
+    const origin = animate ? control.getBoundingClientRect() : null;
+    if (thumb.getAnimations) thumb.getAnimations().forEach((running) => running.cancel());
+    const left = active.offsetLeft;
+    const width = active.offsetWidth;
+    thumb.style.left = `${left}px`;
+    thumb.style.width = `${width}px`;
+    if (!before || typeof thumb.animate !== "function") return;
+    const fromLeft = before.left - origin.left;
+    if (Math.abs(fromLeft - left) < 0.5 && Math.abs(before.width - width) < 0.5) return;
+    thumb.animate(
+      [{ transform: `translateX(${fromLeft - left}px) scaleX(${before.width / width})` }, { transform: "none" }],
+      { duration: SLIDE_MS, easing: "ease" }
+    );
   };
 
   useLayoutEffect(() => {
@@ -51,7 +69,7 @@ export function SegmentedControl({ value, options, onChange, ...props }) {
 
   return (
     <div className="segmented-control" {...props}>
-      <span className="segmented-thumb" ref={thumbRef} />
+      <span className="segmented-thumb" ref={thumbRef} style={{ transition: "none", transformOrigin: "0 50%" }} />
       {options.map((option) => (
         <button
           key={option.value}
@@ -69,7 +87,15 @@ export function SegmentedControl({ value, options, onChange, ...props }) {
             // option's hover color, which lingers under the sliding thumb,
             // would already be the new theme's.
             flushSync(() => setShown(option.value));
-            onChange(option.value);
+            // The choice itself (a new theme, a redrawn page...) is a burst of
+            // style, layout and paint work on the main thread. Run while the
+            // thumb is still sliding, it lands mid-slide as one long frame that
+            // the animation stutters on (the slide itself runs on the
+            // compositor, but the text colors fading with it don't). So it
+            // waits for the slide to finish. Clicks in quick succession act on
+            // the last one only.
+            clearTimeout(applyTimer.current);
+            applyTimer.current = setTimeout(() => onChange(option.value), APPLY_AFTER_MS);
           }}
         >
           {option.label}

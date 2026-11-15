@@ -31,12 +31,12 @@
         },
         {
           "source": "/suggestions",
-          "destination": "/assessments",
+          "destination": "https://admin.kiscal.app/assessments",
           "type": 301
         },
         {
           "source": "/suggestions.html",
-          "destination": "/assessments",
+          "destination": "https://admin.kiscal.app/assessments",
           "type": 301
         },
         {
@@ -56,7 +56,7 @@
         },
         {
           "source": "/assessments.html",
-          "destination": "/assessments",
+          "destination": "https://admin.kiscal.app/assessments",
           "type": 301
         },
         {
@@ -67,6 +67,76 @@
         {
           "source": "/calendar-demo.html",
           "destination": "/calendar-demo",
+          "type": 301
+        },
+        {
+          "source": "/assessments",
+          "destination": "https://admin.kiscal.app/assessments",
+          "type": 301
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(png|jpg|jpeg|webp|svg|ico|woff2)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=86400"
+            }
+          ]
+        },
+        {
+          "source": "js/vendor/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=86400"
+            }
+          ]
+        },
+        {
+          "source": "assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "kiscal-admin",
+      "predeploy": [
+        "npm run build"
+      ],
+      "public": "dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "redirects": [
+        {
+          "source": "/",
+          "destination": "/assessments",
           "type": 301
         }
       ],

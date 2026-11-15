@@ -1,8 +1,9 @@
 // The first time a typed Summative takes over a Formative, a short tour walks
-// through the link: the Formative's new score, then the original kept beside
-// it. Each step waits for OK. Shown until both have been OK'd, once per
-// account. Carried over from domain.js unchanged: a tip in <body> that
-// follows its target every frame.
+// through the link: the Formative's new score, then the link button between the
+// two ("Click to unlink", or "Click to link" once it's been unlinked), shown
+// even though the pointer isn't over it. Each step waits for OK. Shown until both
+// have been OK'd, once per account. A tip in <body> that follows its target
+// every frame.
 
 import { getPreferences, setPreference } from "../shell/preferences.js";
 import { HOVER_TOOLTIP_EDGE_GAP, hideHoverTooltip } from "../shell/ui.js";
@@ -53,24 +54,33 @@ function shapeFormativeLinkTip(tip, x) {
 
 let formativeLinkTip = null;
 
-export function showFormativeLinkTipOnce(formativeInput) {
+// row: the Formative's row in its card, whose link button the second step points at.
+export function showFormativeLinkTipOnce(formativeInput, row) {
   if (getPreferences().seenFormativeLinkTip || formativeLinkTip) return;
 
-  const row = formativeInput.closest("li");
+  // The button sits in the card's groups, outside the rows; it's found by its row.
+  const linkButton = () => {
+    const groups = formativeInput.closest(".assessment-groups");
+    return groups ? [...groups.querySelectorAll(".formative-link-btn")].find((btn) => btn._row === row) || null : null;
+  };
   const steps = [
     { text: "Linked to new score", target: () => formativeInput, centerX: (rect) => scoreTextCenterX(formativeInput, rect) },
     {
-      text: "Original score",
-      // A date in the row would otherwise hide it.
-      enter: () => row.classList.add("force-original"),
-      leave: () => row.classList.remove("force-original"),
-      target: () => formativeInput.nextElementSibling,
+      // What the button does now, as it's named for screen readers ("Unlink" or "Link"), and
+      // what it does after a click.
+      text: () => `Click to ${(linkButton()?.getAttribute("aria-label") || "unlink").toLowerCase()}`,
+      // The button only shows while its card is hovered; the tour keeps it shown.
+      enter: () => linkButton()?.classList.add("formative-link-btn--tip"),
+      leave: () => linkButton()?.classList.remove("formative-link-btn--tip"),
+      target: linkButton,
     },
   ];
   let index = -1;
   let tip = null;
   let showTimer = null;
   let frame = null;
+
+  const stepText = (step) => (typeof step.text === "function" ? step.text() : step.text);
 
   function fadeOut(old) {
     old.classList.remove("formative-link-tip--visible");
@@ -83,6 +93,9 @@ export function showFormativeLinkTipOnce(formativeInput) {
     const step = steps[index];
     if (!tip || !step) return;
     step.enter?.();  // again, in case the row was rebuilt
+    // Said as things are now (a click on the button changes it).
+    const text = stepText(step);
+    if (tip.firstChild.textContent !== text) tip.firstChild.textContent = text;
     const target = step.target();
     // Its row is gone for good (the Summative was lowered or the card was
     // rebuilt), so there's nothing left to point at.
@@ -134,7 +147,7 @@ export function showFormativeLinkTipOnce(formativeInput) {
     tip = document.createElement("div");
     tip.className = "hover-tooltip formative-link-tip";
     tip.setAttribute("role", "status");
-    tip.appendChild(document.createElement("span")).textContent = step.text;
+    tip.appendChild(document.createElement("span")).textContent = stepText(step);
     const ok = tip.appendChild(document.createElement("button"));
     ok.type = "button";
     ok.className = "formative-link-tip-ok";

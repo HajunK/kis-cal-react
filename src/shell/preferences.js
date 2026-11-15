@@ -17,7 +17,7 @@ export const DEFAULT_PREFERENCES = {
   privacyBlurMode: "never", // "never" | "school" | "always" — blurs Domain scores until hovered
   courseColors: {}, // typed course name -> color name picked in the Calendar tab's Course Colors
   calendarView: "calendar", // "calendar" | "byClass": the Calendar tab's layout, kept from the last visit
-  hideAdminTabs: false,  // admins only: hides the admin tabs (Assessments)
+  triedAddingOnCalendar: false, // clicked a day on the calendar to add something: its "Click to add" tooltip then stops showing
 };
 
 const PREFS_CACHE_PREFIX = "prefs_";
@@ -96,6 +96,18 @@ let privacyBlurTimer = null;
 let privacyBlurChangingTimer = null;
 let privacyBlurEvaluated = false;
 
+// Easing a blur costs a repaint per element per frame, so only the scores
+// actually on screen get the ease; the rest change instantly, unseen.
+function markVisibleForBlurEase() {
+  const height = window.innerHeight;
+  document
+    .querySelectorAll(".class-card :is(.score-value, .score-original, .grade-value, img.letter-grade)")
+    .forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > 0 && rect.top < height && rect.right > 0) el.setAttribute("data-privacy-anim", "");
+    });
+}
+
 function evaluatePrivacyBlur() {
   const on =
     privacyBlurMode === "always" ||
@@ -122,9 +134,13 @@ function evaluatePrivacyBlur() {
   // every other change. Skipped on the first evaluation so the page doesn't
   // animate into its starting state.
   if (privacyBlurEvaluated) {
+    markVisibleForBlurEase();
     root.classList.add("privacy-blur-changing");
     clearTimeout(privacyBlurChangingTimer);
-    privacyBlurChangingTimer = setTimeout(() => root.classList.remove("privacy-blur-changing"), 300);
+    privacyBlurChangingTimer = setTimeout(() => {
+      root.classList.remove("privacy-blur-changing");
+      document.querySelectorAll("[data-privacy-anim]").forEach((el) => el.removeAttribute("data-privacy-anim"));
+    }, 300);
   }
   if (on) root.dataset.privacyBlur = "true";
   else delete root.dataset.privacyBlur;
@@ -139,8 +155,20 @@ function applyPrivacyBlur(mode) {
   evaluatePrivacyBlur();
 }
 
+// While the theme changes, the segmented control's text takes its new color at once, not
+// fading as it does for the thumb's slide (see .theme-changing in controls.css).
+let themeChangingTimer;
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (root.dataset.theme === theme) return;
+  root.classList.add("theme-changing");
+  root.dataset.theme = theme;
+  clearTimeout(themeChangingTimer);
+  themeChangingTimer = setTimeout(() => root.classList.remove("theme-changing"), 150);
+}
+
 function applyPreferences(prefs) {
-  document.documentElement.dataset.theme = resolveTheme(prefs.appearance);
+  applyTheme(resolveTheme(prefs.appearance));
   if (prefs.showBreakdown === false) {
     document.documentElement.dataset.hideBreakdown = "true";
   } else {
@@ -157,7 +185,7 @@ function applyPreferences(prefs) {
 // Keeps "system" appearance in step with the OS while the page is open.
 let systemThemeQuery = null;
 function onSystemThemeChange() {
-  document.documentElement.dataset.theme = resolveTheme("system");
+  applyTheme(resolveTheme("system"));
   refreshGradeIcons();
   refreshUiIcons();
 }
@@ -203,8 +231,25 @@ let appliedPrefsModified = initialCached ? initialCached.modified || 0 : 0;
 applyPreferences(currentPrefs);
 watchSystemTheme(currentPrefs.appearance);
 
+// The admin site's Calendar remembers its own colors and view, on this device only, apart
+// from the admin's own account: what they chose in KIS Cal doesn't show here, nor what they
+// choose here there. Everything else (the theme, the date format) is still theirs.
+const SEPARATE_KEYS = ["courseColors", "calendarView", "triedAddingOnCalendar"];
+const SEPARATE_STORAGE_KEY = "adminCalendarPrefs";
+let separate = null;
+export function separateCalendarPreferences() {
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem(SEPARATE_STORAGE_KEY) || "{}") || {};
+  } catch {
+    // Storage is optional.
+  }
+  separate = {};
+  SEPARATE_KEYS.forEach((key) => (separate[key] = key in stored ? stored[key] : DEFAULT_PREFERENCES[key]));
+}
+
 export function getPreferences() {
-  return { ...currentPrefs };
+  return { ...currentPrefs, ...(separate || {}) };
 }
 
 // What a change does to the page happens as it's made; saving it (this device's
@@ -244,6 +289,16 @@ if (typeof document !== "undefined") {
 }
 
 export function setPreference(key, value) {
+  if (separate && SEPARATE_KEYS.includes(key)) {
+    separate[key] = value;
+    try {
+      localStorage.setItem(SEPARATE_STORAGE_KEY, JSON.stringify(separate));
+    } catch {
+      // Storage is optional.
+    }
+    notifyPreferencesChanged(key);
+    return;
+  }
   currentPrefs = { ...currentPrefs, [key]: value };
   applyPreferences(currentPrefs);
   watchSystemTheme(currentPrefs.appearance);

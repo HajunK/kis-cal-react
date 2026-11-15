@@ -56,6 +56,29 @@
   min-height: 260px;
 }
 
+.assessment-calendar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.assessment-calendar-title-row .assessment-calendar-title {
+  margin: 0;
+}
+
+.assessment-calendar-preview {
+  font-size: 15px;
+  font-weight: 500;
+  margin-left: auto;
+  color: var(--color-gray-dark);
+  text-decoration: none;
+}
+
+.assessment-calendar-preview:hover {
+  text-decoration: underline;
+}
+
 .assessment-calendar-title {
   margin: 0 0 16px;
   font-size: 28px;
@@ -216,6 +239,37 @@
   color: var(--color-gray-dark);
 }
 
+/* A small gray dot just left of the date number marks a day that has a label (Assessments
+   page), set against the number's own box so it keeps its distance from the digits and the
+   numbers themselves stay where they are. */
+.assessment-calendar-day-number {
+  position: relative;
+}
+
+.assessment-calendar-day-label-dot {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 4px 0 0;
+  border-radius: 50%;
+  background: var(--color-gray-light);
+}
+
+/* Today's circle has no padding around its number, so the dot keeps off its edge. */
+.assessment-calendar-day-number--today > .assessment-calendar-day-label-dot {
+  margin-right: 8px;
+}
+
+.assessment-calendar-day--selected .assessment-calendar-day-label-dot {
+  background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+}
+
+:root[data-theme="dark"] .assessment-calendar-day--selected .assessment-calendar-day-label-dot {
+  background: color-mix(in srgb, #ffffff 78%, var(--color-accent));
+}
+
 /* --color-surface already contrasts with the selected day's background in
    either theme; gray-dark would be too faint. */
 .assessment-calendar-day--selected .assessment-calendar-day-type {
@@ -310,7 +364,22 @@
   height: calc(var(--cal-label-h) + 4 * var(--cal-cell-h) + 4px);
   overflow: auto;
   overscroll-behavior: contain;
-  background: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light));
+  --class-grid-line: color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-gray-light));
+  background-color: var(--class-grid-line);
+  /* Behind the course-name column, which is glass: with no day sliding under
+     it there is nothing for it to show, and it took the gray of the grid's own
+     background. This holds still at the left edge (the column's own width) as
+     the days scroll, in the color of a weekend day beside it, so the glass
+     is that color wherever nothing passes under it. The gridlines the column's
+     rows are drawn with are in its box-shadow (below), since this covers
+     the 1px gaps they were the grid's background in. */
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-surface)),
+    color-mix(in srgb, var(--color-gray-lighter) 50%, var(--color-surface))
+  );
+  background-repeat: no-repeat;
+  background-size: var(--class-grid-course-w) 100%;
+  background-position: left top;
   scrollbar-width: none;
 }
 
@@ -330,18 +399,20 @@
 }
 
 /* The month of the leftmost day in view (see renderClassGrid), set like the
-   day numbers beside it and on their line (6px up from the bottom, where
-   the date row's 24px numbers sit), with Go to Today at the right. */
+   day numbers beside it and on their line, with Go to Today at the right. A day
+   without a label has its number centered between the weekday's letters (16px
+   down) and the row's bottom edge, so this is centered in the same room, whatever
+   height the row has. */
 .class-grid-corner {
   position: sticky;
   top: 0;
   left: 0;
   z-index: 3;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 10px 6px 14px;
+  padding: 14.4px 10px 0 14px;
 }
 
 .class-grid-corner-month {
@@ -461,6 +532,63 @@
   opacity: 1;
 }
 
+/* The same line in the Courses view, under the date. The date row is 16px taller only
+   while a day with a label is in view (see syncLabelRoom in classGrid.js), and eases
+   between the two heights as it comes and goes. */
+.class-grid--easing {
+  transition: grid-template-rows 0.2s ease;
+}
+
+/* The weekday stays at the top, and what's under it (the date, and its label if it has one)
+   is centered in the room between the weekday and the gray line below: the auto margins
+   share that room above and below. The weekday's own margin ends its box at the bottom of
+   its letters, so the room is measured from them. The date row is 28px tall for today's
+   circle in every column, so the numbers line up. */
+.class-grid-head {
+  justify-content: flex-start;
+  padding-top: 5px;
+  box-sizing: border-box;
+}
+
+.class-grid-head-weekday {
+  margin-bottom: -5.6px;
+}
+
+/* With a label, the date and label together are centered by their letters, and the label's
+   box reaches a little below them. */
+.class-grid-head:has(.class-grid-head-label) .class-grid-head-weekday {
+  margin-bottom: -8.6px;
+}
+
+.class-grid-head-row {
+  min-height: 28px;
+  margin-top: auto;
+}
+
+.class-grid-head > :last-child {
+  margin-bottom: auto;
+}
+
+/* Without today's circle (28px, which the date row is always tall enough for), the date is
+   shorter than its row, so the label moves up to sit as close to it. */
+.class-grid-head:not(.class-grid-head--today) .class-grid-head-label {
+  margin-top: -5px;
+}
+
+.class-grid-head-label {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--color-tab-accent);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Sized like the month grid's day numbers, so today's circle is round. */
 .class-grid-head-date {
   grid-column: 2;
@@ -560,7 +688,7 @@
   background: var(--glass-tint);
   -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(var(--glass-lift));
   backdrop-filter: blur(4px) saturate(180%) brightness(var(--glass-lift));
-  box-shadow: inset -1px 0 0 var(--glass-edge);
+  box-shadow: inset -1px 0 0 var(--glass-edge), 0 1px 0 var(--class-grid-line);
   text-shadow: 0 0 4px var(--glass-halo);
 }
 
@@ -628,11 +756,6 @@
   flex-direction: column;
   gap: 4px;
   padding: 6px 4px;
-  scrollbar-width: none;
-}
-
-.class-grid-cell-pills::-webkit-scrollbar {
-  display: none;
 }
 
 /* With a + to show, the last pill can scroll up clear of it. */
@@ -873,12 +996,8 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-scrollbar-thumb) transparent;
-}
-
-.assessment-week-day-pills::-webkit-scrollbar {
-  width: 3px;
+  /* So the last pill never touches the day's border. */
+  padding-bottom: 1px;
 }
 
 /* A day with more pills than fit fades out at whichever edge has more to
@@ -910,32 +1029,88 @@
 @supports (animation-timeline: scroll()) {
   .assessment-week-day-pills,
   .class-grid-cell-pills {
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      transparent,
-      #000 var(--pills-fade-top),
-      #000 calc(100% - var(--pills-fade-bottom) - var(--pills-fade-inset, 0px)),
-      transparent calc(100% - var(--pills-fade-inset, 0px))
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      transparent,
-      #000 var(--pills-fade-top),
-      #000 calc(100% - var(--pills-fade-bottom) - var(--pills-fade-inset, 0px)),
-      transparent calc(100% - var(--pills-fade-inset, 0px))
-    );
+    /* A second, solid layer over the scrollbar's own 8px strip keeps the
+       scrollbar from fading with the pills (as .upcoming-list does). */
+    -webkit-mask-image:
+      linear-gradient(
+        to bottom,
+        transparent,
+        #000 var(--pills-fade-top),
+        #000 calc(100% - var(--pills-fade-bottom) - var(--pills-fade-inset, 0px)),
+        transparent calc(100% - var(--pills-fade-inset, 0px))
+      ),
+      linear-gradient(#000, #000);
+    mask-image:
+      linear-gradient(
+        to bottom,
+        transparent,
+        #000 var(--pills-fade-top),
+        #000 calc(100% - var(--pills-fade-bottom) - var(--pills-fade-inset, 0px)),
+        transparent calc(100% - var(--pills-fade-inset, 0px))
+      ),
+      linear-gradient(#000, #000);
+    -webkit-mask-size: 100% 100%, 8px 100%;
+    mask-size: 100% 100%, 8px 100%;
+    -webkit-mask-position: 0 0, right top;
+    mask-position: 0 0, right top;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
     animation: pills-fade-top linear both, pills-fade-bottom linear both;
     animation-timeline: scroll(self), scroll(self);
   }
 }
 
-.assessment-week-day-pills::-webkit-scrollbar-track {
+/* The same slim scrollbar as Upcoming's (see .upcoming-list): a 4px thumb
+   inside an 8px track, in both the Calendar and Courses views. As there,
+   Chrome only applies these while scrollbar-width and scrollbar-color are
+   left unset; the @supports block is for other browsers. */
+.assessment-week-day-pills::-webkit-scrollbar,
+.class-grid-cell-pills::-webkit-scrollbar {
+  width: 8px;
+}
+
+.assessment-week-day-pills::-webkit-scrollbar-track,
+.class-grid-cell-pills::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.assessment-week-day-pills::-webkit-scrollbar-thumb {
-  background: var(--color-scrollbar-thumb);
-  border-radius: 3px;
+.assessment-week-day-pills::-webkit-scrollbar-thumb,
+.class-grid-cell-pills::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: var(--color-scrollbar-thumb) padding-box;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .assessment-week-day-pills,
+  .class-grid-cell-pills {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-scrollbar-thumb) transparent;
+  }
+}
+
+/* What an admin typed for the day: a quiet line under its number, cut off with "…". It
+   gives up the pills' room by its own height, and only on days that have one. */
+.assessment-week-day-label {
+  flex: none;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--color-text-primary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Under a date that isn't circled, the number sits 1px higher in its box than today's circle
+   does and the cell's 4px gap follows, so the label looks cut off from it: it moves up
+   toward the number (and the pills with it). */
+.assessment-week-day:not(:has(.assessment-week-day-number--today)) .assessment-week-day-label {
+  margin-top: -4px;
 }
 
 /* The month label's mirror image, on the date's right (see
@@ -1195,6 +1370,17 @@
   transition: background-size 0.3s ease;
 }
 
+/* Inter's contextual alternates lift a parenthesis that sits beside a capital or a
+   digit, judged by the characters around it, so in "English (9)" the "(" is lifted and
+   the ")", with nothing after it, isn't. Off for the names that end in a division, so
+   both parentheses sit the same. */
+.assessment-pill-text,
+.class-grid-course-name,
+.course-color-name,
+.upcoming-course {
+  font-feature-settings: "calt" 0;
+}
+
 /* inline-block, not the window's block, lets the text size to its full width,
    which the marquee scrolls (moved frame by frame in JS). */
 .assessment-pill-text {
@@ -1318,7 +1504,9 @@
      where the list starts at rest, so nothing shows until it's scrolled. And
      nothing at its sides: the second mask fades the left and right (over the
      room the strip has beyond the list), so the blur dies away there instead of
-     being cut off in a line. The two are intersected. */
+     being cut off in a line. A third leaves a hole where the schedule pill and the profile picture are
+     (the strip is stacked above the tab bar it sits in; see placeUpcomingBlur),
+     so the picture isn't faded. The three are intersected. */
   -webkit-mask-image:
     linear-gradient(
       to bottom,
@@ -1326,8 +1514,9 @@
       rgba(0, 0, 0, 0.6) calc(var(--upcoming-blur-reach, 0px) + var(--todo-pad-top) + var(--todo-header-h)),
       transparent
     ),
-    linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 34px), transparent);
-  -webkit-mask-composite: source-in;
+    linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 34px), transparent),
+    var(--avatar-hole-mask, linear-gradient(#000, #000));
+  -webkit-mask-composite: source-in, source-in;
   mask-image:
     linear-gradient(
       to bottom,
@@ -1335,8 +1524,9 @@
       rgba(0, 0, 0, 0.6) calc(var(--upcoming-blur-reach, 0px) + var(--todo-pad-top) + var(--todo-header-h)),
       transparent
     ),
-    linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 34px), transparent);
-  mask-composite: intersect;
+    linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 34px), transparent),
+    var(--avatar-hole-mask, linear-gradient(#000, #000));
+  mask-composite: intersect, intersect;
 }
 
 /* One copy of the list per blur level (see copyUpcomingForBlur), each blurred a
@@ -1450,6 +1640,10 @@
   /* Never sideways: anything poking out (a row mid-animation) would bring up
      a horizontal scrollbar along the bottom. */
   overflow: hidden auto;
+  /* The scrollbar's strip is kept whether or not the list scrolls, out past the
+     rows' right edge, so the rows keep their width (and the date chips stay
+     in line with the + button) as it appears and goes. */
+  scrollbar-gutter: stable;
   /* Pulled up to the card's top edge, under the header, and padded back down
      so the first item still starts below it: scrolled, items pass up behind
      the heading, blurring and fading as they go (see .upcoming-blur). */
@@ -1532,6 +1726,111 @@
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
+}
+
+/* A completed row's trash. The date chip and the trash are one group, the trash
+   just past its right edge, behind a wall: everything beyond the group's
+   resting edge is clipped. On hover the whole group slides left by the trash's
+   width and gap, so the chip carries the trash out from behind the wall
+   together, at one speed. Always out where there's no hover. */
+.upcoming-trailing {
+  position: relative;
+  grid-column: 3;
+  grid-row: 1 / 3;
+  align-self: center;
+  /* The wall is 7px past the chip's resting edge (the icon's own gap), so the
+     icon is wholly behind it at rest. Clips only the right; the group moves out
+     over the other sides. */
+  clip-path: inset(-8px -7px -8px -400px);
+}
+
+.upcoming-trailing > .upcoming-due {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.upcoming-item:hover .upcoming-trailing > .upcoming-due,
+.upcoming-trailing:focus-within > .upcoming-due {
+  transform: translateX(-27px);
+}
+
+/* The strip the icon comes out into: the 27px it travels and the 7px behind
+   the wall. It stays put while the icon slides inside it, and its mask softens
+   the icon near the wall: the sharp copy fades out over the last 8px, the
+   blurred one in. */
+.upcoming-delete-wall {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -7px;
+  width: 34px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 9px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 9px), transparent);
+}
+
+.upcoming-delete-wall--blur {
+  pointer-events: none;
+  filter: blur(1px);
+  color: var(--color-gray-dark);
+  -webkit-mask-image: linear-gradient(to right, transparent calc(100% - 9px), #000);
+  mask-image: linear-gradient(to right, transparent calc(100% - 9px), #000);
+}
+
+.upcoming-delete-wall:has(.upcoming-delete:hover) + .upcoming-delete-wall--blur {
+  color: var(--color-text-primary);
+}
+
+/* Behind the wall until the row is hovered, then it slides out with the chip
+   (the same distance and timing). Always out where there's no hover. */
+.upcoming-delete {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-gray-dark);
+  cursor: pointer;
+  transform: translateX(34px);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), color 0.15s ease;
+}
+
+.upcoming-item:hover .upcoming-delete,
+.upcoming-trailing:focus-within .upcoming-delete {
+  transform: translateX(7px);
+}
+
+@media (hover: none) {
+  .upcoming-trailing > .upcoming-due {
+    transform: translateX(-27px);
+  }
+
+  .upcoming-delete {
+    transform: translateX(7px);
+  }
+}
+
+.upcoming-delete:hover {
+  color: var(--color-text-primary);
+}
+
+.upcoming-delete--blur {
+  cursor: default;
+  color: inherit;
+}
+
+.upcoming-delete-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: url("/icons/trash-thin.svg") center / contain no-repeat;
+  mask: url("/icons/trash-thin.svg") center / contain no-repeat;
 }
 
 /* Between what's due by tomorrow and what's later: the same bar as the My
@@ -1715,12 +2014,27 @@
   color: var(--color-gray-dark);
 }
 
+/* Under the completed rows, centered, in the gray of a done item's crossed-out
+   title: the same color at the same 55% as .upcoming-item--completed's fade (a
+   color mix rather than opacity, which the rows' animations set themselves),
+   so the two match in either theme. */
+.upcoming-completed-note {
+  padding: 12px 12px 10px;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  color: color-mix(in srgb, var(--color-gray-dark) 55%, transparent);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* "Completed (N)" and its arrow, closing off the list as in Google Tasks. */
 .upcoming-completed-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  /* 2px short of the row's right edge, which its hover background shows. */
+  width: calc(100% - 2px);
   margin-top: 6px;
   padding: 10px 12px;
   border: none;
@@ -1947,14 +2261,15 @@
 }
 
 .course-color-list {
-  margin: 0;
+  /* The rows' own padding (below) makes up the 8px between their text, so there's no gap
+     to click in; pulled in by half of it at each end, so the list sits where it did. */
+  margin: -4px 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   /* Tall enough for twelve courses; a longer list scrolls. */
-  max-height: calc(12 * 18px + 11 * 8px);
+  max-height: calc(12 * 26px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -1965,7 +2280,7 @@
   align-items: center;
   gap: 10px;
   max-width: 100%;
-  padding: 0;
+  padding: 4px 0;
   border: none;
   background: none;
   font: inherit;
@@ -2091,15 +2406,16 @@
    this wins over .popup-menu in floating.css. */
 .add-popup.calendar-glass,
 .popup-menu.calendar-glass {
-  --glass-tint: rgba(255, 255, 255, 0.6);
+  --glass-tint: rgba(255, 255, 255, 0.5);
   --glass-lift: 1.03;
+  --glass-blur: 12px;
   --glass-edge-glow: rgba(255, 255, 255, 0.6);
   --glass-rim: rgba(255, 255, 255, 0.9);
   --glass-outline: rgba(0, 0, 0, 0.08);
   --glass-shadow: rgba(0, 0, 0, 0.14);
   background: var(--glass-tint);
-  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
-  backdrop-filter: blur(16px) saturate(180%) brightness(var(--glass-lift));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) brightness(var(--glass-lift));
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%) brightness(var(--glass-lift));
   box-shadow:
     inset 0 0 0 1px var(--glass-rim),
     inset 0 0 6px var(--glass-edge-glow),
@@ -2111,6 +2427,7 @@
 :root[data-theme="dark"] .popup-menu.calendar-glass {
   --glass-tint: color-mix(in srgb, var(--color-surface) 55%, transparent);
   --glass-lift: 1.2;
+  --glass-blur: 14px;
   --glass-edge-glow: rgba(255, 255, 255, 0.08);
   --glass-rim: rgba(255, 255, 255, 0.12);
   --glass-outline: transparent;
@@ -2556,14 +2873,42 @@
   display: none;
 }
 
+/* The part being typed in (hour, minute or AM/PM) is underlined in the text's color, not
+   filled with the browser's blue highlight. */
+.add-popup-time-input::-webkit-datetime-edit-hour-field:focus-within,
+.add-popup-time-input::-webkit-datetime-edit-minute-field:focus-within,
+.add-popup-time-input::-webkit-datetime-edit-ampm-field:focus-within {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  animation: add-popup-time-blink 1.06s step-end infinite;
+}
+
+/* Solid while keys are landing (set for 0.2s after each), blinking when idle. */
+.add-popup-time-input--typing::-webkit-datetime-edit-hour-field:focus-within,
+.add-popup-time-input--typing::-webkit-datetime-edit-minute-field:focus-within,
+.add-popup-time-input--typing::-webkit-datetime-edit-ampm-field:focus-within {
+  animation: none;
+}
+
+@keyframes add-popup-time-blink {
+  50% {
+    text-decoration-color: transparent;
+  }
+}
+
 .add-popup-time-option--selected .add-popup-time-input {
   /* Lighter than the row but still carrying its color, so it isn't plain white. */
   background: color-mix(in srgb, var(--chip-color) 5%, white);
 }
 
-/* Faint enough on a dark page to stay a patch, not a glare. */
+/* The fill a summative pill has (see .assessment-chip--summative), on the row's fainter
+   tint, with the row's own text: a white wash over the tinted row turned it a flat, muddy
+   gray, and the course's full color glared next to the Save button. */
 :root[data-theme="dark"] .add-popup-time-option--selected .add-popup-time-input {
-  background: rgba(255, 255, 255, 0.14);
+  background: oklch(from color-mix(in oklch, var(--chip-color) 22%, var(--color-surface)) l calc(c * 1.8) h);
 }
 
 .add-popup-date-label {
@@ -2803,6 +3148,9 @@
    card instead of spreading wide around it. */
 .popup-menu.calendar-glass.pill-details {
   --glass-shadow: rgba(0, 0, 0, 0.22);
+  /* Light mode: 60% white, where the other glass popups are at 50% (dark mode has its own
+     tint, set with the other popups'). */
+  --glass-tint: rgba(255, 255, 255, 0.6);
   /* Its look is the layers below, drawn from one outline with its point. */
   background: none;
   -webkit-backdrop-filter: none;
@@ -3011,7 +3359,13 @@
 /* Delete alone fills the row; beside Reschedule they share it equally. */
 .pill-details-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+/* "I'm not reassessing" takes a row of its own above the others. */
+.pill-details-actions > .pill-details-optout {
+  flex: 1 1 100%;
 }
 
 .pill-details-actions > button {

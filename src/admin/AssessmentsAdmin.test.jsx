@@ -58,6 +58,23 @@ describe("AssessmentsAdmin", () => {
     expect(page.db.writes).toEqual([]);
   });
 
+  it("moves between months with a sideways swipe, once per swipe", async () => {
+    renderPage();
+    await settle();
+    const label = () => document.getElementById("admin-cal-label").textContent;
+    const start = label();
+    const card = document.querySelector(".assessment-calendar-card");
+    // Up and down is the page's scroll.
+    fireEvent.wheel(card, { deltaX: 0, deltaY: 120 });
+    expect(label()).toBe(start);
+    // A swipe's many events move one month.
+    [30, 30, 30, 30].forEach((deltaX) => fireEvent.wheel(card, { deltaX, deltaY: 1 }));
+    const next = label();
+    expect(next).not.toBe(start);
+    fireEvent.click(document.getElementById("admin-cal-prev"));
+    expect(label()).toBe(start);
+  });
+
   it("draws the month with each day's assessments as dots, once loaded", async () => {
     renderPage();
     expect(document.getElementById("admin-cal-loading").hidden).toBe(false);
@@ -208,6 +225,52 @@ describe("AssessmentsAdmin", () => {
     expect(saved[0].value.daySchedules).toEqual({ [MONDAY]: DELETE });
     expect(saved[0].value.times[0]).toEqual({ start: "08:50", end: "10:13" });
     expect(page.toasts).toEqual(["Schedule saved."]);
+  });
+
+  it("saves a day's label from its popup, in its own document and merged", async () => {
+    const page = renderPage({ collections: { periodTimes: { default: { times: [] }, dayLabels: { labels: { "2020-01-01": "Kept" } } } } });
+    await settle();
+    fireEvent.click(day(MONDAY));
+    fireEvent.click(screen.getByRole("button", { name: "Day label" }));
+    const dialog = screen.getByRole("dialog", { name: "Day label" });
+    fireEvent.change(within(dialog).getByLabelText("Day label"), { target: { value: "  Spirit Day  " } });
+    fireEvent.click(within(dialog).getByText("Save"));
+    await settle();
+    expect(writesTo(page, "periodTimes")).toEqual([
+      { op: "set", collection: "periodTimes", id: "dayLabels", value: { labels: { [MONDAY]: "Spirit Day" } }, options: { merge: true } },
+    ]);
+    expect(page.toasts).toEqual(["Label saved."]);
+  });
+
+  it("marks a day that has a label with a dot by its number, and updates it when saved", async () => {
+    renderPage({ collections: { periodTimes: { dayLabels: { labels: { [MONDAY]: "fall Festival" } } } } });
+    await settle();
+    expect(day(MONDAY).querySelector(".assessment-calendar-day-label-dot")).not.toBe(null);
+    const TUESDAY = toISODate(new Date(firstMonday.getFullYear(), firstMonday.getMonth(), firstMonday.getDate() + 1));
+    expect(day(TUESDAY).querySelector(".assessment-calendar-day-label-dot")).toBe(null);
+
+    fireEvent.click(day(TUESDAY));
+    fireEvent.click(screen.getByRole("button", { name: "Day label" }));
+    const dialog = screen.getByRole("dialog", { name: "Day label" });
+    fireEvent.change(within(dialog).getByLabelText("Day label"), { target: { value: "Spirit Day" } });
+    fireEvent.click(within(dialog).getByText("Save"));
+    await settle();
+    // The days are drawn again, so asked for again.
+    expect(day(TUESDAY).querySelector(".assessment-calendar-day-label-dot")).not.toBe(null);
+  });
+
+  it("shows a day's saved label in its popup and removes it when saved empty", async () => {
+    const page = renderPage({ collections: { periodTimes: { dayLabels: { labels: { [MONDAY]: "Spirit Day" } } } } });
+    await settle();
+    fireEvent.click(day(MONDAY));
+    fireEvent.click(screen.getByRole("button", { name: "Day label" }));
+    const dialog = screen.getByRole("dialog", { name: "Day label" });
+    expect(within(dialog).getByLabelText("Day label").value).toBe("Spirit Day");
+    fireEvent.change(within(dialog).getByLabelText("Day label"), { target: { value: "" } });
+    fireEvent.click(within(dialog).getByText("Save"));
+    await settle();
+    expect(writesTo(page, "periodTimes")[0].value).toEqual({ labels: { [MONDAY]: DELETE } });
+    expect(page.toasts).toEqual(["Label removed."]);
   });
 
   it.each(["A", "B", undefined])("puts a saved day back to normal with Reset, which then goes away (%s day)", async (dayType) => {

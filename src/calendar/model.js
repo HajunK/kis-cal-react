@@ -199,7 +199,7 @@ export function addedByLabel({ added, confirmed, fromStudent }) {
   return "Your school";
 }
 
-// What the card a clicked pill opens says, as { title, subtitle, rows, done }:
+// What the card a clicked pill opens says, as { title, subtitle, rows, done, doneLabel }:
 // rows are [label, value] pairs. dueAt: when it's due (a Date) or null;
 // endsAt: when it ends (a Date) or null; formatDate: the Date format preference's;
 // addedBy: who it's from (see addedByLabel).
@@ -230,6 +230,8 @@ export function pillDetails(entry, { courseLabel, periodIndex, dueAt, endsAt, fo
     subtitle: assignment ? courseLabel : entry.type === "Testing Block" ? "Morning Testing Block" : period,
     rows,
     done: Boolean(done),
+    // An assignment is done; an assessment is something you get ready for.
+    doneLabel: assignment ? "Done" : "Ready",
   };
 }
 
@@ -340,6 +342,6 @@ export function carriedCompletions(completed, replacedBy) {
   const completedIds = new Set(completed.map((record) => (typeof record === "string" ? record : record.id)));
   return completed
     .filter((record) => typeof record !== "string" && replacedBy.has(record.id))
-    .map((record) => ({ id: replacedBy.get(record.id), completedAt: record.completedAt }))
+    .map((record) => ({ id: replacedBy.get(record.id), completedAt: record.completedAt, ...(record.dismissed ? { dismissed: true } : {}) }))
     .filter((record) => !completedIds.has(record.id));
 }

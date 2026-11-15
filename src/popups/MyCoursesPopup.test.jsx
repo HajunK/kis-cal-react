@@ -146,7 +146,7 @@ describe("MyCoursesPopup", () => {
     fireEvent.click(button);
     expect(page.appData.hiddenCourses).toEqual(["Physics"]);
     expect(button.hidden).toBe(true);
-    expect(page.toasts).toEqual(["View Korean in the Domain Tab"]);
+    expect(page.toasts).toEqual(["Showing Korean in Domain"]);
   });
 
   it("clears a period with its X, without suggesting the course it had", () => {

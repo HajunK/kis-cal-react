@@ -4,6 +4,7 @@ import {
   assessmentStillUpcoming,
   isAssessmentVisibleForPeriod,
   isDuringSchool,
+  isSameAssessmentKind,
   scheduleForDate,
   scheduledTimeOn,
 } from "./schedule.js";
@@ -160,5 +161,16 @@ describe("isDuringSchool", () => {
   it("is never on weekends or without a schedule", () => {
     expect(isDuringSchool(at(SATURDAY, 10, 0), {}, PERIOD_TIMES)).toBe(false);
     expect(isDuringSchool(at(MONDAY, 10, 0), {}, null)).toBe(false);
+  });
+});
+
+describe("isSameAssessmentKind", () => {
+  it("counts a summative, an in-class one and a Testing Block as one kind, and others only as themselves", () => {
+    expect(isSameAssessmentKind("Summative", "Testing Block")).toBe(true);
+    expect(isSameAssessmentKind("In-Class", "Summative")).toBe(true);
+    expect(isSameAssessmentKind("Testing Block", "In-Class")).toBe(true);
+    expect(isSameAssessmentKind("Formative", "Formative")).toBe(true);
+    expect(isSameAssessmentKind("Formative", "Summative")).toBe(false);
+    expect(isSameAssessmentKind("Reassessment", "Testing Block")).toBe(false);
   });
 });

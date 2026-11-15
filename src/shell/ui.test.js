@@ -11,8 +11,9 @@ describe("showSignInToast", () => {
     document.body.replaceChildren();
   });
 
+  // A toast is taken off the page once it has left, so none showing is no toast at all.
   const toast = () => document.querySelector(".signin-toast");
-  const shown = () => toast()?.classList.contains("signin-toast--visible");
+  const shown = () => Boolean(toast()?.classList.contains("signin-toast--visible"));
 
   it("shows at most once in 10 seconds, counted from when it last appeared", async () => {
     const { showSignInToast } = await import("./ui.js");

@@ -206,13 +206,14 @@ function ScheduleRow({ index, page, open, placeholder, inputRef, onSaved, onNext
         pick(matches[highlighted >= 0 ? highlighted : 0]);
       } else {
         // Rejected here rather than in the blur handler, whose own refocus
-        // would fight onNext's.
+        // would fight onNext's. It stays on this period to be typed again.
         const name = value.trim();
         if (name !== "" && !findCourseCatalogEntry(name)) {
           page.toast("The course you typed does not exist.");
           setValue("");
           persist(true, "");
           inputEl.current.value = "";
+          return;
         }
       }
       onNext();
@@ -263,7 +264,7 @@ function ScheduleRow({ index, page, open, placeholder, inputRef, onSaved, onNext
     animateFieldGrowth(fieldRef.current, () => {
       showBtnRef.current.hidden = true;
     });
-    page.toast(`View ${name} in the Domain Tab`);
+    page.toast(`Showing ${name} in Domain`);
     page.refreshDomain();
     onSaved();
   };

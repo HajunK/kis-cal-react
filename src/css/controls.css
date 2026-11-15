@@ -42,10 +42,17 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  /* Fades with the thumb's slide rather than snapping as it starts. */
+  transition: color 0.2s ease;
 }
 
 /* Hover background lives here, not on the button, so the thumb can layer above
    it. */
+/* Not when the theme changes: the text just takes its new color. */
+.theme-changing .segmented-option {
+  transition: none;
+}
+
 .segmented-option::before {
   content: "";
   position: absolute;
@@ -110,14 +117,12 @@
   background: var(--color-accent);
 }
 
-/* In dark mode, the same light blue as the selected option in the segmented
-   controls beside them. */
-:root[data-theme="dark"] .toggle-switch input:checked + .toggle-slider {
-  background: var(--color-segment-active);
-}
-
 .toggle-switch input:checked + .toggle-slider::before {
   transform: translateX(20px);
+}
+
+:root[data-theme="dark"] .toggle-slider::before {
+  background: #fff;
 }
 
 .toggle-switch input:focus-visible + .toggle-slider {

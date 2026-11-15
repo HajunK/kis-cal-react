@@ -82,11 +82,6 @@
   background: var(--color-accent);
 }
 
-/* Hidden until auth.js confirms an admin, so it never flashes for anyone else. */
-.tab--admin-only {
-  display: none;
-}
-
 /* Told apart by its darker text alone: no fill or underline. */
 .tab--active,
 .tab--active:hover {

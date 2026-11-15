@@ -1,8 +1,9 @@
-import { Fragment, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { fromISODate } from "../core/dates.js";
 import { WEEKDAY_LABELS, initialPickerMonth, pickerMonth, schoolYearBounds } from "./model.js";
 import { formatPreferredDate } from "../shell/preferences.js";
+import { onSwipe } from "../ui/swipe.js";
 
 // A score's "taken on" date picker, under its row's date button. In <body>
 // so the list's scroll area doesn't clip it; limited to the current school
@@ -145,13 +146,18 @@ function Panel({ panel }) {
   });
 
   const changeMonth = (event, direction) => {
-    event.stopPropagation();
+    if (event) event.stopPropagation();
     if (direction < 0 ? shown.atStart : shown.atEnd) return;
     const current = windowRef.current.querySelector(".score-date-days:not(.score-date-days--leaving)");
     panel.slide = { oldDays: current.cloneNode(true), direction };
     panel.month = new Date(month.getFullYear(), month.getMonth() + direction, 1);
     update([...panels]);
   };
+
+  // Swiping across the picker moves between months too (see swipe.js).
+  const changeMonthRef = useRef(changeMonth);
+  changeMonthRef.current = changeMonth;
+  useEffect(() => onSwipe(ref.current, (direction) => changeMonthRef.current(null, direction)), []);
 
   const pick = (event, iso) => {
     event.stopPropagation();

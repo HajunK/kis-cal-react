@@ -1,35 +1,26 @@
-// The suggestions this admin has accepted, kept for ACCEPTED_KEEP_MS so a mis-click
-// can be checked and the list of what was just done is on the page. Kept on this
-// browser only (localStorage): it's a reminder, not data the students' calendars
-// read, so nothing in Firestore changes. Each is
+// The suggestions any admin has accepted, kept for ACCEPTED_KEEP_MS so a mis-click
+// can be checked and the list of what was just done is on the page. One list for all the
+// admins, in Firestore (sharedLog.js). Not data the students' calendars read. Each is
 //   { id, date, courseName, type, suggestedType, count, emails, lastAddedAt, acceptedAt,
 //     assessmentId }
 // where type is what it was accepted as (see acceptedType) and assessmentId is the
 // school-wide assessment it became (absent in entries kept before Undo existed).
 
-export const ACCEPTED_KEEP_MS = 5 * 24 * 60 * 60 * 1000;
-const STORAGE_KEY = "acceptedSuggestions";
+import { createSharedLog } from "./sharedLog.js";
 
-function read() {
-  try {
-    const list = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(list) ? list.filter((entry) => entry && typeof entry.acceptedAt === "number") : [];
-  } catch {
-    return [];
-  }
-}
+export const ACCEPTED_KEEP_MS = 5 * 24 * 60 * 60 * 1000;
+const log = createSharedLog({ log: "accepted", timeField: "acceptedAt", keepMs: ACCEPTED_KEEP_MS });
 
 // Newest first, without any older than five days.
-export function loadAcceptedSuggestions(now = Date.now()) {
-  return read()
-    .filter((entry) => now - entry.acceptedAt < ACCEPTED_KEEP_MS)
-    .sort((a, b) => b.acceptedAt - a.acceptedAt);
-}
+export const loadAcceptedSuggestions = (now = Date.now()) => log.load(now);
+
+// Follows the shared list; onChange runs when it changes.
+export const watchAcceptedSuggestions = (db, onChange) => log.watch(db, onChange);
 
 // type: what it was accepted as. Accepting the same one again (it was suggested
 // anew after being accepted) replaces the earlier entry.
 export function recordAcceptedSuggestion(suggestion, type, now = Date.now(), assessmentId = null) {
-  const entry = {
+  return log.record({
     id: suggestion.id,
     date: suggestion.date,
     courseName: suggestion.courseName,
@@ -40,21 +31,8 @@ export function recordAcceptedSuggestion(suggestion, type, now = Date.now(), ass
     lastAddedAt: suggestion.lastAddedAt || 0,
     acceptedAt: now,
     assessmentId,
-  };
-  const kept = loadAcceptedSuggestions(now).filter((other) => other.id !== entry.id);
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([entry, ...kept]));
-  } catch {
-    // Storage is optional.
-  }
-  return entry;
+  });
 }
 
 // Taken out of the list (Undo, or it's no longer wanted there).
-export function removeAcceptedSuggestion(id, now = Date.now()) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(loadAcceptedSuggestions(now).filter((entry) => entry.id !== id)));
-  } catch {
-    // Storage is optional.
-  }
-}
+export const removeAcceptedSuggestion = (id) => log.remove(id);

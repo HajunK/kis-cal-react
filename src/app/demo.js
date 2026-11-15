@@ -59,8 +59,15 @@ export function startCalendarDemo() {
       });
   });
 
+  // A few days with a label, as an admin's (see the Assessments page's label button).
+  const dayLabels = {
+    [toISODate(addDays(today, 1))]: "Spirit Day",
+    [toISODate(addDays(today, 2))]: "Early Dismissal",
+  };
+
   useDemoSchoolData({
     assessments,
+    dayLabels,
     dayTypes,
     periodTimes: {
       times: [
