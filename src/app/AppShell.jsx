@@ -4,7 +4,7 @@ import { DomainRoute } from "../domain/DomainRoute.jsx";
 import { Popups, loadPopups } from "../popups/Popups.jsx";
 import { popupStore } from "../popups/popupStore.js";
 import { sessionStore } from "../shell/data.js";
-import { hasFirebase } from "../shell/firebase.js";
+import { hasFirebase, logPageView } from "../shell/firebase.js";
 import { startSuggestionAlerts, stopSuggestionAlerts } from "../shell/notifications.js";
 import { switchToInter } from "../shell/inter.js";
 import { sessionState } from "../shell/session.js";
@@ -71,6 +71,14 @@ export function AppShell({ firebaseReady, demo }) {
   // it measures its text (see inter.js).
   const firstRoute = useRef(route).current;
   if (route !== firstRoute) switchToInter();
+
+  // Each tab moved to is a page view in Analytics (the first, on load, is counted by itself).
+  const loggedPath = useRef(location.pathname);
+  useEffect(() => {
+    if (loggedPath.current === location.pathname) return;
+    loggedPath.current = location.pathname;
+    logPageView(location.pathname);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (adminSite) document.title = "KIS Cal Admin";

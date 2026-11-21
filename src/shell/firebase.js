@@ -1,3 +1,5 @@
+import { isAdminSite } from "../app/site.js";
+
 // The app's Firebase: the compat SDK index.html loads from Google's CDN (the
 // same version as before), set up here once it has loaded. Its scripts are
 // deferred and this app's module can run before them, so everything that
@@ -24,8 +26,25 @@ export function disableFirebase() {
 // False without Firebase, or with it off: every read and write checks this.
 export const hasFirebase = () => !disabled && typeof window.firebase !== "undefined" && Boolean(window.firebase.firestore);
 
+let analytics = null;
+
 function initialize() {
-  if (hasFirebase() && window.firebase.apps.length === 0) window.firebase.initializeApp(firebaseConfig);
+  if (!hasFirebase() || window.firebase.apps.length !== 0) return;
+  window.firebase.initializeApp(firebaseConfig);
+  // Google Analytics, on the students' site only: not the admin site (the admins' own use
+  // isn't wanted in the numbers), and not the demo (Firebase is off there). It counts the
+  // first page view itself; later tabs are logged by logPageView.
+  try {
+    if (!isAdminSite() && typeof window.firebase.analytics === "function") analytics = window.firebase.analytics();
+  } catch (error) {
+    console.warn("Analytics is unavailable:", error);
+  }
+}
+
+// A page view for a tab the student moved to (the app is one page, so Analytics can't see
+// the moves itself).
+export function logPageView(path) {
+  if (analytics) analytics.logEvent("page_view", { page_path: path, page_location: window.location.href, page_title: document.title });
 }
 
 // Every deferred script (Firebase's among them) has run by DOMContentLoaded,

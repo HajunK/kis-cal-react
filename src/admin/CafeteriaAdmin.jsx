@@ -3,6 +3,7 @@ import { isAdminEmail } from "../core/admins.js";
 import { fromISODate, toISODate } from "../core/dates.js";
 import { addDays, lunchChoices, menuDocId, mondayOf } from "../menu/menuData.js";
 import { tally } from "../menu/menuVotes.js";
+import { ConfirmDialog } from "../ui/ConfirmDialog.jsx";
 
 // The Cafeteria admin page: how the students voted on each day's lunch (cafeteriaVotes, one
 // document a day; see menuVotes.js), laid out like the Assessments page: a calendar of the
@@ -23,18 +24,39 @@ function longDate(iso) {
 const TEST_PREFIX = "test-";
 const TEST_KEYS = Array.from({ length: 30 }, (_, index) => `${TEST_PREFIX}${String(index + 1).padStart(2, "0")}`);
 
-// Every day with votes as { [date]: { a, b, total, tests } }, tests being the admin's test
-// votes among them ({ key: "A" | "B" }).
+// A test vote is "A" or "B", or "-A" or "-B" to take a real vote off (students' own tallies
+// ignore those).
+const NEGATIVE = { A: "-A", B: "-B" };
+
+// What a day's panel and calendar show: the real votes (base) plus the test votes' net for each
+// menu, never below 0.
+function shownCounts(base, tests) {
+  const net = (choice) => Object.values(tests).filter((vote) => vote === choice).length - Object.values(tests).filter((vote) => vote === NEGATIVE[choice]).length;
+  const a = Math.max(0, base.a + net("A"));
+  const b = Math.max(0, base.b + net("B"));
+  return { a, b, total: a + b, net: { A: net("A"), B: net("B") } };
+}
+
+// Every day with votes as { [date]: { a, b, total, base, tests } }, base being the real votes
+// ({ a, b }) and tests the admin's test votes ({ key: "A" | "B" | "-A" | "-B" }); a and b are
+// what they come to.
 export function voteDays(snapshot) {
   const days = {};
   snapshot.forEach((doc) => {
     const match = DOC_DATE.exec(doc.id);
     if (!match) return;
-    const votes = (doc.data() || {}).votes;
-    const { a, b, total } = tally(votes);
-    days[match[1]] = { a, b, total, tests: Object.fromEntries(Object.entries(votes || {}).filter(([key]) => key.startsWith(TEST_PREFIX))) };
+    const votes = (doc.data() || {}).votes || {};
+    const real = Object.fromEntries(Object.entries(votes).filter(([key]) => !key.startsWith(TEST_PREFIX)));
+    const { a, b } = tally(real);
+    const tests = Object.fromEntries(Object.entries(votes).filter(([key]) => key.startsWith(TEST_PREFIX)));
+    days[match[1]] = votesOfDay({ a, b }, tests);
   });
   return days;
+}
+
+function votesOfDay(base, tests) {
+  const { a, b, total } = shownCounts(base, tests);
+  return { a, b, total, base, tests };
 }
 
 // How long the days take to slide between months, as in the Assessments page.
@@ -42,6 +64,85 @@ const MONTH_SLIDE_MS = 220;
 
 // The menus are shown in Korean, as the Menu tab's are for now.
 const LANGUAGE = "ko";
+
+// One menu's dishes, each a line of text that is edited where it stands: hovering underlines it,
+// clicking it grows the menu-colored underline (as in the Add popup's fields), Enter starts the
+// next dish, clearing a dish (or its x) deletes it, and "Add dish" appends one. Saved, when the
+// focus leaves the list, with onSave(the dishes).
+function DishList({ dishes, onSave }) {
+  const listRef = useRef(null);
+  const [draft, setDraft] = useState(null);
+  const focusIndex = useRef(null);
+  const cancelled = useRef(false);
+  const shown = draft || dishes;
+  useEffect(() => {
+    if (focusIndex.current === null) return;
+    const input = listRef.current && listRef.current.querySelectorAll("input")[focusIndex.current];
+    focusIndex.current = null;
+    if (input) input.focus();
+  });
+
+  const clean = (list) => list.map((dish) => dish.trim()).filter(Boolean);
+  const save = (list) => {
+    const next = clean(list);
+    if (next.length > 0 && next.join("\n") !== dishes.join("\n")) onSave(next);
+  };
+  const finish = () => {
+    if (draft && !cancelled.current) save(draft);
+    cancelled.current = false;
+    setDraft(null);
+  };
+  const change = (index, value) => setDraft(shown.map((dish, i) => (i === index ? value : dish)));
+  const insertAfter = (index) => {
+    focusIndex.current = index + 1;
+    setDraft([...shown.slice(0, index + 1), "", ...shown.slice(index + 1)]);
+  };
+  const remove = (index) => {
+    const next = shown.filter((_, i) => i !== index);
+    if (next.length === 0) return;
+    setDraft(null);
+    save(next);
+  };
+
+  return (
+    <div className="cafeteria-dish-list" ref={listRef} onBlur={(event) => !event.currentTarget.contains(event.relatedTarget) && finish()}>
+      <ul className="cafeteria-dishes">
+        {shown.map((dish, index) => (
+          <li key={index} className="cafeteria-dish" onClick={(event) => event.target === event.currentTarget && event.currentTarget.querySelector("input").focus()}>
+            <input
+              className="cafeteria-dish-input"
+              value={dish}
+              aria-label={`Dish ${index + 1}`}
+              onFocus={() => !draft && setDraft([...dishes])}
+              onChange={(event) => change(index, event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (dish.trim()) insertAfter(index);
+                } else if (event.key === "Escape") {
+                  cancelled.current = true;
+                  event.target.blur();
+                } else if (event.key === "Backspace" && dish === "" && shown.length > 1) {
+                  event.preventDefault();
+                  focusIndex.current = Math.max(0, index - 1);
+                  setDraft(shown.filter((_, i) => i !== index));
+                }
+              }}
+            />
+            {shown.length > 1 && (
+              <button type="button" className="cafeteria-dish-remove" aria-label={`Delete ${dish || "dish"}`} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(index)}>
+                <span className="close-icon" aria-hidden="true" />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="cafeteria-dish-add" onClick={() => insertAfter(shown.length - 1)}>
+        + Add dish
+      </button>
+    </div>
+  );
+}
 
 // page: { auth, db }.
 export function CafeteriaAdmin({ page }) {
@@ -103,46 +204,83 @@ export function CafeteriaAdmin({ page }) {
     return week && Array.isArray(week.days) ? week.days.find((candidate) => candidate.date === iso) : null;
   };
   const week = monday ? weeks[monday] : undefined;
+
+  // Saves a menu's dishes (the Korean ones shown here) to the day's lunch, in the week's document.
+  const saveDishes = (iso, menu, dishes) => {
+    const key = mondayOf(iso);
+    const before = weeks[key];
+    if (!before) return;
+    const text = dishes.join("\n");
+    const change = (option) => (option.section === menu && option.status === "printed" ? { ...option, text } : option);
+    const after = {
+      ...before,
+      days: before.days.map((day) =>
+        day.date === iso ? { ...day, meals: { ...day.meals, lunch: { ...day.meals.lunch, [LANGUAGE]: day.meals.lunch[LANGUAGE].map(change) } } } : day
+      ),
+    };
+    setWeeks((known) => ({ ...known, [key]: after }));
+    page.db
+      .collection("cafeteriaMenus")
+      .doc(menuDocId(key))
+      .update({ days: after.days })
+      .catch((error) => {
+        console.error("Failed to save the menu:", error);
+        setWeeks((known) => ({ ...known, [key]: before }));
+        window.alert("Something went wrong saving the menu. Please try again.");
+      });
+  };
   const choices = lunchChoices(selected ? dayOf(selected) : null, LANGUAGE);
 
-  // Test votes, for trying the page out: each is a vote under a made-up key, tagged to no one.
-  // Counted here once saved.
-  const [testBusy, setTestBusy] = useState(false);
-  const changeTestVotes = (iso, write, apply) => {
+  // Clearing: every test vote of the day, or (after asking) every vote.
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const clearVotes = (iso, all) => {
+    const day = days && days[iso];
+    if (!day) return;
+    const doc = page.db.collection("cafeteriaVotes").doc(`hs-${iso}`);
+    const write = all ? () => doc.set({ votes: {} }) : () => doc.update(Object.fromEntries(Object.keys(day.tests).map((key) => [`votes.${key}`, page.deleteField()])));
     setTestBusy(true);
     write()
-      .then(() => setDays((known) => ({ ...known, [iso]: apply(known[iso] || { a: 0, b: 0, total: 0, tests: {} }) })))
+      .then(() => setDays((known) => ({ ...known, [iso]: votesOfDay(all ? { a: 0, b: 0 } : day.base, {}) })))
+      .catch((error) => {
+        console.error("Failed to clear the votes:", error);
+        window.alert("Something went wrong clearing the votes. Please try again.");
+      })
+      .finally(() => setTestBusy(false));
+  };
+
+  // Test votes, for trying the page out: each is a vote under a made-up key, tagged to no one. A
+  // minus takes off a test vote of that menu, or with none, adds one that takes a real vote off.
+  // Counted here once saved.
+  const [testBusy, setTestBusy] = useState(false);
+  const stepTestVote = (iso, choice, direction) => {
+    const day = (days && days[iso]) || votesOfDay({ a: 0, b: 0 }, {});
+    const tests = day.tests;
+    const wanted = direction > 0 ? choice : NEGATIVE[choice];
+    const opposite = direction > 0 ? NEGATIVE[choice] : choice;
+    const doc = page.db.collection("cafeteriaVotes").doc(`hs-${iso}`);
+    const removable = Object.keys(tests).reverse().find((key) => tests[key] === opposite);
+    let write;
+    let next;
+    if (removable) {
+      write = () => doc.update({ [`votes.${removable}`]: page.deleteField() });
+      next = Object.fromEntries(Object.entries(tests).filter(([key]) => key !== removable));
+    } else {
+      const key = TEST_KEYS.find((candidate) => !(candidate in tests));
+      if (!key) {
+        window.alert("That day already has 30 test votes. Remove some to add more.");
+        return;
+      }
+      write = () => doc.set({ votes: { [key]: wanted } }, { merge: true });
+      next = { ...tests, [key]: wanted };
+    }
+    setTestBusy(true);
+    write()
+      .then(() => setDays((known) => ({ ...known, [iso]: votesOfDay(day.base, next) })))
       .catch((error) => {
         console.error("Failed to change the test votes:", error);
         window.alert("Something went wrong changing the test votes. Please try again.");
       })
       .finally(() => setTestBusy(false));
-  };
-  const addTestVote = (iso, choice) => {
-    const taken = (days[iso] && days[iso].tests) || {};
-    const key = TEST_KEYS.find((candidate) => !(candidate in taken));
-    if (!key) {
-      window.alert("That day already has 30 test votes. Remove them to add more.");
-      return;
-    }
-    changeTestVotes(
-      iso,
-      () => page.db.collection("cafeteriaVotes").doc(`hs-${iso}`).set({ votes: { [key]: choice } }, { merge: true }),
-      (day) => ({ a: day.a + (choice === "A" ? 1 : 0), b: day.b + (choice === "B" ? 1 : 0), total: day.total + 1, tests: { ...day.tests, [key]: choice } })
-    );
-  };
-  const clearTestVotes = (iso) => {
-    const tests = (days[iso] && days[iso].tests) || {};
-    const doc = page.db.collection("cafeteriaVotes").doc(`hs-${iso}`);
-    changeTestVotes(
-      iso,
-      () => doc.update(Object.fromEntries(Object.keys(tests).map((key) => [`votes.${key}`, page.deleteField()]))),
-      (day) => {
-        const a = Object.values(tests).filter((choice) => choice === "A").length;
-        const b = Object.values(tests).length - a;
-        return { a: day.a - a, b: day.b - b, total: day.total - a - b, tests: {} };
-      }
-    );
   };
 
   // A month change as in the Assessments page: the old month's days slide out as the new one's
@@ -215,19 +353,25 @@ export function CafeteriaAdmin({ page }) {
         className={`assessment-calendar-day${selected === iso ? " assessment-calendar-day--selected" : ""}`}
         onClick={() => setSelected(iso)}
       >
-        <span className={`assessment-calendar-day-number${isToday ? " assessment-calendar-day-number--today" : ""}`}>{day}</span>
+        {/* Today is marked by a dot above its date, black (white in dark mode). */}
+        {isToday && <span className="cafeteria-day-today" aria-label="Today" />}
+        <span className="assessment-calendar-day-number">{day}</span>
         <span className="assessment-calendar-day-type" />
-        {/* An underline of the day's votes, blue from the left and red from the right as in the
-            day's panel, and gray where there are none; none at all for a day with no menu (and
-            no votes), nor while its menu is still being read. */}
+        {/* The day's votes under the date: Menu A's count, a bar split between the two menus
+            (gray while there are none), and Menu B's count. None at all for a day with no menu
+            (and no votes), nor while its menu is still being read. */}
         {(total > 0 || lunchChoices(dayOf(iso), LANGUAGE)) && (
-          <span className={`cafeteria-day-line${total > 0 ? "" : " cafeteria-day-line--empty"}`} aria-hidden="true">
-            {total > 0 && (
-              <>
-                {days[iso].a > 0 && <span className="cafeteria-day-line-a" style={{ width: `${(days[iso].a / total) * 100}%` }} />}
-                {days[iso].b > 0 && <span className="cafeteria-day-line-b" style={{ width: `${(days[iso].b / total) * 100}%` }} />}
-              </>
-            )}
+          <span className="cafeteria-day-votes">
+            <span className="cafeteria-day-count cafeteria-menu--a">{total > 0 ? days[iso].a : 0}</span>
+            <span className={`cafeteria-day-bar${total > 0 ? "" : " cafeteria-day-bar--empty"}`} aria-hidden="true">
+              {total > 0 && (
+                <>
+                  {days[iso].a > 0 && <span className="cafeteria-day-bar-a" style={{ width: `${(days[iso].a / total) * 100}%` }} />}
+                  {days[iso].b > 0 && <span className="cafeteria-day-bar-b" style={{ width: `${(days[iso].b / total) * 100}%` }} />}
+                </>
+              )}
+            </span>
+            <span className="cafeteria-day-count cafeteria-menu--b">{total > 0 ? days[iso].b : 0}</span>
           </span>
         )}
       </button>
@@ -236,8 +380,27 @@ export function CafeteriaAdmin({ page }) {
 
   // Only the days are held back, behind the loading ring, until the votes have been read.
   const loading = days === null && !failed;
-  const testCount = selected && days && days[selected] ? Object.keys(days[selected].tests || {}).length : 0;
+  const testKeyCount = selected && days && days[selected] ? Object.keys(days[selected].tests).length : 0;
+  const testNet = (choice) => {
+    const tests = selected && days && days[selected] ? Object.values(days[selected].tests) : [];
+    return tests.filter((vote) => vote === choice).length - tests.filter((vote) => vote === NEGATIVE[choice]).length;
+  };
   const result = selected && days ? days[selected] || { a: 0, b: 0, total: 0 } : null;
+  const stepper = (menu) => (
+    <div className={`cafeteria-stepper cafeteria-stepper--${menu.toLowerCase()}`}>
+      <button type="button" aria-label={`Remove a test vote for Menu ${menu}`} disabled={testBusy} onClick={() => stepTestVote(selected, menu, -1)}>
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M5 10h10" />
+        </svg>
+      </button>
+      <span className="cafeteria-stepper-count">{testNet(menu) < 0 ? `−${-testNet(menu)}` : testNet(menu) > 0 ? `+${testNet(menu)}` : "0"}</span>
+      <button type="button" aria-label={`Add a test vote for Menu ${menu}`} disabled={testBusy} onClick={() => stepTestVote(selected, menu, 1)}>
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M5 10h10M10 5v10" />
+        </svg>
+      </button>
+    </div>
+  );
   return (
     <>
       <p className="admin-not-authorized" hidden={user === undefined || isAdmin}>
@@ -281,17 +444,12 @@ export function CafeteriaAdmin({ page }) {
           {!failed && !result && <p className="admin-day-select-hint cafeteria-hint">Select a day</p>}
           {result && (
             <div className="admin-day-entry-list cafeteria-result">
-              <hr className="cafeteria-divider" />
               <div className="cafeteria-menus">
                 {["A", "B"].map((menu) => (
                   <div key={menu} className={`cafeteria-menu cafeteria-menu--${menu.toLowerCase()}`}>
                     <h3 className="cafeteria-menu-name">Menu {menu}</h3>
                     {choices ? (
-                      <ul className="cafeteria-dishes">
-                        {choices[menu].map((dish, index) => (
-                          <li key={index}>{dish}</li>
-                        ))}
-                      </ul>
+                      <DishList key={`${selected}-${menu}`} dishes={choices[menu]} onSave={(dishes) => saveDishes(selected, menu, dishes)} />
                     ) : (
                       <p className="cafeteria-no-menu">{week === undefined ? "" : "No menu."}</p>
                     )}
@@ -301,8 +459,7 @@ export function CafeteriaAdmin({ page }) {
               {/* Nothing about voting for a day with no menu. */}
               {choices && (
                 <>
-                  <hr className="cafeteria-divider" />
-                  {/* Like an election's: each side's count large at its end, and the bar filling
+                      {/* Like an election's: each side's count large at its end, and the bar filling
                       in from the two ends, with a tick at the half that wins it. With no votes
                       yet it's 0 to 0 over an empty gray bar. */}
                   <div className="cafeteria-tally">
@@ -326,16 +483,21 @@ export function CafeteriaAdmin({ page }) {
                   </div>
                   {/* For trying the page out: votes tagged to no one. */}
                   <div className="cafeteria-test-votes">
-                    <span className="cafeteria-test-label">Test votes</span>
-                    <button type="button" className="cafeteria-test-btn cafeteria-menu--a" disabled={testBusy} onClick={() => addTestVote(selected, "A")}>
-                      + Menu A
-                    </button>
-                    <button type="button" className="cafeteria-test-btn cafeteria-menu--b" disabled={testBusy} onClick={() => addTestVote(selected, "B")}>
-                      + Menu B
-                    </button>
-                    {testCount > 0 && (
-                      <button type="button" className="cafeteria-test-btn" disabled={testBusy} onClick={() => clearTestVotes(selected)}>
-                        {`Remove ${testCount} test ${testCount === 1 ? "vote" : "votes"}`}
+                    <div className="cafeteria-test-row">
+                      {stepper("A")}
+                      {testKeyCount > 0 && (
+                        <button type="button" className="cafeteria-clear-btn" disabled={testBusy} onClick={() => clearVotes(selected, false)}>
+                          Clear test votes
+                        </button>
+                      )}
+                      {stepper("B")}
+                    </div>
+                  </div>
+                  {/* At the bottom of the panel. */}
+                  <div className="cafeteria-test-row cafeteria-test-row--end">
+                    {result.total > 0 && (
+                      <button type="button" className="cafeteria-clear-btn" disabled={testBusy} onClick={() => setConfirmingClear(true)}>
+                        Clear all votes
                       </button>
                     )}
                   </div>
@@ -345,6 +507,17 @@ export function CafeteriaAdmin({ page }) {
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmingClear}
+        title="Clear all votes?"
+        message={selected ? `Delete every vote for ${longDate(selected)}, the students' too? This can't be undone.` : ""}
+        confirmLabel="Clear all votes"
+        onConfirm={() => {
+          setConfirmingClear(false);
+          clearVotes(selected, true);
+        }}
+        onCancel={() => setConfirmingClear(false)}
+      />
     </>
   );
 }

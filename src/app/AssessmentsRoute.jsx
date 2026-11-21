@@ -4,6 +4,7 @@ import { AssessmentsAdmin } from "../admin/AssessmentsAdmin.jsx";
 import { makePopupToast } from "../popups/toast.js";
 import { deleteField, firebaseAuth, firestore } from "../shell/firebase.js";
 import { formatPreferredDate } from "../shell/preferences.js";
+import { refreshSchoolData } from "../shell/school.js";
 
 // The admin tabs need Firebase, which loads just after the app starts.
 //
@@ -26,5 +27,5 @@ export function AssessmentsRoute({ firebaseReady }) {
       },
     [firebaseReady]
   );
-  return <div className="page-content" id="assessments-root">{page ? <AssessmentsAdmin page={page} onPreview={() => navigate("/calendar")} /> : null}</div>;
+  return <div className="page-content" id="assessments-root">{page ? <AssessmentsAdmin page={page} onPreview={() => refreshSchoolData().then(() => navigate("/calendar"))} /> : null}</div>;
 }

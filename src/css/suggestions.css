@@ -284,6 +284,11 @@
    votes went as one bar. */
 .cafeteria-result {
   gap: 20px;
+  /* Its last row sits at the panel's bottom padding, not above one of its own. */
+  padding-bottom: 0;
+  /* No fade at the bottom (the Assessments list's), which would wash out the last row. */
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .cafeteria-menus {
@@ -294,6 +299,16 @@
 .cafeteria-menu {
   flex: 1;
   min-width: 0;
+  /* Each menu in a rounded gray outline, like the Domain tab's Formatives and Summatives. */
+  box-sizing: border-box;
+  border: 1.5px solid var(--color-gray-light);
+  border-radius: 14px;
+  /* Always the same height, both boxes alike: the heading stays and the dishes scroll under
+     it. No bottom padding, so they run to the border (the list pads its own end). */
+  height: 240px;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 0;
   --menu-color: var(--color-dark-blue);
 }
 
@@ -302,6 +317,7 @@
 }
 
 .cafeteria-menu-name {
+  flex: none;
   margin: 0 0 8px;
   font-size: 18px;
   font-weight: 600;
@@ -322,9 +338,138 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 24px;
   color: var(--color-text-primary);
+}
+
+/* The dishes and "+ Add dish": the part that scrolls, with the scrollbar taking its own room
+   beside the rows as the Assessments list's does. */
+.cafeteria-dish-list {
+  flex: 1;
+  min-height: 0;
+  margin-right: -10px;
+  padding-bottom: 16px;
+  overflow-y: auto;
+  /* The scrollbar's room is always kept, so the rows (and their underlines) end 16px from the
+     box's right edge as they start 16px from its left, scrolling or not. */
+  scrollbar-gutter: stable;
+}
+
+.cafeteria-dish-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.cafeteria-dish-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cafeteria-dish-list::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 5px;
+}
+
+/* A dish is its own text field made to look like text: a thin gray underline fading in on hover,
+   and on focus the menu's color growing from the middle (as the Add popup's fields do). */
+.cafeteria-dish {
+  position: relative;
+  cursor: text;
+}
+
+/* The 4px between dishes belongs to the dish below it: hovering or clicking the gap is
+   hovering or clicking that dish (and the gap above "+ Add dish" is that button's). */
+.cafeteria-dish + .cafeteria-dish {
+  padding-top: 4px;
+}
+
+.cafeteria-dish + .cafeteria-dish .cafeteria-dish-remove {
+  top: 4px;
+}
+
+.cafeteria-dish-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 22px 0 2px;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  /* The menu's color grows from the middle on focus; the gray line on hover just fades in
+     (an inset shadow, so it can). */
+  background: linear-gradient(var(--menu-color), var(--menu-color)) bottom center / 0% 2px no-repeat;
+  color: inherit;
+  font: inherit;
+  line-height: 24px;
+  transition: background-size 0.2s ease;
+  /* Above the gray line (the dish's ::after), which the menu's color covers. */
+  position: relative;
+  z-index: 1;
+}
+
+.cafeteria-dish-input:focus {
+  background-size: 100% 2px;
+}
+
+.cafeteria-dish::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--color-gray-light);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.cafeteria-dish:hover::after {
+  opacity: 1;
+}
+
+.cafeteria-dish-remove {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  /* Its own 5px of room each side puts the X 2px in from the line's end, as the text is 2px
+     in from its start. */
+  right: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-gray-dark);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cafeteria-dish:hover .cafeteria-dish-remove,
+.cafeteria-dish:focus-within .cafeteria-dish-remove {
+  opacity: 1;
+}
+
+.cafeteria-dish-add {
+  display: block;
+  margin: 0;
+  padding: 4px 2px 0;
+  border: none;
+  background: none;
+  color: var(--color-gray-dark);
+  font: inherit;
+  font-size: 14px;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.cafeteria-dish-add:hover {
+  text-decoration: underline;
 }
 
 .cafeteria-no-menu {
@@ -411,43 +556,64 @@
   top: 0;
 }
 
-/* The calendar's underline for a day's votes (see CafeteriaAdmin.jsx). */
-.cafeteria-day-line {
+/* A calendar day's votes (see CafeteriaAdmin.jsx): each menu's count either side of a flat bar
+   split between them, under the date. */
+.cafeteria-day-votes {
   position: absolute;
-  bottom: 6px;
-  left: 50%;
-  width: 24px;
-  height: 4px;
-  transform: translateX(-50%);
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--color-gray-lighter);
+  left: 6px;
+  right: 6px;
+  bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1;
 }
 
-.cafeteria-day-line--empty {
+.cafeteria-day-count {
+  min-width: 8px;
+  text-align: center;
+  color: var(--color-dark-blue);
+}
+
+.cafeteria-day-count.cafeteria-menu--b {
+  color: var(--color-red);
+}
+
+.cafeteria-day-bar {
+  flex: 1;
+  display: flex;
+  /* 1px taller on the top: the negative margin keeps the bottom where it was. */
+  height: 7px;
+  margin-bottom: -1px;
+}
+
+.cafeteria-day-bar--empty {
   background: var(--color-gray-light);
 }
 
-.cafeteria-day-line-a,
-.cafeteria-day-line-b {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-
-.cafeteria-day-line-a {
-  left: 0;
+.cafeteria-day-bar-a {
   background: var(--color-dark-blue);
 }
 
-.cafeteria-day-line-b {
-  right: 0;
+.cafeteria-day-bar-b {
   background: var(--color-red);
 }
 
-/* A slight gap between the two where both have votes. */
-.cafeteria-day-line-a + .cafeteria-day-line-b {
-  box-shadow: inset 2px 0 0 var(--color-surface);
+/* Today: a dot above the date, near-black in light mode and white in dark. */
+.cafeteria-day-today {
+  position: absolute;
+  top: calc(50% - 18px);
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: #000000;
+}
+
+:root[data-theme="dark"] .cafeteria-day-today {
+  background: #ffffff;
 }
 
 /* The Cafeteria calendar's days are plain rounded rectangles (not squircles), and the picked
@@ -463,38 +629,92 @@
   color: var(--color-text-primary);
 }
 
-.cafeteria-calendar .assessment-calendar-day--selected .assessment-calendar-day-number--today,
-:root[data-theme="dark"] .cafeteria-calendar .assessment-calendar-day--selected .assessment-calendar-day-number--today {
-  background: var(--color-accent);
-  color: #ffffff;
-}
-
 /* Buttons for adding votes tagged to no one, to try the page out. */
 .cafeteria-test-votes {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 16px;
   margin-top: 20px;
 }
 
-.cafeteria-test-label {
-  font-size: 13px;
-  color: var(--color-text-secondary, var(--color-gray-dark));
+/* The two steppers either side of "Clear test votes". */
+.cafeteria-test-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.cafeteria-test-btn {
-  padding: 6px 12px;
-  border: 1px solid currentColor;
+.cafeteria-test-row--end {
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+/* A stepper for each menu, in the Calendar tab's course colors: the pill light (as a summative
+   pill is), the buttons the color itself, and the count in the darker shade of its text. */
+.cafeteria-stepper {
+  --chip-color: var(--color-dark-blue);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px;
   border-radius: 999px;
-  background: none;
+  background: oklch(from color-mix(in oklch, var(--chip-color) 22%, var(--color-surface)) l calc(c * 1.8) h);
+}
+
+.cafeteria-stepper--b {
+  --chip-color: var(--color-red);
+}
+
+.cafeteria-stepper button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--chip-color);
+  cursor: pointer;
+}
+
+.cafeteria-stepper button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.cafeteria-stepper button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cafeteria-stepper-count {
+  min-width: 24px;
+  text-align: center;
+  font-size: 15px;
+  color: color-mix(in srgb, var(--chip-color) 35%, var(--color-text-primary));
+}
+
+/* The gray buttons that clear a day's votes, after the steppers. */
+.cafeteria-clear-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-gray-lighter);
+  color: var(--color-gray-dark);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.cafeteria-test-btn:disabled {
+.cafeteria-clear-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }

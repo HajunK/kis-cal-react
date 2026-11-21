@@ -749,6 +749,8 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       const countdown = item.querySelector(".upcoming-countdown");
       const left = Number(item.dataset.dueAt) - now;
       if (left <= 0 && !countdown.hidden) passed = true;
+      // An assessment whose class has begun is redrawn to say "In progress".
+      if (left <= 0 && item.dataset.endsAt && item.dataset.inProgress !== "1") passed = true;
       const show = left > 0 && left < UPCOMING_COUNTDOWN_MS;
       const wasHidden = countdown.hidden;
       countdown.hidden = !show;
@@ -867,6 +869,14 @@ export function createAssessmentCalendar({ showColorLegend, hiddenCategories, vi
       blurWall.innerHTML = '<span class="upcoming-delete upcoming-delete--blur"><span class="upcoming-delete-icon"></span></span>';
     }
     const dueAt = done ? null : upcomingDueAt(entry, periodIndex);
+    // An assessment stays listed until its class ends, and from the moment it starts says
+    // "In progress" in place of its date (the list is redrawn as it starts; see
+    // tickUpcomingCountdowns).
+    const classEnd = done || assessmentCategory(entry) === "assignment" ? null : assessmentEndsAt(entry, periodIndex);
+    if (dueAt && classEnd && !overdue && dueAt.getTime() <= Date.now() && Date.now() < classEnd.getTime()) {
+      chipLabel.textContent = "In progress";
+      item.dataset.inProgress = "1";
+    }
     if (dueAt) {
       item.dataset.dueAt = String(dueAt.getTime());
       const countdown = chip.appendChild(document.createElement("span"));

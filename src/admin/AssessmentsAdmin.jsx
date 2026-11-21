@@ -306,7 +306,7 @@ export function AssessmentsAdmin({ page, onPreview }) {
       <div className="admin-calendar-layout" id="admin-calendar-layout" hidden={!isAdmin}>
         <div className="assessment-calendar-card" ref={cardRef}>
           <div className="assessment-calendar-title-row">
-            <h2 className="assessment-calendar-title">Assessment Calendar</h2>
+            <h2 className="assessment-calendar-title">Assessments</h2>
             {/* The Calendar tab as students see it, with every course (src/app/AppShell.jsx). */}
             <a
               className="assessment-calendar-preview"

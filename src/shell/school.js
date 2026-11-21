@@ -453,6 +453,23 @@ export function startSchoolData() {
   fetchPeriodTimes();
 }
 
+// Reads the school's data again (what an admin has changed since this page loaded it),
+// for the admin site's Calendar preview, which would otherwise show what was there when
+// the page opened. Resolves once all three have arrived, or after a couple of seconds
+// whatever happens (a failed read never calls back).
+export function refreshSchoolData() {
+  if (!hasFirebase()) return Promise.resolve();
+  serverCacheVersionsPromise = null;
+  assessmentsFetchDone = dayTypesFetchDone = periodTimesFetchDone = false;
+  const arrivals = [assessmentsLoadListeners, dayTypesLoadListeners, periodTimesLoadListeners].map(
+    (listeners) => new Promise((resolve) => listeners.push(resolve))
+  );
+  fetchAssessments();
+  fetchDayTypes();
+  fetchPeriodTimes();
+  return Promise.race([Promise.all(arrivals), new Promise((resolve) => setTimeout(resolve, 2000))]).then(() => {});
+}
+
 // The Calendar demo's made-up school, in place of a fetch.
 export function useDemoSchoolData({ assessments, dayTypes, periodTimes, dayLabels = {} }) {
   schoolDayLabels = dayLabels;
