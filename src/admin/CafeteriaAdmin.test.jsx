@@ -23,7 +23,7 @@ describe("voteDays", () => {
   });
 });
 
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { CafeteriaAdmin } from "./CafeteriaAdmin.jsx";
 
 describe("test votes below zero", () => {
@@ -34,6 +34,36 @@ describe("test votes below zero", () => {
 });
 
 describe("CafeteriaAdmin", () => {
+  it("shows the refresh control only after a verified owner signs in", () => {
+    cleanup();
+    const watch = vi.fn((_options, received) => {
+      received({ exists: false, metadata: { fromCache: false, hasPendingWrites: false } });
+      return () => {};
+    });
+    const db = {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: false }),
+          onSnapshot: watch,
+        }),
+        get: async () => snapshot([]),
+      }),
+    };
+    const buildPage = (email, emailVerified) => ({
+      db,
+      auth: { onAuthStateChanged: (callback) => (callback({ email, emailVerified }), () => {}) },
+    });
+    const { unmount } = render(<CafeteriaAdmin page={buildPage("student@example.test", true)} />);
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(watch).not.toHaveBeenCalled();
+    unmount();
+
+    render(<CafeteriaAdmin page={buildPage("hajunk105@gmail.com", true)} />);
+    expect(screen.getByRole("button", { name: "Refresh" }).disabled).toBe(false);
+    expect(watch).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
   it("draws the calendar with a side panel, and shows the picked day's votes", async () => {
     const today = new Date();
     const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-15`;
@@ -61,15 +91,17 @@ describe("CafeteriaAdmin", () => {
   it("edits, adds and deletes a dish, saving the week's menu", async () => {
     const today = new Date();
     const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-15`;
-    const update = vi.fn(() => Promise.resolve());
+    const update = vi.fn((ref, changes) => { liveWeek = { ...liveWeek, ...changes }; });
     const week = { days: [{ date: iso, meals: { lunch: { ko: [{ section: "A", status: "printed", text: "쌀밥\n김치" }, { section: "B", status: "printed", text: "국수" }] } } }] };
+    let liveWeek = structuredClone(week);
     const page = {
       auth: { onAuthStateChanged: (callback) => (callback({ email: "hajunk105@gmail.com" }), () => {}) },
       db: {
         collection: () => ({
-          doc: () => ({ get: () => Promise.resolve({ exists: true, data: () => week }), update }),
+          doc: () => ({ get: () => Promise.resolve({ exists: true, data: () => liveWeek }) }),
           get: () => Promise.resolve(snapshot([])),
         }),
+        runTransaction: (callback) => callback({ get: (ref) => ref.get(), update }),
       },
     };
     cleanup();
@@ -77,13 +109,18 @@ describe("CafeteriaAdmin", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     fireEvent.click(screen.getByText("15").closest("button"));
     const input = await screen.findByDisplayValue("김치");
+    liveWeek.days[0].meals.lunch.ko[1].text = "메밀국수";
     fireEvent.focus(input);
     fireEvent.change(screen.getByDisplayValue("김치"), { target: { value: "깍두기" } });
     fireEvent.blur(screen.getByDisplayValue("깍두기"));
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].days[0].meals.lunch.ko[0].text).toBe("쌀밥\n깍두기");
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][1].days[0].meals.lunch.ko).toEqual([
+      { section: "A", status: "printed", text: "쌀밥\n깍두기", lines: ["쌀밥", "깍두기"], manual: true },
+      { section: "B", status: "printed", text: "메밀국수" },
+    ]);
     fireEvent.click(screen.getByLabelText("Delete 쌀밥"));
-    expect(update.mock.calls[1][0].days[0].meals.lunch.ko[0].text).toBe("깍두기");
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect(update.mock.calls[1][1].days[0].meals.lunch.ko[0].text).toBe("깍두기");
     expect(screen.queryByDisplayValue("쌀밥")).toBeNull();
   });
 });

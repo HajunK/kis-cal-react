@@ -1,0 +1,16 @@
+[Unit]
+Description=Watch for owner-requested KIS Jeju HS cafeteria menu refreshes
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/kisj-menu/firebase.json
+
+[Service]
+Restart=on-failure
+RestartSec=15s
+ExecStart=/usr/bin/podman run --rm --name kisj-menu-refresh --replace --network=host --read-only --cap-drop=all --security-opt=no-new-privileges --memory=1536m --memory-swap=1536m --cpus=1 --pids-limit=128 --tmpfs=/tmp:rw,noexec,nosuid,size=128m --volume=/etc/kisj-menu/firebase.json:/run/secrets/firebase.json:ro --volume=/var/lib/kisj-menu:/app/var:rw --env=GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase.json --env=FIREBASE_PROJECT_ID=kisj-grade-calculator --entrypoint=python localhost/kisj-menu:current -m menu_scraper.refresh --output=/app/var/menus
+ExecStopPost=-/usr/bin/podman rm --force kisj-menu-refresh
+Nice=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -22,6 +22,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Verified owners may request OCR; the Admin SDK worker owns all result/status fields.
+    match /cafeteriaMenuRefresh/hs {
+      allow get: if isAdmin() && request.auth.token.email_verified == true;
+      allow list, delete: if false;
+      allow create: if isAdmin() && request.auth.token.email_verified == true
+        && request.resource.data.keys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time;
+      allow update: if isAdmin() && request.auth.token.email_verified == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time
+        && resource.data.requestedAt is timestamp
+        && request.time >= resource.data.requestedAt + duration.value(2, 'm')
+        && (('processedRequestAt' in resource.data
+             && resource.data.processedRequestAt == resource.data.requestedAt)
+            || request.time > resource.data.requestedAt + duration.value(35, 'm'));
+    }
+
     // Which lunch menu students are going for, a document a day (hs-YYYY-MM-DD): votes maps a
     // student's uid to "A" or "B". A signed-in student can add, change or remove only their
     // own entry, and nothing else in the document; no one can delete the document.

@@ -67,6 +67,8 @@ def parse_posts(html: str) -> list[Post]:
     soup = BeautifulSoup(html, "html.parser")
     posts = {}
     for link in soup.select(".kboard-list-title a"):
+        for badge in link.select(".kboard-default-new-notify"):
+            badge.decompose()
         title = link.get_text(" ", strip=True)
         # Category filter alone is insufficient: notices and ES/MS may still appear.
         if not title.upper().startswith("[HS]"):

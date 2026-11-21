@@ -1,4 +1,4 @@
-"""Add only the menu and lunch vote rules to the live ruleset, preserving newer deployed app rules.
+"""Add menu rules, or only owner refresh rules, without replacing live app rules.
 
 Uses the currently signed-in gcloud account. No credentials are stored.
 Default: compile and test. --apply additionally activates the tested ruleset.
@@ -6,8 +6,10 @@ Default: compile and test. --apply additionally activates the tested ruleset.
 
 import argparse
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
+import re
 import subprocess
 import urllib.request
 
@@ -41,6 +43,40 @@ VOTE_RULES = """
       allow delete: if false;
     }
 """
+
+REFRESH_RULES = """
+    // Verified owners may request OCR; the Admin SDK worker owns all result/status fields.
+    match /cafeteriaMenuRefresh/hs {
+      allow get: if isAdmin() && request.auth.token.email_verified == true;
+      allow list, delete: if false;
+      allow create: if isAdmin() && request.auth.token.email_verified == true
+        && request.resource.data.keys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time;
+      allow update: if isAdmin() && request.auth.token.email_verified == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time
+        && resource.data.requestedAt is timestamp
+        && request.time >= resource.data.requestedAt + duration.value(2, 'm')
+        && (('processedRequestAt' in resource.data
+             && resource.data.processedRequestAt == resource.data.requestedAt)
+            || request.time > resource.data.requestedAt + duration.value(35, 'm'));
+    }
+"""
+
+
+def merge_refresh_rules(content):
+    """Insert only the refresh block; never replace deployed menu/admin/vote rules."""
+    matches = re.findall(r"match\s+/cafeteriaMenuRefresh(?:/|\b)", content)
+    if matches:
+        if len(matches) == 1 and content.count(REFRESH_RULES.strip()) == 1:
+            return content
+        raise ValueError("Live refresh rules already exist with different content; review before replacing")
+    if not re.search(r"function\s+isAdmin\s*\(\s*\)", content):
+        raise ValueError("Live rules must define the existing isAdmin() owner policy")
+    anchor = "match /databases/{database}/documents {"
+    if content.count(anchor) != 1:
+        raise ValueError("Could not safely locate the Firestore document rules block")
+    return content.replace(anchor, anchor + "\n" + REFRESH_RULES, 1)
 
 
 def merge_vote_rules(content):
@@ -120,10 +156,105 @@ def vote_tests():
     ]
 
 
+def refresh_tests():
+    """Real timestamp, owner, pending-work and field-ownership boundary cases."""
+    now = datetime(2026, 11, 21, 6, 0, tzinfo=timezone.utc)
+
+    def at(seconds=0):
+        # The Rules test API decodes RFC3339 values as Rules timestamps.
+        return (now + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+    owners = [
+        {"uid": "owner-one", "token": {"email": "hajunk105@gmail.com", "email_verified": True}},
+        {"uid": "owner-two", "token": {"email": "hjkim29@kis.ac", "email_verified": True}},
+    ]
+    unauthorized = [
+        None,
+        {"uid": "student", "token": {"email": "student@example.test", "email_verified": True}},
+        {"uid": "unverified-owner", "token": {"email": "hajunk105@gmail.com", "email_verified": False}},
+        {"uid": "owner-without-claim", "token": {"email": "hjkim29@kis.ac"}},
+    ]
+
+    def case(expected, method, auth, new=None, old=None, path="hs"):
+        request = {"path": f"/databases/(default)/documents/cafeteriaMenuRefresh/{path}",
+                   "method": method, "auth": auth, "time": at()}
+        if new is not None:
+            request["resource"] = {"data": new}
+        result = {"expectation": expected, "request": request}
+        if old is not None:
+            result["resource"] = {"data": old}
+        return result
+
+    completed = {"requestedAt": at(-120), "processedRequestAt": at(-120), "status": "complete"}
+    cases = []
+    for auth in owners + unauthorized:
+        allowed = auth in owners
+        cases.extend([
+            case("ALLOW" if allowed else "DENY", "get", auth, old=completed),
+            case("DENY", "list", auth),
+            case("DENY", "delete", auth, old=completed),
+            case("ALLOW" if allowed else "DENY", "create", auth, new={"requestedAt": at()}),
+            case("ALLOW" if allowed else "DENY", "update", auth,
+                 new={**completed, "requestedAt": at()}, old=completed),
+        ])
+    owner = owners[0]
+    cases.extend(case("ALLOW", "get", auth) for auth in owners)
+    for invalid in ({}, {"requestedAt": at(-1)}, {"requestedAt": at(1)},
+                    {"requestedAt": 1795240800}, {"requestedAt": "not-a-timestamp"},
+                    {"requestedAt": at(), "status": "complete"},
+                    {"requestedAt": at(), "processedRequestAt": at()},
+                    {"requestedAt": at(), "runningRequestAt": at()},
+                    {"requestedAt": at(), "extra": True}):
+        cases.append(case("DENY", "create", owner, new=invalid))
+    # The cooldown applies globally, including requests from the other owner.
+    for auth in owners:
+        recent = {"requestedAt": at(-119), "processedRequestAt": at(-119), "status": "complete"}
+        cases.append(case("DENY", "update", auth, new={**recent, "requestedAt": at()}, old=recent))
+    for age, expected in ((120, "DENY"), (1800, "DENY"), (2100, "DENY"), (2101, "ALLOW")):
+        pending = {"requestedAt": at(-age), "runningRequestAt": at(-age), "status": "running"}
+        cases.append(case(expected, "update", owner, new={**pending, "requestedAt": at()}, old=pending))
+    stale_result = {"requestedAt": at(-120), "processedRequestAt": at(-240), "status": "complete"}
+    cases.append(case("DENY", "update", owner,
+                      new={**stale_result, "requestedAt": at()}, old=stale_result))
+    for field, value in (("status", "running"), ("processedRequestAt", at()),
+                         ("runningRequestAt", at()), ("extra", True)):
+        cases.append(case("DENY", "update", owner,
+                          new={**completed, "requestedAt": at(), field: value}, old=completed))
+    cases.append(case("DENY", "update", owner, new={"requestedAt": at()}, old=completed))
+    for old in ({}, {"requestedAt": 123}, {"requestedAt": "not-a-timestamp"}):
+        cases.append(case("DENY", "update", owner, new={**old, "requestedAt": at()}, old=old))
+    for invalid in (at(-1), at(1), 1795240800, "not-a-timestamp"):
+        cases.append(case("DENY", "update", owner,
+                          new={**completed, "requestedAt": invalid}, old=completed))
+    for method in ("get", "create", "update"):
+        cases.append(case("DENY", method, owner, new={"requestedAt": at()},
+                          old=completed if method != "create" else None, path="other"))
+    return cases
+
+
+def refresh_regression_tests():
+    """The additive refresh deployment must retain existing owner menu editing."""
+    cases = []
+    for auth in (None, {"uid": "student", "token": {"email": "student@example.test"}},
+                 {"uid": "owner", "token": {"email": "hajunk105@gmail.com"}},
+                 {"uid": "owner-two", "token": {"email": "hjkim29@kis.ac"}}):
+        owner = auth is not None and auth["token"]["email"] in ("hajunk105@gmail.com", "hjkim29@kis.ac")
+        for collection in ("cafeteriaMenus", "cafeteriaMenuSources"):
+            for method in ("get", "list", "create", "update", "delete"):
+                allow = collection == "cafeteriaMenus" and (method in ("get", "list") or (owner and method == "update"))
+                cases.append({"expectation": "ALLOW" if allow else "DENY",
+                              "request": {"path": f"/databases/(default)/documents/{collection}/hs-2026-11-16",
+                                          "method": method, "auth": auth, "resource": {"data": {"days": []}}},
+                              "resource": {"data": {"days": []}}})
+    return cases + vote_tests()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default="kisj-grade-calculator")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--refresh", action="store_true",
+                        help="Add only verified-owner OCR refresh rules to the current live rules")
     parser.add_argument("--backup", type=Path, default=Path("/tmp/kisj-menu-rules-backup.json"))
     args = parser.parse_args()
     token = subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()
@@ -147,14 +278,21 @@ def main():
     if len(files) != 1:
         raise ValueError("Expected one live firestore.rules file")
     old = files[0]["content"]
-    files[0]["content"] = merge_vote_rules(merge_rules(old))
+    if args.refresh:
+        files[0]["content"] = merge_refresh_rules(old)
+        cases = refresh_tests() + refresh_regression_tests()
+        label = "Owner refresh rules"
+    else:
+        files[0]["content"] = merge_vote_rules(merge_rules(old))
+        cases = tests() + vote_tests()
+        label = "Menu and vote rules"
     files[0].pop("fingerprint", None)
-    result = api(f"projects/{args.project}:test", {"source": source, "testSuite": {"testCases": tests() + vote_tests()}})
+    result = api(f"projects/{args.project}:test", {"source": source, "testSuite": {"testCases": cases}})
     issues = [issue for issue in result.get("issues", []) if issue.get("severity") == "ERROR"]
     failed = [test for test in result.get("testResults", []) if test.get("state") != "SUCCESS"]
-    if issues or failed or len(result.get("testResults", [])) != len(tests()) + len(vote_tests()):
+    if issues or failed or len(result.get("testResults", [])) != len(cases):
         raise RuntimeError(json.dumps({"issues": issues, "failures": failed})[:8000])
-    print(f"Menu and vote rules compiled; {len(tests()) + len(vote_tests())} access-control tests passed")
+    print(f"{label} compiled; {len(cases)} access-control tests passed")
     if args.apply and files[0]["content"] != old:
         args.backup.write_text(json.dumps({"release": release, "ruleset": ruleset}, indent=2) + "\n")
         created = api(f"projects/{args.project}/rulesets", {"source": source})
@@ -166,9 +304,11 @@ def main():
         }, method="PATCH")
         if api(release_path)["rulesetName"] != created["name"]:
             raise RuntimeError("Rules activation verification failed")
-        print("Menu and vote rules activated; all pre-existing rules retained. Backup:", args.backup)
+        print(f"{label} activated; all pre-existing rules retained. Backup:", args.backup)
     elif args.apply:
-        print("Menu and vote rules already active")
+        print(f"{label} already active")
+    else:
+        print("No activation requested; live rules were not changed")
 
 
 if __name__ == "__main__":

@@ -82,6 +82,7 @@ const live = () => {
 export const firestore = () => live().firestore();
 export const firebaseAuth = () => live().auth();
 export const deleteField = () => window.firebase.firestore.FieldValue.delete();
+export const serverTimestamp = () => window.firebase.firestore.FieldValue.serverTimestamp();
 export const arrayUnion = (...values) => window.firebase.firestore.FieldValue.arrayUnion(...values);
 export const arrayRemove = (...values) => window.firebase.firestore.FieldValue.arrayRemove(...values);
 export const googleProvider = () => new window.firebase.auth.GoogleAuthProvider();

@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { isAdminEmail } from "../core/admins.js";
 import { fromISODate, toISODate } from "../core/dates.js";
 import { addDays, lunchChoices, menuDocId, mondayOf } from "../menu/menuData.js";
 import { tally } from "../menu/menuVotes.js";
 import { ConfirmDialog } from "../ui/ConfirmDialog.jsx";
+import { CafeteriaRefresh } from "./CafeteriaRefresh.jsx";
 
 // The Cafeteria admin page: how the students voted on each day's lunch (cafeteriaVotes, one
 // document a day; see menuVotes.js), laid out like the Assessments page: a calendar of the
@@ -175,6 +176,7 @@ export function CafeteriaAdmin({ page }) {
   // one): those the month shown touches, for which of its days have a menu, and so the day
   // picked's.
   const [weeks, setWeeks] = useState({});
+  const reloadWeeks = useCallback(() => setWeeks({}), []);
   const monday = selected ? mondayOf(selected) : null;
   const monthKey = toISODate(month);
   useEffect(() => {
@@ -205,27 +207,41 @@ export function CafeteriaAdmin({ page }) {
   };
   const week = monday ? weeks[monday] : undefined;
 
-  // Saves a menu's dishes (the Korean ones shown here) to the day's lunch, in the week's document.
+  // Read the current week in the transaction so concurrent OCR or edits to another menu survive.
   const saveDishes = (iso, menu, dishes) => {
     const key = mondayOf(iso);
     const before = weeks[key];
     if (!before) return;
     const text = dishes.join("\n");
-    const change = (option) => (option.section === menu && option.status === "printed" ? { ...option, text } : option);
-    const after = {
-      ...before,
-      days: before.days.map((day) =>
-        day.date === iso ? { ...day, meals: { ...day.meals, lunch: { ...day.meals.lunch, [LANGUAGE]: day.meals.lunch[LANGUAGE].map(change) } } } : day
-      ),
+    const edit = (current) => {
+      const options = current.days.find((day) => day.date === iso)?.meals?.lunch?.[LANGUAGE];
+      if (!options || options.some((option) => option.status === "closed")
+          || !options.some((option) => option.section === menu && option.status === "printed")) {
+        throw new Error("The selected menu has changed.");
+      }
+      const updated = options.map((option) => option.section === menu
+        ? { ...option, text, lines: dishes, manual: true }
+        : option);
+      return {
+        ...current,
+        days: current.days.map((day) => day.date === iso
+          ? { ...day, meals: { ...day.meals, lunch: { ...day.meals.lunch, [LANGUAGE]: updated } } }
+          : day),
+      };
     };
-    setWeeks((known) => ({ ...known, [key]: after }));
-    page.db
-      .collection("cafeteriaMenus")
-      .doc(menuDocId(key))
-      .update({ days: after.days })
+    setWeeks((known) => ({ ...known, [key]: edit(before) }));
+    const ref = page.db.collection("cafeteriaMenus").doc(menuDocId(key));
+    page.db.runTransaction(async (transaction) => {
+      const current = await transaction.get(ref);
+      if (!current.exists) throw new Error("The selected week has changed.");
+      const after = edit(current.data());
+      transaction.update(ref, { days: after.days });
+      return after;
+    })
+      .then((after) => setWeeks((known) => ({ ...known, [key]: after })))
       .catch((error) => {
         console.error("Failed to save the menu:", error);
-        setWeeks((known) => ({ ...known, [key]: before }));
+        reloadWeeks();
         window.alert("Something went wrong saving the menu. Please try again.");
       });
   };
@@ -409,7 +425,10 @@ export function CafeteriaAdmin({ page }) {
 
       <div className="admin-calendar-layout" hidden={!isAdmin}>
         <div className="assessment-calendar-card cafeteria-calendar">
-          <h2 className="assessment-calendar-title">Cafeteria Menus</h2>
+          <div className="assessment-calendar-title-row cafeteria-title-row">
+            <h2 className="assessment-calendar-title">Cafeteria Menus</h2>
+            {isAdmin && user.emailVerified && <CafeteriaRefresh page={page} onSuccess={reloadWeeks} />}
+          </div>
           <div className="assessment-calendar-header">
             <button type="button" className="assessment-calendar-nav-btn" aria-label="Previous month" onClick={() => changeMonth(-1)}>
               <svg viewBox="0 0 20 20" aria-hidden="true">

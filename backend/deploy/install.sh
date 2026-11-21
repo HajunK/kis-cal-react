@@ -16,13 +16,15 @@ install -d -o 10001 -g 10001 -m 0750 /var/lib/kisj-menu
 podman build --tag localhost/kisj-menu:current .
 install -m 0644 deploy/kisj-menu.service /etc/systemd/system/kisj-menu.service
 install -m 0644 deploy/kisj-menu.timer /etc/systemd/system/kisj-menu.timer
+install -m 0644 deploy/kisj-menu-refresh.service /etc/systemd/system/kisj-menu-refresh.service
 systemctl daemon-reload
 if [[ ! -f /etc/kisj-menu/firebase.json ]]; then
-  echo 'Image and units installed. Provision /etc/kisj-menu/firebase.json (uid 10001, mode 0400), then enable the timer.'
+  echo 'Image and units installed. Provision /etc/kisj-menu/firebase.json (uid 10001, mode 0400), then run this installer again.'
   exit 0
 fi
 chown 10001:10001 /etc/kisj-menu/firebase.json
 chmod 0400 /etc/kisj-menu/firebase.json
 systemctl start kisj-menu.service
-systemctl enable --now kisj-menu.timer
+systemctl enable kisj-menu.timer kisj-menu-refresh.service
+systemctl restart kisj-menu.timer kisj-menu-refresh.service
 systemctl list-timers kisj-menu.timer --no-pager

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import date
+from datetime import date, timedelta
 
 from PIL import Image, ImageDraw
 import pytest
@@ -19,6 +19,30 @@ def test_uses_printed_week_and_handles_year_rollover():
 def test_unreadable_or_invalid_week_is_not_published(value):
     with pytest.raises(ValueError):
         printed_dates(value)
+
+
+def test_friday_banner_requires_seven_explicit_contiguous_date_headers():
+    headers = [(date(2026, 11, 23) + timedelta(days=i)).isoformat() for i in range(7)]
+    assert printed_dates("2026.11.23 ~ 2026.11.27", headers) == (date(2026, 11, 23), date(2026, 11, 29))
+    with pytest.raises(ValueError, match="partial weeks are not inferred"):
+        printed_dates("2026.11.23 ~ 2026.11.27", headers[:5])
+    with pytest.raises(ValueError, match="Monday through Sunday"):
+        printed_dates("2026.11.23 ~ 2026.11.27")
+
+
+def test_skipped_or_duplicated_date_columns_fail_even_with_valid_banner():
+    headers = [(date(2026, 11, 23) + timedelta(days=i)).isoformat() for i in range(7)]
+    for wrong in ("2026-11-24", "2026-11-30", "unreadable"):
+        invalid = headers.copy()
+        invalid[2] = wrong
+        with pytest.raises(ValueError, match="date column"):
+            printed_dates("2026.11.23 ~ 2026.11.29", invalid)
+
+
+def test_korean_date_headers_preserve_year_rollover():
+    headers = [f"{day.month}월 {day.day}일" for day in
+               (date(2026, 12, 28) + timedelta(days=i) for i in range(7))]
+    assert printed_dates("2026.12.28 ~ 2027.01.01", headers) == (date(2026, 12, 28), date(2027, 1, 3))
 
 
 def page(language="en"):
@@ -105,10 +129,13 @@ def test_missing_separator_without_colored_panel_fails_closed(monkeypatch):
 def test_closed_dates_never_pass_decorative_images_to_food_ocr(monkeypatch):
     def fake_text(image, *args, **kwargs):
         assert ocr.color_fraction(image) < .1, "Closure artwork must never become food text"
+        if image.width == 360 and image.height == 50:
+            return "2026.10.26 ~ 2026.11.01"
         return "A" if image.width < 40 else "White Rice and soup, printed menu content " * 3
 
     monkeypatch.setattr(ocr, "text", fake_text)
-    monkeypatch.setattr(ocr, "printed_dates", lambda value: (date(2026, 10, 26), date(2026, 11, 1)))
+    monkeypatch.setattr(ocr, "read_date_headers", lambda *args: [
+        (date(2026, 10, 26) + timedelta(days=i)).isoformat() for i in range(7)])
     monkeypatch.setattr(ocr.pytesseract, "image_to_string", lambda *args, **kwargs: "CAFETERIA CLOSED")
     page = ocr.read_page(closure_table())
     for day in page["days"][:5]:
@@ -116,3 +143,15 @@ def test_closed_dates_never_pass_decorative_images_to_food_ocr(monkeypatch):
     for day in page["days"][5:]:
         assert all(options[0]["status"] == "closed" for options in day["meals"].values())
         assert all(options[0]["lines"] == [] for options in day["meals"].values())
+    assert page["dateEvidence"]["bannerEnd"] == "2026-11-01"
+    assert page["dateEvidence"]["rangeMismatch"] is False
+
+
+def test_bilingual_combination_keeps_original_banner_inconsistency():
+    korean, english = page("ko"), page("en")
+    korean["dateEvidence"] = {"bannerEnd": "2026-11-15", "rangeMismatch": False}
+    english["dateEvidence"] = {"bannerEnd": "2026-11-13", "rangeMismatch": True}
+    combined = combine([korean, english])
+    assert combined["weekEnd"] == "2026-11-15"
+    assert combined["dateEvidence"]["en"] == english["dateEvidence"]
+    assert combined["dateEvidence"]["ko"] == korean["dateEvidence"]

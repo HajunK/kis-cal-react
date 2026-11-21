@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime, timezone
+import fcntl
 import hashlib
 import json
 import logging
@@ -57,8 +58,8 @@ def run(*, output: Path, limit: int = 3, db=None, force: bool = False) -> dict:
                 path = output / f"hs-{menu['weekStart']}-post-{post.uid}.json"
                 temporary = path.with_suffix(".json.tmp")
                 temporary.write_text(json.dumps(menu, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                status = publish(db, menu, archive_dir=output) if db is not None else "exported"
                 temporary.replace(path)
-                status = publish(db, menu) if db is not None else "exported"
                 counts[status] += 1
                 LOGGER.info("HS post %s: %s week %s (%s)", post.uid, status, menu["weekStart"], menu["languages"])
             except Exception:
@@ -85,7 +86,10 @@ def main() -> int:
         app = firebase_admin.initialize_app(options={"projectId": args.project})
         db = firestore.client(app)
     try:
-        counts = run(output=args.output, limit=args.limit, db=db, force=args.force)
+        args.output.mkdir(parents=True, exist_ok=True)
+        with (args.output / ".sync.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            counts = run(output=args.output, limit=args.limit, db=db, force=args.force)
         return 1 if counts["failed"] else 0
     finally:
         if db is not None:

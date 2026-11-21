@@ -1,6 +1,6 @@
 # Deployment record
 
-Verified November 2, 2026, Asia/Seoul.
+Runtime verified November 21, 2026, Asia/Seoul.
 
 ## Runtime
 
@@ -11,9 +11,10 @@ Verified November 2, 2026, Asia/Seoul.
 | Address | `168.107.10.53` |
 | Owner SSH | `ssh oracle`, or `ssh ubuntu@168.107.10.53` |
 | Source | `/opt/kisj-menu/backend/` |
-| Application source commit | `f309127` on branch `menu` |
-| Container | `localhost/kisj-menu:current`, image prefix `90411b34b924` |
-| Scheduler | `kisj-menu.timer`, hourly around minute 17 KST, up to 120 seconds jitter |
+| Application base | `HajunK/kis-cal-react` commit `2133ec0` |
+| Container | `localhost/kisj-menu:current`, image prefix `99b50cc3b4b7` |
+| Scheduler | `kisj-menu.timer`, daily at 06:00 KST with missed-run catchup |
+| Manual refresh | [Cafeteria admin](https://admin.kiscal.app/cafeteria), via `kisj-menu-refresh.service` |
 | Archives | `/var/lib/kisj-menu/menus/` |
 | Firebase project | `kisj-grade-calculator` |
 | Public collection | `cafeteriaMenus` |
@@ -22,7 +23,25 @@ Verified November 2, 2026, Asia/Seoul.
 The credential is stored separately under a root-protected directory and mounted
 read-only. It is not part of the checkout or image.
 
-## Verification
+## November 21 refresh
+
+The HS listing now ignores the school's New badge when validating the post title.
+The November 23-29 post has seven dated columns in each language. Its English
+banner ends on November 27. The OCR records both the banner and the validated dates.
+
+Owner corrections stay with their date, meal, language and menu option. A closure
+keeps the correction saved while the meal is unavailable. The scraper recovered
+three existing corrections by comparing the current week documents against their
+original local OCR archives.
+
+The manual refresh listener watches `cafeteriaMenuRefresh/hs`. Firestore allows
+verified owners to write only the request timestamp. The listener reports the
+result for that timestamp and uses the same archive lock as the scheduled job.
+An operator-submitted request verified three successful bilingual publications
+and all three recovered corrections remained identical. Admin Hosting version
+`6c5731907f90da48` contains the button and transactional editor.
+
+## November 2 verification
 
 - 25 local tests pass.
 - 30 Firebase Rules tests pass for anonymous users, students and admins.

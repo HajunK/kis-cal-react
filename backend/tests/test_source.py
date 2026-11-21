@@ -16,6 +16,20 @@ def test_listing_excludes_es_ms_and_pinned_notices_even_on_hs_filter():
     assert [post.uid for post in parse_posts(html)] == ["100", "97"]
 
 
+def test_listing_ignores_kboard_new_badge_when_filtering_school():
+    html = """<table>
+    <td class="kboard-list-title"><a href="?mod=document&amp;uid=100">
+      <div class="kboard-default-cut-strings">
+        <span class="kboard-default-new-notify">New</span>[HS] Weekly menu
+      </div>
+    </a></td>
+    <td class="kboard-list-title"><a href="?mod=document&amp;uid=101">
+      <span class="kboard-default-new-notify">New</span>[ES/MS] Weekly menu
+    </a></td>
+    </table>"""
+    assert [(post.uid, post.title) for post in parse_posts(html)] == [("100", "[HS] Weekly menu")]
+
+
 def test_post_uses_only_content_images_and_prefers_pdf_attachment():
     post = Post("100", "[HS] Weekly", "https://kis.ac/cafeteria-menus/?uid=100")
     html = """<img src="/logo.png"><div id="kboard-document">

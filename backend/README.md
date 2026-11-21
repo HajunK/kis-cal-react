@@ -19,6 +19,9 @@ The current host, deployed checks and SSH access are recorded in [DEPLOYMENT.md]
 6. Atomically publish the week plus its source-hash cache to Firestore. Identical
    attachments skip OCR on subsequent runs. A changed attachment at the same URL
    is processed again. An older post cannot overwrite a newer post for the same week.
+   The Cafeteria editor marks corrected Korean lunch options as manual. The
+   scraper preserves those corrections while updating untouched options. Older
+   editor changes are identified against the exact previous OCR archive.
 
 Failures return a nonzero exit code and retain existing Firebase data. The job
 continues processing other HS posts so one bad attachment does not block all updates.
@@ -73,13 +76,14 @@ Firebase project: `kisj-grade-calculator`.
 |---|---|---|
 | `cafeteriaMenus/hs-YYYY-MM-DD` | A week, identified by its printed Monday | Public read, no client writes |
 | `cafeteriaMenuSources/hs-POST_ID` | Attachment hash, pipeline version, publication status | Server only |
+| `cafeteriaMenuRefresh/hs` | Manual refresh request and result | Verified owner identities can read and request a run |
 
 Each menu document contains:
 
 ```json
 {
   "schemaVersion": 1,
-  "pipelineVersion": 1,
+  "pipelineVersion": 2,
   "school": "HS",
   "weekStart": "2026-11-09",
   "weekEnd": "2026-11-15",
@@ -101,6 +105,8 @@ Each menu document contains:
 ```
 
 The abbreviated example omits the other six dates and meal/language entries.
+`dateEvidence` records the printed banner and seven OCR-validated column dates.
+The validated columns determine the coverage if the banner ends early.
 `text` preserves OCR text, including printed allergen codes; `lines` are OCR lines,
 not a guaranteed one-dish-per-line list. Wrapped names remain wrapped. Shared
 Always/Plus Bar rows stay separate because some span several dates. A blank cell
@@ -142,7 +148,7 @@ Copy only these source paths to the selected server's `/opt/kisj-menu/backend/`:
 
 - `Dockerfile`, `.dockerignore`, `requirements.txt`
 - `menu_scraper/*.py`
-- `deploy/install.sh`, `deploy/kisj-menu.service`, `deploy/kisj-menu.timer`
+- `deploy/install.sh`, `deploy/kisj-menu.service`, `deploy/kisj-menu.timer`, `deploy/kisj-menu-refresh.service`
 
 Do not use a broad rsync or copy `.env` files. Provision the Firebase credential
 separately as `/etc/kisj-menu/firebase.json`; the install script sets UID 10001 and
@@ -154,13 +160,21 @@ sudo bash deploy/install.sh
 ```
 
 This builds the image, installs systemd units, runs an initial sync, and enables
-the timer only after that sync succeeds. The timer checks hourly around minute 17
-in Asia/Seoul, with up to 120 seconds of jitter. `Persistent=true` runs a missed
-schedule after a reboot. No paid OCR API is used.
+the timer only after that sync succeeds. The systemd timer checks daily at 06:00
+in Asia/Seoul. `Persistent=true` catches up after a missed run while the host was
+offline. No paid OCR API is used.
+
+The installer also starts the manual refresh listener. The **Refresh** button
+on the Cafeteria admin page requests a forced run of the three latest HS posts.
+The scheduled and manual jobs share a lock on the archive so only one scraper
+runs at a time. To allow the button in an existing project, use
+`python backend/deploy/publish_rules.py --refresh` to verify the additive rule
+change against the live rules. Add `--apply` to activate the verified rules.
 
 ```sh
 sudo systemctl list-timers kisj-menu.timer
 sudo journalctl -u kisj-menu.service -n 60 --no-pager
+sudo journalctl -u kisj-menu-refresh.service -n 60 --no-pager
 sudo systemctl start kisj-menu.service
 ```
 

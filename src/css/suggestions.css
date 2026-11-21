@@ -718,3 +718,28 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.cafeteria-title-row {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.cafeteria-refresh {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.cafeteria-refresh-btn {
+  min-height: 36px;
+}
+
+.cafeteria-refresh-status {
+  color: var(--color-gray-dark);
+  font-size: 12px;
+  text-align: right;
+}
+
+.cafeteria-refresh-status:empty {
+  display: none;
+}

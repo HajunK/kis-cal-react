@@ -8,6 +8,8 @@ from PIL import Image, ImageOps
 import pytesseract
 
 MEALS = ("breakfast", "lunch", "dinner")
+_FULL_DATE = r"(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})"
+_MONTH_DAY = r"(?<!\d)(\d{1,2})\s*월\s*(\d{1,2})\s*일"
 
 
 def groups(values) -> list[np.ndarray]:
@@ -31,14 +33,53 @@ def text(image: Image.Image, language: str = "eng", psm: int = 6) -> str:
     ).strip()
 
 
-def printed_dates(value: str) -> tuple[date, date]:
-    parts = re.findall(r"(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})", value)
+def _printed_range(value: str) -> tuple[date, date]:
+    parts = re.findall(_FULL_DATE, value)
     if len(parts) != 2:
         raise ValueError(f"Could not read exactly two printed week dates: {value!r}")
-    start, end = [date(*map(int, match)) for match in parts]
-    if end - start != timedelta(days=6) or start.weekday() != 0:
+    return tuple(date(*map(int, match)) for match in parts)
+
+
+def printed_dates(value: str, column_headers: list[str] | None = None) -> tuple[date, date]:
+    start, banner_end = _printed_range(value)
+    week_end = start + timedelta(days=6)
+    if start.weekday() != 0 or not start <= banner_end <= week_end:
         raise ValueError("Printed menu range must be Monday through Sunday")
-    return start, end
+    if column_headers is None:
+        if banner_end != week_end:
+            raise ValueError("Printed menu range must be Monday through Sunday")
+        return start, banner_end
+    if len(column_headers) != 7:
+        raise ValueError("Exactly seven printed date columns are required; partial weeks are not inferred")
+    for index, header in enumerate(column_headers):
+        expected = start + timedelta(days=index)
+        full = re.findall(_FULL_DATE, header)
+        month_day = re.findall(_MONTH_DAY, header)
+        if len(full) == 1:
+            actual = date(*map(int, full[0]))
+        elif not full and len(month_day) == 1:
+            actual = date(expected.year, *map(int, month_day[0]))
+        else:
+            raise ValueError(f"Unreadable printed date column {index + 1}: {header!r}")
+        if actual != expected:
+            raise ValueError(f"Printed date columns skip or disagree at column {index + 1}: {header!r}")
+    # Some English banners stop on Friday despite explicitly dated weekend
+    # columns. Only the seven verified printed column dates justify this range.
+    return start, week_end
+
+
+def read_date_headers(image: Image.Image, columns: list[int], band: tuple[int, int]) -> list[str]:
+    headers = []
+    for left, right in zip(columns, columns[1:]):
+        crop = image.crop((left + 4, band[0] + 3, right - 4, (band[0] + band[1]) // 2))
+        # Date headers are white on orange, opposite to the dark food text.
+        binary = ImageOps.grayscale(crop).point(lambda value: 0 if value > 210 else 255)
+        for language, psm in (("kor+eng", 6), ("kor", 6), ("eng", 7)):
+            value = text(binary, language, psm)
+            if re.search(_FULL_DATE, value) or re.search(_MONTH_DAY, value):
+                break
+        headers.append(value)
+    return headers
 
 
 def date_columns(lines: list[int], width: int) -> tuple[list[int], list[int]]:
@@ -137,9 +178,17 @@ def section_name(label: str, meal: str) -> str:
 
 def read_page(image: Image.Image) -> dict:
     columns, row_lines, bands, missing_boundaries = layout(image)
-    start, end = printed_dates(text(image.crop((
+    banner_text = text(image.crop((
         int(image.width * .3), 0, int(image.width * .7), bands[0][0],
-    ))))
+    )))
+    date_headers = read_date_headers(image, columns, bands[0])
+    start, end = printed_dates(banner_text, date_headers)
+    banner_start, banner_end = _printed_range(banner_text)
+    date_evidence = {
+        "bannerStart": banner_start.isoformat(), "bannerEnd": banner_end.isoformat(),
+        "columnDates": [(start + timedelta(days=i)).isoformat() for i in range(7)],
+        "columnHeaderText": date_headers, "rangeMismatch": banner_end != end,
+    }
     sample = text(image.crop((columns[1] + 4, bands[0][1] + 4,
                               columns[2] - 4, bands[1][0] - 4)), "kor+eng")
     language = "ko" if len(re.findall(r"[가-힣]", sample)) > 3 else "en"
@@ -208,6 +257,7 @@ def read_page(image: Image.Image) -> dict:
         raise ValueError("Too little OCR text; refusing to publish an empty menu")
     return {
         "language": language, "weekStart": start.isoformat(), "weekEnd": end.isoformat(),
+        "dateEvidence": date_evidence,
         "days": days, "sharedSections": shared,
         "notes": text(image.crop((0, bands[3][1] + 3, image.width, image.height - 2)), ocr_language),
     }
@@ -231,6 +281,7 @@ def combine(pages: list[dict]) -> dict:
     return {
         "school": "HS", "weekStart": pages[0]["weekStart"], "weekEnd": pages[0]["weekEnd"],
         "languages": languages, "days": days,
+        "dateEvidence": {page["language"]: page.get("dateEvidence", {}) for page in pages},
         "sharedSections": {page["language"]: page["sharedSections"] for page in pages},
         "notes": {page["language"]: page["notes"] for page in pages},
     }
